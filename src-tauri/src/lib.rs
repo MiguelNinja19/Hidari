@@ -1,12 +1,16 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_notification::NotificationExt;
 use tokio::time::{sleep, Duration};
 use url::Url;
 
 const DOWNLOAD_EVENT_PROGRESS: &str = "download://progress";
 const QUEUE_EVENT_JOB_PROGRESS: &str = "queue://job-progress";
+const APP_EVENT_DEEP_LINK: &str = "app://deep-link";
 
 // ── Sidecar State ─────────────────────────────────────────────────────────────
 
@@ -174,6 +178,14 @@ struct JobProgressEvent {
   status: String,
   speed_bytes_per_sec: u64,
   eta_seconds: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DeepLinkEventPayload {
+  url: String,
+  game_id: Option<String>,
+  action: Option<String>,
 }
 
 // ── Commands: System ──────────────────────────────────────────────────────────
@@ -591,6 +603,15 @@ fn maybe_start_next_job(
       },
     );
 
+    if final_status == "completed" {
+      let _ = app_c
+        .notification()
+        .builder()
+        .title("Download concluido")
+        .body(format!("Job #{job_id} finalizado com sucesso."))
+        .show();
+    }
+
     *active_c.lock().unwrap() = None;
     *cancel_c.lock().unwrap() = false;
     *pause_c.lock().unwrap() = false;
@@ -711,6 +732,31 @@ fn sidecar_status(app: AppHandle) -> serde_json::Value {
     Some(port) => serde_json::json!({ "running": true, "port": port }),
     None => serde_json::json!({ "running": false }),
   }
+}
+
+#[tauri::command]
+fn open_deep_link(app: AppHandle, url: String) -> Result<(), String> {
+  emit_deep_link_event(&app, &url)?;
+  Ok(())
+}
+
+fn emit_deep_link_event(app: &AppHandle, url: &str) -> Result<(), String> {
+  let parsed = Url::parse(url).map_err(|error| format!("invalid_deep_link: {error}"))?;
+  let action = Some(parsed.path().trim_start_matches('/').to_string()).filter(|value| !value.is_empty());
+  let game_id = parsed
+    .query_pairs()
+    .find_map(|(key, value)| if key == "gameId" { Some(value.to_string()) } else { None });
+
+  app
+    .emit(
+      APP_EVENT_DEEP_LINK,
+      DeepLinkEventPayload {
+        url: url.to_string(),
+        game_id,
+        action,
+      },
+    )
+    .map_err(|error| format!("could_not_emit_deep_link_event: {error}"))
 }
 
 fn get_sidecar_port(app: &AppHandle) -> Result<u16, String> {
@@ -1083,9 +1129,49 @@ pub fn run() {
             .build(),
         )?;
       }
+      app.handle().plugin(tauri_plugin_notification::init())?;
       let _ = open_database_connection(&app.handle());
       startup_queue_recovery(&app.handle());
       spawn_download_engine(app.handle().clone());
+
+      let show_item = MenuItem::with_id(app, "tray_show", "Mostrar janela", true, None::<&str>)?;
+      let hide_item = MenuItem::with_id(app, "tray_hide", "Ocultar janela", true, None::<&str>)?;
+      let quit_item = MenuItem::with_id(app, "tray_quit", "Sair", true, None::<&str>)?;
+      let tray_menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
+
+      let app_handle = app.handle().clone();
+      let _tray = TrayIconBuilder::new()
+        .menu(&tray_menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(move |app, event| match event.id.as_ref() {
+          "tray_show" => {
+            if let Some(window) = app.get_webview_window("main") {
+              let _ = window.show();
+              let _ = window.set_focus();
+            }
+          }
+          "tray_hide" => {
+            if let Some(window) = app.get_webview_window("main") {
+              let _ = window.hide();
+            }
+          }
+          "tray_quit" => app.exit(0),
+          _ => {}
+        })
+        .on_tray_icon_event(move |_tray, event| {
+          if let TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+          } = event
+          {
+            if let Some(window) = app_handle.get_webview_window("main") {
+              let _ = window.show();
+              let _ = window.set_focus();
+            }
+          }
+        })
+        .build(app)?;
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -1118,7 +1204,8 @@ pub fn run() {
       sidecar_pause_job,
       sidecar_resume_job,
       sidecar_cancel_job,
-      sidecar_status
+      sidecar_status,
+      open_deep_link
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

@@ -54,6 +54,7 @@ function App() {
   const [jobUrl, setJobUrl] = useState<string>('')
   const [jobDestPath, setJobDestPath] = useState<string>('')
   const [newCollectionName, setNewCollectionName] = useState<string>('')
+  const [deepLinkInfo, setDeepLinkInfo] = useState<string>('')
 
   useEffect(() => {
     void dispatch(fetchSources())
@@ -69,6 +70,7 @@ function App() {
 
     let unlistenProgress: (() => void) | undefined
     let unlistenJobProgress: (() => void) | undefined
+    let unlistenDeepLink: (() => void) | undefined
 
     void tauriClient
       .listenDownloadProgress((event) => {
@@ -86,9 +88,20 @@ function App() {
         unlistenJobProgress = unsubscribe
       })
 
+    void tauriClient
+      .listenDeepLink((event) => {
+        const action = event.action ?? 'unknown'
+        const gameId = event.gameId ?? '-'
+        setDeepLinkInfo(`action=${action} gameId=${gameId}`)
+      })
+      .then((unsubscribe) => {
+        unlistenDeepLink = unsubscribe
+      })
+
     return () => {
       if (unlistenProgress) unlistenProgress()
       if (unlistenJobProgress) unlistenJobProgress()
+      if (unlistenDeepLink) unlistenDeepLink()
     }
   }, [dispatch])
 
@@ -156,6 +169,19 @@ function App() {
         <p>
           Pasta de dados: <code>{paths || '...'}</code>
         </p>
+        <p>
+          Deep link atual: <strong>{deepLinkInfo || 'nenhum'}</strong>
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            void tauriClient.invoke('open_deep_link', {
+              url: `mylauncher://run?gameId=${games[0]?.id ?? 1}`,
+            })
+          }}
+        >
+          Testar deep link
+        </button>
       </section>
 
       <section className="card">

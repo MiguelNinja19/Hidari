@@ -16,4 +16,12 @@ export const tauriClient = {
       handler(event.payload),
     )
   },
+  listenDeepLink(
+    handler: (event: { url: string; gameId?: string; action?: string }) => void,
+  ): Promise<() => void> {
+    return listen<{ url: string; gameId?: string; action?: string }>(
+      'app://deep-link',
+      (event) => handler(event.payload),
+    )
+  },
 }
