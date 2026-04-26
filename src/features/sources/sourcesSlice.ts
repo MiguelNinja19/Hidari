@@ -25,7 +25,7 @@ export const addSource = createAsyncThunk(
 
 export const deleteSource = createAsyncThunk(
   'sources/delete',
-  async (sourceId: number) => {
+  async (sourceId: string) => {
     await sourcesApi.removeSource(sourceId)
     return sourceId
   },

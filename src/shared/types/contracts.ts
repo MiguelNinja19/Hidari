@@ -5,10 +5,12 @@ export type AppPaths = {
 }
 
 export type Source = {
-  id: number
+  id: string
   name: string
-  baseUrl: string
-  status: 'active' | 'failed' | 'pending' | string
+  url: string
+  status: 'pendingMatching' | 'matching' | 'matched' | 'failed' | string
+  downloadCount: number
+  fingerprint?: string
   createdAt: string
 }
 
@@ -21,8 +23,15 @@ export type DownloadProgressEvent = {
 }
 
 export type AddSourceInput = {
-  name: string
-  baseUrl: string
+  url: string
+}
+
+export type SourceTestResult = {
+  sourceId: string
+  ok: boolean
+  statusCode?: number
+  latencyMs: number
+  message: string
 }
 
 export type Game = {
@@ -63,7 +72,7 @@ export type DownloadJob = {
 export type EnqueueJobInput = {
   title: string
   url: string
-  destPath: string
+  destPath?: string
   priority?: number
 }
 
@@ -78,6 +87,19 @@ export type JobProgressEvent = {
 export type GameSourceChange = {
   gameId: number
   newDownloadOptionsCount: number
+}
+
+export type DownloadOption = {
+  sourceId: string
+  sourceName: string
+  title: string
+  downloadType: 'http' | 'torrent' | string
+  url: string
+  quality: string
+}
+
+export type SearchDownloadOptionsInput = {
+  query: string
 }
 
 export type Collection = {
