@@ -60,6 +60,7 @@ struct PathsPayload {
 // ── DTOs: Sources ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AddSourcePayload {
   name: String,
   base_url: String,
@@ -78,6 +79,13 @@ struct SourceDto {
   base_url: String,
   status: String,
   created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GameSourceChangeDto {
+  game_id: i64,
+  new_download_options_count: i64,
 }
 
 // ── DTOs: Games ───────────────────────────────────────────────────────────────
@@ -116,6 +124,7 @@ struct GameDto {
   title: String,
   install_path: String,
   is_favorite: bool,
+  new_download_options_count: i64,
   created_at: String,
 }
 
@@ -269,6 +278,59 @@ fn remove_source(app: AppHandle, payload: RemoveSourcePayload) -> Result<(), Str
   Ok(())
 }
 
+#[tauri::command]
+fn get_download_sources_changes(app: AppHandle) -> Result<Vec<GameSourceChangeDto>, String> {
+  let conn = open_database_connection(&app)?;
+
+  let sources_count: i64 = conn
+    .query_row("SELECT COUNT(1) FROM download_sources", [], |row| row.get(0))
+    .unwrap_or(0);
+
+  // Simula "descoberta de novas opções" por jogo/fonte de forma determinística no MVP.
+  let mut statement = conn
+    .prepare("SELECT id FROM games ORDER BY id ASC")
+    .map_err(|error| format!("could_not_prepare_game_ids_query: {error}"))?;
+
+  let game_ids = statement
+    .query_map([], |row| row.get::<_, i64>(0))
+    .map_err(|error| format!("could_not_query_game_ids: {error}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| format!("could_not_map_game_ids: {error}"))?;
+
+  for game_id in game_ids {
+    let count = if sources_count <= 0 {
+      0
+    } else {
+      (game_id % (sources_count + 1)).abs()
+    };
+
+    conn
+      .execute(
+        "INSERT INTO download_source_changes (game_id, new_count, updated_at) \
+         VALUES (?1, ?2, CURRENT_TIMESTAMP) \
+         ON CONFLICT(game_id) DO UPDATE SET new_count = excluded.new_count, updated_at = CURRENT_TIMESTAMP",
+        params![game_id, count],
+      )
+      .map_err(|error| format!("could_not_upsert_source_change: {error}"))?;
+  }
+
+  let mut result_statement = conn
+    .prepare("SELECT game_id, new_count FROM download_source_changes ORDER BY game_id ASC")
+    .map_err(|error| format!("could_not_prepare_source_changes_query: {error}"))?;
+
+  let result = result_statement
+    .query_map([], |row| {
+      Ok(GameSourceChangeDto {
+        game_id: row.get(0)?,
+        new_download_options_count: row.get(1)?,
+      })
+    })
+    .map_err(|error| format!("could_not_query_source_changes: {error}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| format!("could_not_map_source_changes: {error}"));
+  result
+}
+
 // ── Commands: Games ───────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -288,7 +350,11 @@ fn list_games(app: AppHandle) -> Result<Vec<GameDto>, String> {
   let conn = open_database_connection(&app)?;
   let mut stmt = conn
     .prepare(
-      "SELECT id, title, install_path, is_favorite, created_at FROM games ORDER BY id DESC",
+      "SELECT g.id, g.title, g.install_path, g.is_favorite, \
+       COALESCE(dsc.new_count, 0), g.created_at \
+       FROM games g \
+       LEFT JOIN download_source_changes dsc ON dsc.game_id = g.id \
+       ORDER BY g.id DESC",
     )
     .map_err(|e| format!("could_not_prepare_list_games: {e}"))?;
   let result = stmt
@@ -298,7 +364,8 @@ fn list_games(app: AppHandle) -> Result<Vec<GameDto>, String> {
         title: row.get(1)?,
         install_path: row.get(2)?,
         is_favorite: row.get::<_, i64>(3)? == 1,
-        created_at: row.get(4)?,
+        new_download_options_count: row.get(4)?,
+        created_at: row.get(5)?,
       })
     })
     .map_err(|e| format!("could_not_query_games: {e}"))?
@@ -899,6 +966,13 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
         FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
         FOREIGN KEY (game_id)       REFERENCES games(id)       ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS download_source_changes (
+        game_id    INTEGER PRIMARY KEY,
+        new_count  INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+      );
       ",
     )
     .map_err(|e| format!("could_not_initialize_database: {e}"))
@@ -925,7 +999,11 @@ fn fetch_source_by_id(conn: &Connection, id: i64) -> Result<SourceDto, String> {
 fn fetch_game_by_id(conn: &Connection, id: i64) -> Result<GameDto, String> {
   conn
     .query_row(
-      "SELECT id, title, install_path, is_favorite, created_at FROM games WHERE id = ?1",
+      "SELECT g.id, g.title, g.install_path, g.is_favorite, \
+       COALESCE(dsc.new_count, 0), g.created_at \
+       FROM games g \
+       LEFT JOIN download_source_changes dsc ON dsc.game_id = g.id \
+       WHERE g.id = ?1",
       params![id],
       |row| {
         Ok(GameDto {
@@ -933,7 +1011,8 @@ fn fetch_game_by_id(conn: &Connection, id: i64) -> Result<GameDto, String> {
           title: row.get(1)?,
           install_path: row.get(2)?,
           is_favorite: row.get::<_, i64>(3)? == 1,
-          created_at: row.get(4)?,
+          new_download_options_count: row.get(4)?,
+          created_at: row.get(5)?,
         })
       },
     )
@@ -1086,6 +1165,7 @@ fn list_collection_games(app: AppHandle, payload: CollectionIdPayload) -> Result
         title: row.get(1)?,
         install_path: row.get(2)?,
         is_favorite: row.get::<_, i64>(3)? == 1,
+        new_download_options_count: 0,
         created_at: row.get(4)?,
       })
     })
@@ -1181,6 +1261,7 @@ pub fn run() {
       add_source,
       list_sources,
       remove_source,
+      get_download_sources_changes,
       start_mock_download,
       add_game,
       list_games,

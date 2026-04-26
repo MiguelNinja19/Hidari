@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { gamesApi } from '../../shared/api/tauri/gamesApi'
+import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import type { AddGameInput, Game, UpdateGameInput } from '../../shared/types/contracts'
 
 type LibraryState = {
@@ -36,6 +37,10 @@ export const toggleGameFavorite = createAsyncThunk(
     gamesApi.toggleFavorite(payload.id, payload.favorite),
 )
 
+export const refreshSourceChanges = createAsyncThunk('library/refreshSourceChanges', async () =>
+  sourcesApi.getDownloadSourcesChanges(),
+)
+
 const librarySlice = createSlice({
   name: 'library',
   initialState,
@@ -69,6 +74,15 @@ const librarySlice = createSlice({
         state.items = state.items.map((game) =>
           game.id === action.payload.id ? action.payload : game,
         )
+      })
+      .addCase(refreshSourceChanges.fulfilled, (state, action) => {
+        const changes = new Map(
+          action.payload.map((entry) => [entry.gameId, entry.newDownloadOptionsCount]),
+        )
+        state.items = state.items.map((game) => ({
+          ...game,
+          newDownloadOptionsCount: changes.get(game.id) ?? game.newDownloadOptionsCount ?? 0,
+        }))
       })
   },
 })

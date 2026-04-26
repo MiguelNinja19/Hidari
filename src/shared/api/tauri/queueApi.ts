@@ -3,10 +3,12 @@ import type { DownloadJob, EnqueueJobInput } from '../../types/contracts'
 
 export const queueApi = {
   enqueueJob: (payload: EnqueueJobInput) =>
-    tauriClient.invoke<DownloadJob>('enqueue_job', { payload }),
-  listJobs: () => tauriClient.invoke<DownloadJob[]>('list_jobs'),
-  cancelJob: (id: number) => tauriClient.invoke<void>('cancel_job', { payload: { id } }),
-  pauseJob: (id: number) => tauriClient.invoke<void>('pause_job', { payload: { id } }),
-  resumeJob: (id: number) => tauriClient.invoke<void>('resume_job', { payload: { id } }),
-  clearCompletedJobs: () => tauriClient.invoke<void>('clear_completed_jobs'),
+    tauriClient.invoke<DownloadJob>('sidecar_enqueue_job', {
+      payload: { ...payload, destPath: payload.destPath },
+    }),
+  listJobs: () => tauriClient.invoke<DownloadJob[]>('sidecar_list_jobs'),
+  cancelJob: (id: string) => tauriClient.invoke<void>('sidecar_cancel_job', { id }),
+  pauseJob: (id: string) => tauriClient.invoke<void>('sidecar_pause_job', { id }),
+  resumeJob: (id: string) => tauriClient.invoke<void>('sidecar_resume_job', { id }),
+  sidecarStatus: () => tauriClient.invoke<{ running: boolean; port?: number }>('sidecar_status'),
 }

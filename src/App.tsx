@@ -7,6 +7,7 @@ import { progressReceived, startMockDownload } from './features/downloads/downlo
 import {
   addGame,
   fetchGames,
+  refreshSourceChanges,
   removeGame,
   toggleGameFavorite,
   updateGame,
@@ -16,7 +17,6 @@ import {
   clearCompletedJobs,
   enqueueJob,
   fetchJobs,
-  jobProgressReceived,
   pauseJob,
   resumeJob,
 } from './features/queue/queueSlice'
@@ -61,6 +61,7 @@ function App() {
     void dispatch(fetchGames())
     void dispatch(fetchJobs())
     void dispatch(fetchCollections())
+    void dispatch(refreshSourceChanges())
 
     void appApi.ping().then(setPing)
     void appApi.appVersion().then(setVersion)
@@ -69,7 +70,6 @@ function App() {
     })
 
     let unlistenProgress: (() => void) | undefined
-    let unlistenJobProgress: (() => void) | undefined
     let unlistenDeepLink: (() => void) | undefined
 
     void tauriClient
@@ -80,13 +80,10 @@ function App() {
         unlistenProgress = unsubscribe
       })
 
-    void tauriClient
-      .listenJobProgress((event) => {
-        dispatch(jobProgressReceived(event))
-      })
-      .then((unsubscribe) => {
-        unlistenJobProgress = unsubscribe
-      })
+    const polling = window.setInterval(() => {
+      void dispatch(fetchJobs())
+      void dispatch(refreshSourceChanges())
+    }, 2000)
 
     void tauriClient
       .listenDeepLink((event) => {
@@ -100,8 +97,8 @@ function App() {
 
     return () => {
       if (unlistenProgress) unlistenProgress()
-      if (unlistenJobProgress) unlistenJobProgress()
       if (unlistenDeepLink) unlistenDeepLink()
+      window.clearInterval(polling)
     }
   }, [dispatch])
 
@@ -325,6 +322,11 @@ function App() {
                 <strong>{game.title}</strong>
                 <span>{game.installPath}</span>
                 <span>{game.isFavorite ? 'Favorito' : 'Normal'}</span>
+                {game.newDownloadOptionsCount > 0 ? (
+                  <span className="badge badge-pending">
+                    +{game.newDownloadOptionsCount} novas opcoes
+                  </span>
+                ) : null}
               </div>
               <div className="actions">
                 <button

@@ -30,6 +30,7 @@ export type Game = {
   title: string
   installPath: string
   isFavorite: boolean
+  newDownloadOptionsCount: number
   createdAt: string
 }
 
@@ -45,7 +46,7 @@ export type UpdateGameInput = {
 }
 
 export type DownloadJob = {
-  id: number
+  id: string
   title: string
   url: string
   destPath: string
@@ -67,11 +68,16 @@ export type EnqueueJobInput = {
 }
 
 export type JobProgressEvent = {
-  jobId: number
+  jobId: string
   progress: number
   status: string
   speedBytesPerSec: number
   etaSeconds: number
+}
+
+export type GameSourceChange = {
+  gameId: number
+  newDownloadOptionsCount: number
 }
 
 export type Collection = {
