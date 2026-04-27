@@ -11,4 +11,6 @@ export const queueApi = {
   pauseJob: (id: string) => tauriClient.invoke<void>('sidecar_pause_job', { id }),
   resumeJob: (id: string) => tauriClient.invoke<void>('sidecar_resume_job', { id }),
   sidecarStatus: () => tauriClient.invoke<{ running: boolean; port?: number }>('sidecar_status'),
+  launchJob: (id: string) => tauriClient.invoke<void>('sidecar_launch_job', { id }),
+  openJobFolder: (id: string) => tauriClient.invoke<void>('sidecar_open_job_folder', { id }),
 }

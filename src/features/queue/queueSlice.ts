@@ -18,12 +18,15 @@ const normalizeJobProgress = (job: DownloadJob) => {
   const normalized = clampProgress(job.progress)
   const hasKnownTotal = Number.isFinite(job.totalBytes) && job.totalBytes > 0
   const hasDownloadedBytes = Number.isFinite(job.bytesDownloaded) && job.bytesDownloaded > 0
+  const reachedKnownTotal =
+    hasKnownTotal && Number.isFinite(job.bytesDownloaded) && job.bytesDownloaded >= job.totalBytes
   const hasTransferSignal =
     (Number.isFinite(job.speedBps) && (job.speedBps ?? 0) > 0) ||
     (Number.isFinite(job.etaSeconds) && (job.etaSeconds ?? 0) > 0)
 
   // Evita glitch visual de 100% em estados não finalizados.
-  if (job.status === 'completed') return 100
+  if (job.status === 'completed' || job.status === 'seeding') return 100
+  if (reachedKnownTotal) return 100
   if (job.status === 'cancelled' || job.status === 'failed') return normalized
   if (normalized >= 100) return 99
   if (normalized > 0) return normalized
@@ -35,13 +38,20 @@ const normalizeJobProgress = (job: DownloadJob) => {
 const normalizeJob = (job: DownloadJob): DownloadJob => ({
   ...job,
   progress: normalizeJobProgress(job),
+  updatedAt: job.updatedAt ?? job.createdAt,
 })
 
 const shouldPreserveProgress = (incoming: DownloadJob, previous?: DownloadJob) => {
   if (!previous) return false
   if (previous.progress <= 0) return false
   if (incoming.progress > 0) return false
-  return incoming.status === 'paused' || incoming.status === 'downloading' || incoming.status === 'pending'
+  return (
+    incoming.status === 'paused' ||
+    incoming.status === 'downloading' ||
+    incoming.status === 'pending' ||
+    incoming.status === 'retrying' ||
+    incoming.status === 'seeding'
+  )
 }
 
 const initialState: QueueState = {

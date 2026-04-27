@@ -13,6 +13,7 @@ import {
   removeJobLocally,
   resumeJob,
 } from './features/queue/queueSlice'
+import { queueApi } from './shared/api/tauri/queueApi'
 import { sourcesApi } from './shared/api/tauri/sourcesApi'
 import type { DownloadJob, DownloadOption, LocalLibraryItem } from './shared/types/contracts'
 import './App.css'
@@ -42,6 +43,7 @@ function App() {
   const [searchError, setSearchError] = useState<string>('')
   const [defaultDownloadPath, setDefaultDownloadPath] = useState<string>('')
   const [savePathError, setSavePathError] = useState<string>('')
+  const [seedTorrentsEnabled, setSeedTorrentsEnabled] = useState<boolean>(true)
   const [activeTab, setActiveTab] = useState<NavTab>('discover')
   const [libraryFilter, setLibraryFilter] = useState<string>('')
   const [localLibraryItems, setLocalLibraryItems] = useState<LocalLibraryItem[]>([])
@@ -59,6 +61,9 @@ function App() {
 
     void sourcesApi.getDefaultDownloadPath().then((path) => {
       if (path) setDefaultDownloadPath(path)
+    })
+    void sourcesApi.getSeedTorrentsEnabled().then((enabled) => {
+      setSeedTorrentsEnabled(enabled)
     })
     void sourcesApi
       .scanDefaultDownloadPath()
@@ -84,7 +89,11 @@ function App() {
     () =>
       jobs.filter(
         (job) =>
-          job.status === 'downloading' || job.status === 'pending' || job.status === 'paused',
+          job.status === 'downloading' ||
+          job.status === 'pending' ||
+          job.status === 'paused' ||
+          job.status === 'retrying' ||
+          job.status === 'seeding',
       ),
     [jobs],
   )
@@ -98,8 +107,15 @@ function App() {
   const libraryItems = useMemo(() => {
     const normalizedFilter = libraryFilter.trim().toLowerCase()
     const sorted = [...jobs]
-      .filter((job) => job.status === 'completed')
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .filter(
+        (job) =>
+          job.status === 'completed' || job.status === 'seeding' || Math.round(job.progress) >= 100,
+      )
+      .sort((a, b) => {
+        const updatedA = a.updatedAt ?? a.createdAt ?? ''
+        const updatedB = b.updatedAt ?? b.createdAt ?? ''
+        return updatedB.localeCompare(updatedA)
+      })
     if (!normalizedFilter) return sorted
     return sorted.filter(
       (item) =>
@@ -203,6 +219,18 @@ function App() {
     }
   }
 
+  const handleToggleSeed = async (enabled: boolean) => {
+    setSeedTorrentsEnabled(enabled)
+    try {
+      await sourcesApi.setSeedTorrentsEnabled(enabled)
+    } catch (error) {
+      setSeedTorrentsEnabled((prev) => !prev)
+      setSavePathError(
+        error instanceof Error ? error.message : 'Falha ao salvar preferência de semeadura.',
+      )
+    }
+  }
+
   const handleDeleteLocalItem = async (path: string) => {
     const confirmed = window.confirm('Tem certeza que deseja apagar este arquivo/pasta do disco?')
     if (!confirmed) return
@@ -238,6 +266,8 @@ function App() {
     switch (status) {
       case 'downloading':
         return 'Baixando'
+      case 'seeding':
+        return 'Semeando'
       case 'pending':
         return 'Na fila'
       case 'paused':
@@ -268,6 +298,8 @@ function App() {
     if (!detail) return ''
     if (detail.includes('Conectando peers'))
       return 'Conectando à rede torrent e procurando seeds/peers...'
+    if (detail.includes('Semeando torrent'))
+      return 'Download concluído. Semeando para outros usuários.'
     if (detail.includes('no_peers_found'))
       return 'Sem peers disponíveis para este magnet agora. Tente outra fonte.'
     if (detail.includes('default_download_path_not_configured'))
@@ -453,13 +485,30 @@ function App() {
                       Pausar
                     </button>
                   )}
-                  {job.status === 'paused' && (
+                  {(job.status === 'paused' || job.status === 'failed') && (
                     <button
                       className="btn btn-primary"
                       type="button"
                       onClick={() => void dispatch(resumeJob(job.id))}
                     >
-                      Retomar
+                      Continuar
+                    </button>
+                  )}
+                  {job.status === 'cancelled' && (
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={() =>
+                        void dispatch(
+                          enqueueJob({
+                            title: job.title,
+                            url: job.url,
+                            destPath: job.destPath,
+                          }),
+                        )
+                      }
+                    >
+                      Reiniciar
                     </button>
                   )}
                   {job.status !== 'completed' && job.status !== 'cancelled' && (
@@ -581,7 +630,9 @@ function App() {
               <strong>{item.title}</strong>
               <span>{formatSize(item.totalBytes > 0 ? item.totalBytes : item.bytesDownloaded)}</span>
               <span>{Math.round(item.progress)}% • {formatStatusLabel(item.status)}</span>
-              <span className="library-card__meta">Atualizado em {new Date(item.updatedAt).toLocaleString()}</span>
+              <span className="library-card__meta">
+                Atualizado em {new Date(item.updatedAt ?? item.createdAt).toLocaleString()}
+              </span>
               {(item.status === 'paused' || item.status === 'failed') && (
                 <button
                   className="btn btn-primary btn-small"
@@ -591,7 +642,29 @@ function App() {
                   Continuar download
                 </button>
               )}
-              {(item.status === 'downloading' || item.status === 'pending') && (
+              {(item.status === 'completed' || item.status === 'seeding') && (
+                <div className="actions">
+                  <button
+                    className="btn btn-primary btn-small"
+                    type="button"
+                    onClick={() => {
+                      void queueApi.launchJob(item.id)
+                    }}
+                  >
+                    Executar
+                  </button>
+                  <button
+                    className="btn btn-outline btn-small"
+                    type="button"
+                    onClick={() => {
+                      void queueApi.openJobFolder(item.id)
+                    }}
+                  >
+                    Abrir pasta
+                  </button>
+                </div>
+              )}
+              {(item.status === 'downloading' || item.status === 'pending' || item.status === 'retrying') && (
                 <button
                   className="btn btn-outline btn-small"
                   type="button"
@@ -659,6 +732,15 @@ function App() {
         </div>
         {savePathError ? <p className="error">{savePathError}</p> : null}
         <p className="small-note">Ao clicar em Baixar, o app usa esta pasta automaticamente.</p>
+        <div className="seed-setting">
+          <label htmlFor="seed-toggle">Semear torrent após concluir</label>
+          <input
+            id="seed-toggle"
+            type="checkbox"
+            checked={seedTorrentsEnabled}
+            onChange={(event) => void handleToggleSeed(event.target.checked)}
+          />
+        </div>
       </article>
 
       <article className="glass-card">

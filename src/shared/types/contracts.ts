@@ -59,13 +59,23 @@ export type DownloadJob = {
   title: string
   url: string
   destPath: string
-  status: 'pending' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled' | string
+  status:
+    | 'pending'
+    | 'downloading'
+    | 'seeding'
+    | 'retrying'
+    | 'paused'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | string
   priority: number
   progress: number
   bytesDownloaded: number
   totalBytes: number
   speedBps?: number
   etaSeconds?: number
+  seedEnabled?: boolean
   errorMsg: string | null
   createdAt: string
   updatedAt: string

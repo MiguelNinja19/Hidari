@@ -502,6 +502,11 @@ input:focus {
   color: #f0f3f7;
 }
 
+.badge-seeding {
+  background: #2f4f3e;
+  color: #cff2dc;
+}
+
 .badge-pending {
   background: #59503a;
   color: #f3e9c5;
@@ -539,6 +544,21 @@ input:focus {
   color: #b9d6ee;
   border-top: 1px solid rgba(102, 192, 244, 0.25);
   padding-top: 8px;
+}
+
+.seed-setting {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: #a9bfd2;
+  font-size: 13px;
+}
+
+.seed-setting input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
 }
 
 .btn-small {

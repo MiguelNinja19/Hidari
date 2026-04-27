@@ -4,11 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_notification::NotificationExt;
 use tokio::time::{sleep, Duration};
 use url::Url;
@@ -187,6 +189,12 @@ struct SearchDownloadOptionsPayload {
 #[serde(rename_all = "camelCase")]
 struct SetDefaultDownloadPathPayload {
   path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetSeedTorrentsEnabledPayload {
+  enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -605,6 +613,37 @@ fn get_default_download_path(app: AppHandle) -> Result<Option<String>, String> {
     )
     .ok();
   Ok(value)
+}
+
+#[tauri::command]
+fn set_seed_torrents_enabled(
+  app: AppHandle,
+  payload: SetSeedTorrentsEnabledPayload,
+) -> Result<(), String> {
+  let conn = open_database_connection(&app)?;
+  let value = if payload.enabled { "1" } else { "0" };
+  conn
+    .execute(
+      "INSERT INTO app_settings (key, value) VALUES ('seed_torrents_enabled', ?1) \
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      params![value],
+    )
+    .map_err(|error| format!("could_not_set_seed_torrents_enabled: {error}"))?;
+  Ok(())
+}
+
+#[tauri::command]
+fn get_seed_torrents_enabled(app: AppHandle) -> Result<bool, String> {
+  let conn = open_database_connection(&app)?;
+  let value = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = 'seed_torrents_enabled'",
+      [],
+      |row| row.get::<_, String>(0),
+    )
+    .ok();
+
+  Ok(!matches!(value.as_deref(), Some("0") | Some("false") | Some("FALSE")))
 }
 
 #[tauri::command]
@@ -1153,6 +1192,16 @@ struct SidecarEnqueuePayload {
   priority: Option<i32>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SidecarJobForLaunch {
+  id: String,
+  title: String,
+  dest_path: String,
+  status: String,
+  progress: f64,
+}
+
 #[tauri::command]
 async fn sidecar_enqueue_job(
   app: AppHandle,
@@ -1168,6 +1217,15 @@ async fn sidecar_enqueue_job(
       |row| row.get::<_, String>(0),
     )
     .ok();
+  let seed_enabled = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = 'seed_torrents_enabled'",
+      [],
+      |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .map(|value| !matches!(value.as_str(), "0" | "false" | "FALSE"))
+    .unwrap_or(true);
   let dest_path = payload
     .dest_path
     .clone()
@@ -1182,7 +1240,8 @@ async fn sidecar_enqueue_job(
       "title": payload.title,
       "url": payload.url,
       "destPath": dest_path,
-      "priority": payload.priority
+      "priority": payload.priority,
+      "seedEnabled": seed_enabled
     }))
     .send()
     .await
@@ -1243,6 +1302,216 @@ async fn sidecar_cancel_job(app: AppHandle, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn sidecar_open_job_folder(app: AppHandle, id: String) -> Result<(), String> {
+  let job = fetch_sidecar_job(&app, &id).await?;
+  let target_path = resolve_job_folder(&job.dest_path);
+  if !target_path.exists() {
+    return Err("job_folder_not_found".to_string());
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    StdCommand::new("explorer")
+      .arg(target_path.as_os_str())
+      .spawn()
+      .map_err(|error| format!("could_not_open_folder: {error}"))?;
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    StdCommand::new("xdg-open")
+      .arg(target_path.as_os_str())
+      .spawn()
+      .map_err(|error| format!("could_not_open_folder: {error}"))?;
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    StdCommand::new("open")
+      .arg(target_path.as_os_str())
+      .spawn()
+      .map_err(|error| format!("could_not_open_folder: {error}"))?;
+  }
+
+  Ok(())
+}
+
+#[tauri::command]
+async fn sidecar_launch_job(app: AppHandle, id: String) -> Result<(), String> {
+  let job = fetch_sidecar_job(&app, &id).await?;
+  if job.status != "completed" && job.status != "seeding" {
+    return Err("job_not_ready_to_launch".to_string());
+  }
+
+  let launch_target = resolve_launch_target(&job.title, &job.dest_path)?;
+  StdCommand::new(&launch_target)
+    .current_dir(
+      launch_target
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(".")),
+    )
+    .spawn()
+    .map_err(|error| format!("could_not_launch_game: {error}"))?;
+
+  Ok(())
+}
+
+async fn fetch_sidecar_job(app: &AppHandle, id: &str) -> Result<SidecarJobForLaunch, String> {
+  let port = ensure_sidecar_running(app.clone()).await?;
+  let client = reqwest::Client::new();
+  client
+    .get(format!("http://127.0.0.1:{port}/jobs/{id}"))
+    .send()
+    .await
+    .map_err(|e| format!("sidecar_request_failed: {e}"))?
+    .error_for_status()
+    .map_err(|e| format!("sidecar_request_failed: {e}"))?
+    .json::<SidecarJobForLaunch>()
+    .await
+    .map_err(|e| format!("sidecar_parse_failed: {e}"))
+}
+
+fn resolve_job_folder(dest_path: &str) -> PathBuf {
+  let path = PathBuf::from(dest_path);
+  if path.is_dir() {
+    path
+  } else {
+    path.parent().map(Path::to_path_buf).unwrap_or(path)
+  }
+}
+
+fn resolve_launch_target(title: &str, dest_path: &str) -> Result<PathBuf, String> {
+  let root = resolve_job_folder(dest_path);
+  if !root.exists() {
+    return Err("launch_target_root_not_found".to_string());
+  }
+
+  let mut candidates: Vec<(i64, PathBuf)> = Vec::new();
+  collect_executable_candidates(&root, 0, &mut candidates);
+
+  if candidates.is_empty() {
+    return Err("no_executable_found_in_job_folder".to_string());
+  }
+
+  let title_tokens = tokenize_title(title);
+  candidates.sort_by(|(score_a, _), (score_b, _)| score_b.cmp(score_a));
+
+  for (base_score, path) in candidates {
+    let file_name = path
+      .file_name()
+      .and_then(|value| value.to_str())
+      .unwrap_or_default()
+      .to_lowercase();
+    let mut score = base_score;
+    for token in &title_tokens {
+      if file_name.contains(token) {
+        score += 400;
+      }
+    }
+    if file_name.contains("setup")
+      || file_name.contains("unins")
+      || file_name.contains("crash")
+      || file_name.contains("redist")
+    {
+      score -= 500;
+    }
+    if score > -200 {
+      return Ok(path);
+    }
+  }
+
+  Err("no_viable_executable_found".to_string())
+}
+
+fn collect_executable_candidates(root: &Path, depth: usize, out: &mut Vec<(i64, PathBuf)>) {
+  if depth > 5 {
+    return;
+  }
+
+  let entries = match fs::read_dir(root) {
+    Ok(values) => values,
+    Err(_) => return,
+  };
+
+  for entry in entries.flatten() {
+    let path = entry.path();
+    let metadata = match entry.metadata() {
+      Ok(value) => value,
+      Err(_) => continue,
+    };
+
+    if metadata.is_dir() {
+      collect_executable_candidates(&path, depth + 1, out);
+      continue;
+    }
+
+    let is_executable = if cfg!(target_os = "windows") {
+      path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("exe"))
+        .unwrap_or(false)
+    } else {
+      metadata.permissions().readonly() == false
+    };
+
+    if !is_executable {
+      continue;
+    }
+
+    let size_score = (metadata.len() / (1024 * 1024)) as i64;
+    out.push((size_score, path));
+  }
+}
+
+fn tokenize_title(title: &str) -> Vec<String> {
+  title
+    .split(|ch: char| !ch.is_alphanumeric())
+    .filter(|token| token.len() >= 3)
+    .map(|token| token.to_lowercase())
+    .collect()
+}
+
+async fn pause_all_active_sidecar_jobs(app: AppHandle) -> Result<(), String> {
+  let port = ensure_sidecar_running(app.clone()).await?;
+  let client = reqwest::Client::new();
+  let jobs = client
+    .get(format!("http://127.0.0.1:{port}/jobs"))
+    .send()
+    .await
+    .map_err(|e| format!("sidecar_request_failed: {e}"))?
+    .json::<serde_json::Value>()
+    .await
+    .map_err(|e| format!("sidecar_parse_failed: {e}"))?;
+
+  let Some(job_list) = jobs.as_array() else {
+    return Ok(());
+  };
+
+  for job in job_list {
+    let Some(status) = job.get("status").and_then(|value| value.as_str()) else {
+      continue;
+    };
+
+    if status != "downloading" && status != "pending" && status != "seeding" {
+      continue;
+    }
+
+    let Some(id) = job.get("id").and_then(|value| value.as_str()) else {
+      continue;
+    };
+
+    let _ = client
+      .post(format!("http://127.0.0.1:{port}/jobs/{id}/pause"))
+      .send()
+      .await;
+  }
+
+  Ok(())
+}
+
+#[tauri::command]
 fn sidecar_status(app: AppHandle) -> serde_json::Value {
   let sidecar: tauri::State<'_, SidecarState> = app.state();
   match sidecar.get_port() {
@@ -1298,6 +1567,8 @@ fn spawn_download_engine(app: AppHandle) {
     };
     let mut engine_candidates: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target9").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target9").join("release").join(exe_name));
       engine_candidates.push(cwd.join("..").join("download-engine").join("target8").join("debug").join(exe_name));
       engine_candidates.push(cwd.join("..").join("download-engine").join("target8").join("release").join(exe_name));
       engine_candidates.push(cwd.join("..").join("download-engine").join("target7").join("debug").join(exe_name));
@@ -1314,6 +1585,8 @@ fn spawn_download_engine(app: AppHandle) {
       engine_candidates.push(cwd.join("..").join("download-engine").join("target2").join("release").join(exe_name));
       engine_candidates.push(cwd.join("..").join("download-engine").join("target").join("debug").join(exe_name));
       engine_candidates.push(cwd.join("..").join("download-engine").join("target").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target9").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target9").join("release").join(exe_name));
       engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target8").join("debug").join(exe_name));
       engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target8").join("release").join(exe_name));
       engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target7").join("debug").join(exe_name));
@@ -2380,6 +2653,16 @@ pub fn run() {
         .build(app)?;
       Ok(())
     })
+    .on_window_event(|window, event| {
+      if let WindowEvent::CloseRequested { .. } = event {
+        let app_handle = window.app_handle().clone();
+        tauri::async_runtime::spawn(async move {
+          if let Err(error) = pause_all_active_sidecar_jobs(app_handle).await {
+            log::warn!("could_not_pause_jobs_on_close: {error}");
+          }
+        });
+      }
+    })
     .invoke_handler(tauri::generate_handler![
       ping,
       app_version,
@@ -2392,6 +2675,8 @@ pub fn run() {
       search_download_options,
       set_default_download_path,
       get_default_download_path,
+      set_seed_torrents_enabled,
+      get_seed_torrents_enabled,
       scan_default_download_path,
       delete_local_library_item,
       remove_source,
@@ -2423,6 +2708,8 @@ pub fn run() {
       sidecar_pause_job,
       sidecar_resume_job,
       sidecar_cancel_job,
+      sidecar_open_job_folder,
+      sidecar_launch_job,
       sidecar_status,
       open_deep_link
     ])

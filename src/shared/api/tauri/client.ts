@@ -10,7 +10,10 @@ const isTauriRuntime = () =>
 const tauriUnavailableError = () =>
   new Error('Tauri indisponivel: execute com "npm run tauri:dev".')
 
-const safeInvoke = async <T>(command: string, payload?: unknown): Promise<T> => {
+const safeInvoke = async <T>(
+  command: string,
+  payload?: Record<string, unknown>,
+): Promise<T> => {
   if (!isTauriRuntime()) {
     throw tauriUnavailableError()
   }

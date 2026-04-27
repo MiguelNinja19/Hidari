@@ -30,6 +30,10 @@ export const sourcesApi = {
     tauriClient.invoke<void>('set_default_download_path', { payload: { path } }),
   getDefaultDownloadPath: () =>
     tauriClient.invoke<string | null>('get_default_download_path'),
+  setSeedTorrentsEnabled: (enabled: boolean) =>
+    tauriClient.invoke<void>('set_seed_torrents_enabled', { payload: { enabled } }),
+  getSeedTorrentsEnabled: () =>
+    tauriClient.invoke<boolean>('get_seed_torrents_enabled'),
   scanDefaultDownloadPath: () =>
     tauriClient.invoke<LocalLibraryItem[]>('scan_default_download_path'),
   deleteLocalLibraryItem: (path: string) =>
