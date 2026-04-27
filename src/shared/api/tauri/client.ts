@@ -2,24 +2,49 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import type { DownloadProgressEvent, JobProgressEvent } from '../../types/contracts'
 
+const isTauriRuntime = () =>
+  typeof window !== 'undefined' &&
+  typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
+    'undefined'
+
+const tauriUnavailableError = () =>
+  new Error('Tauri indisponivel: execute com "npm run tauri:dev".')
+
+const safeInvoke = async <T>(command: string, payload?: unknown): Promise<T> => {
+  if (!isTauriRuntime()) {
+    throw tauriUnavailableError()
+  }
+  return invoke<T>(command, payload)
+}
+
+const safeListen = async <T>(
+  eventName: string,
+  handler: (event: { payload: T }) => void,
+): Promise<() => void> => {
+  if (!isTauriRuntime()) {
+    return () => {}
+  }
+  return listen<T>(eventName, handler)
+}
+
 export const tauriClient = {
-  invoke,
+  invoke: safeInvoke,
   listenDownloadProgress(
     handler: (event: DownloadProgressEvent) => void,
   ): Promise<() => void> {
-    return listen<DownloadProgressEvent>('download://progress', (event) =>
+    return safeListen<DownloadProgressEvent>('download://progress', (event) =>
       handler(event.payload),
     )
   },
   listenJobProgress(handler: (event: JobProgressEvent) => void): Promise<() => void> {
-    return listen<JobProgressEvent>('queue://job-progress', (event) =>
+    return safeListen<JobProgressEvent>('queue://job-progress', (event) =>
       handler(event.payload),
     )
   },
   listenDeepLink(
     handler: (event: { url: string; gameId?: string; action?: string }) => void,
   ): Promise<() => void> {
-    return listen<{ url: string; gameId?: string; action?: string }>(
+    return safeListen<{ url: string; gameId?: string; action?: string }>(
       'app://deep-link',
       (event) => handler(event.payload),
     )

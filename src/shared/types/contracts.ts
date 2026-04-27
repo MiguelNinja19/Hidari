@@ -64,6 +64,8 @@ export type DownloadJob = {
   progress: number
   bytesDownloaded: number
   totalBytes: number
+  speedBps?: number
+  etaSeconds?: number
   errorMsg: string | null
   createdAt: string
   updatedAt: string
@@ -100,6 +102,14 @@ export type DownloadOption = {
 
 export type SearchDownloadOptionsInput = {
   query: string
+}
+
+export type LocalLibraryItem = {
+  name: string
+  path: string
+  isDir: boolean
+  sizeBytes: number
+  modifiedAt: number
 }
 
 export type Collection = {

@@ -3,6 +3,7 @@ import type {
   AddSourceInput,
   DownloadOption,
   GameSourceChange,
+  LocalLibraryItem,
   SearchDownloadOptionsInput,
   Source,
   SourceTestResult,
@@ -29,4 +30,8 @@ export const sourcesApi = {
     tauriClient.invoke<void>('set_default_download_path', { payload: { path } }),
   getDefaultDownloadPath: () =>
     tauriClient.invoke<string | null>('get_default_download_path'),
+  scanDefaultDownloadPath: () =>
+    tauriClient.invoke<LocalLibraryItem[]>('scan_default_download_path'),
+  deleteLocalLibraryItem: (path: string) =>
+    tauriClient.invoke<void>('delete_local_library_item', { payload: { path } }),
 }

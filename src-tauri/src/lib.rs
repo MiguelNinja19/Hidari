@@ -2,6 +2,7 @@ use regex::Regex;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
+use std::fs;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,6 +22,7 @@ const APP_EVENT_DEEP_LINK: &str = "app://deep-link";
 #[derive(Default)]
 struct SidecarState {
   port: Mutex<Option<u16>>,
+  booting: Mutex<bool>,
 }
 
 impl SidecarState {
@@ -30,6 +32,18 @@ impl SidecarState {
 
   fn set_port(&self, port: u16) {
     *self.port.lock().unwrap() = Some(port);
+  }
+
+  fn clear_port(&self) {
+    *self.port.lock().unwrap() = None;
+  }
+
+  fn is_booting(&self) -> bool {
+    *self.booting.lock().unwrap()
+  }
+
+  fn set_booting(&self, booting: bool) {
+    *self.booting.lock().unwrap() = booting;
   }
 }
 
@@ -59,6 +73,22 @@ struct PathsPayload {
   app_data_dir: String,
   app_config_dir: String,
   app_cache_dir: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalLibraryItemDto {
+  name: String,
+  path: String,
+  is_dir: bool,
+  size_bytes: u64,
+  modified_at: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteLocalLibraryItemPayload {
+  path: String,
 }
 
 // ── DTOs: Sources ─────────────────────────────────────────────────────────────
@@ -578,6 +608,82 @@ fn get_default_download_path(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+fn scan_default_download_path(app: AppHandle) -> Result<Vec<LocalLibraryItemDto>, String> {
+  let default_path = get_default_download_path(app.clone())?;
+  let path = match default_path {
+    Some(path) if !path.trim().is_empty() => path,
+    _ => return Ok(Vec::new()),
+  };
+
+  let entries = fs::read_dir(&path).map_err(|error| format!("could_not_read_default_path: {error}"))?;
+  let mut items: Vec<LocalLibraryItemDto> = Vec::new();
+
+  for entry in entries {
+    let entry = match entry {
+      Ok(value) => value,
+      Err(_) => continue,
+    };
+    let metadata = match entry.metadata() {
+      Ok(value) => value,
+      Err(_) => continue,
+    };
+
+    let modified_at = metadata
+      .modified()
+      .ok()
+      .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+      .map(|duration| duration.as_secs())
+      .unwrap_or(0);
+
+    items.push(LocalLibraryItemDto {
+      name: entry.file_name().to_string_lossy().to_string(),
+      path: entry.path().to_string_lossy().to_string(),
+      is_dir: metadata.is_dir(),
+      size_bytes: if metadata.is_file() { metadata.len() } else { 0 },
+      modified_at,
+    });
+  }
+
+  items.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+  Ok(items)
+}
+
+#[tauri::command]
+fn delete_local_library_item(
+  app: AppHandle,
+  payload: DeleteLocalLibraryItemPayload,
+) -> Result<(), String> {
+  let default_path = get_default_download_path(app.clone())?
+    .ok_or_else(|| "default_download_path_not_configured".to_string())?;
+
+  let base_dir = std::path::PathBuf::from(default_path);
+  let target = std::path::PathBuf::from(payload.path);
+
+  if !target.exists() {
+    return Err("local_item_not_found".to_string());
+  }
+
+  let canonical_base = std::fs::canonicalize(&base_dir)
+    .map_err(|error| format!("could_not_resolve_base_path: {error}"))?;
+  let canonical_target = std::fs::canonicalize(&target)
+    .map_err(|error| format!("could_not_resolve_target_path: {error}"))?;
+
+  if !canonical_target.starts_with(&canonical_base) {
+    return Err("path_outside_default_download_path".to_string());
+  }
+
+  if canonical_target.is_dir() {
+    std::fs::remove_dir_all(&canonical_target)
+      .map_err(|error| format!("could_not_delete_directory: {error}"))?;
+  } else {
+    std::fs::remove_file(&canonical_target)
+      .map_err(|error| format!("could_not_delete_file: {error}"))?;
+  }
+
+  Ok(())
+}
+
+#[tauri::command]
 async fn add_download_source(
   app: AppHandle,
   payload: AddDownloadSourcePayload,
@@ -1052,7 +1158,8 @@ async fn sidecar_enqueue_job(
   app: AppHandle,
   payload: SidecarEnqueuePayload,
 ) -> Result<serde_json::Value, String> {
-  let port = get_sidecar_port(&app)?;
+  validate_job_url(&payload.url)?;
+  let port = ensure_sidecar_running(app.clone()).await?;
   let conn = open_database_connection(&app)?;
   let default_dest_path = conn
     .query_row(
@@ -1087,7 +1194,7 @@ async fn sidecar_enqueue_job(
 
 #[tauri::command]
 async fn sidecar_list_jobs(app: AppHandle) -> Result<serde_json::Value, String> {
-  let port = get_sidecar_port(&app)?;
+  let port = ensure_sidecar_running(app.clone()).await?;
   let client = reqwest::Client::new();
   client
     .get(format!("http://127.0.0.1:{port}/jobs"))
@@ -1101,7 +1208,7 @@ async fn sidecar_list_jobs(app: AppHandle) -> Result<serde_json::Value, String> 
 
 #[tauri::command]
 async fn sidecar_pause_job(app: AppHandle, id: String) -> Result<(), String> {
-  let port = get_sidecar_port(&app)?;
+  let port = ensure_sidecar_running(app.clone()).await?;
   let client = reqwest::Client::new();
   client
     .post(format!("http://127.0.0.1:{port}/jobs/{id}/pause"))
@@ -1113,7 +1220,7 @@ async fn sidecar_pause_job(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn sidecar_resume_job(app: AppHandle, id: String) -> Result<(), String> {
-  let port = get_sidecar_port(&app)?;
+  let port = ensure_sidecar_running(app.clone()).await?;
   let client = reqwest::Client::new();
   client
     .post(format!("http://127.0.0.1:{port}/jobs/{id}/resume"))
@@ -1125,7 +1232,7 @@ async fn sidecar_resume_job(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn sidecar_cancel_job(app: AppHandle, id: String) -> Result<(), String> {
-  let port = get_sidecar_port(&app)?;
+  let port = ensure_sidecar_running(app.clone()).await?;
   let client = reqwest::Client::new();
   client
     .delete(format!("http://127.0.0.1:{port}/jobs/{id}"))
@@ -1139,8 +1246,8 @@ async fn sidecar_cancel_job(app: AppHandle, id: String) -> Result<(), String> {
 fn sidecar_status(app: AppHandle) -> serde_json::Value {
   let sidecar: tauri::State<'_, SidecarState> = app.state();
   match sidecar.get_port() {
-    Some(port) => serde_json::json!({ "running": true, "port": port }),
-    None => serde_json::json!({ "running": false }),
+    Some(port) => serde_json::json!({ "running": true, "port": port, "booting": sidecar.is_booting() }),
+    None => serde_json::json!({ "running": false, "booting": sidecar.is_booting() }),
   }
 }
 
@@ -1180,6 +1287,10 @@ fn get_sidecar_port(app: &AppHandle) -> Result<u16, String> {
 /// The binary must be built and placed at the expected path.
 fn spawn_download_engine(app: AppHandle) {
   tauri::async_runtime::spawn(async move {
+    let sidecar: tauri::State<'_, SidecarState> = app.state();
+    sidecar.set_booting(true);
+    sidecar.clear_port();
+
     let exe_name = if cfg!(target_os = "windows") {
       "download-engine.exe"
     } else {
@@ -1187,8 +1298,38 @@ fn spawn_download_engine(app: AppHandle) {
     };
     let mut engine_candidates: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target8").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target8").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target7").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target7").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target6").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target6").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target5").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target5").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target4").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target4").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target3").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target3").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target2").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("download-engine").join("target2").join("release").join(exe_name));
       engine_candidates.push(cwd.join("..").join("download-engine").join("target").join("debug").join(exe_name));
       engine_candidates.push(cwd.join("..").join("download-engine").join("target").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target8").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target8").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target7").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target7").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target6").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target6").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target5").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target5").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target4").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target4").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target3").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target3").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target2").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target2").join("release").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target").join("debug").join(exe_name));
+      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target").join("release").join(exe_name));
       engine_candidates.push(cwd.join(exe_name));
     }
     if let Ok(resource_dir) = app.path().resource_dir() {
@@ -1211,9 +1352,23 @@ fn spawn_download_engine(app: AppHandle) {
 
     let aria2_path = {
       let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+      let bundled_aria2 = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("binaries")
+        .join("aria2c.exe");
+      candidates.push(bundled_aria2.clone());
       if let Some(parent) = engine_path.parent() {
+        let sidecar_local_aria2 = parent.join("aria2c.exe");
+        if !sidecar_local_aria2.exists() && bundled_aria2.exists() {
+          let _ = std::fs::copy(&bundled_aria2, &sidecar_local_aria2);
+        }
+        candidates.push(sidecar_local_aria2);
         candidates.push(parent.join("aria2c.exe"));
         candidates.push(parent.join("tools").join("aria2c.exe"));
+      }
+      if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("binaries").join("aria2c.exe"));
+        candidates.push(cwd.join("src-tauri").join("binaries").join("aria2c.exe"));
+        candidates.push(cwd.join("..").join("src-tauri").join("binaries").join("aria2c.exe"));
       }
       if let Ok(resource_dir) = app.path().resource_dir() {
         candidates.push(resource_dir.join("aria2c.exe"));
@@ -1236,6 +1391,8 @@ fn spawn_download_engine(app: AppHandle) {
       Ok(c) => c,
       Err(e) => {
         log::warn!("download-engine not found/could not start at {engine_path:?}: {e}");
+        let sidecar: tauri::State<'_, SidecarState> = app.state();
+        sidecar.set_booting(false);
         return;
       }
     };
@@ -1248,6 +1405,7 @@ fn spawn_download_engine(app: AppHandle) {
           if let Ok(port) = port_str.trim().parse::<u16>() {
             let sidecar: tauri::State<'_, SidecarState> = app.state();
             sidecar.set_port(port);
+            sidecar.set_booting(false);
             log::info!("download-engine ready on port {port}");
             break;
           }
@@ -1256,8 +1414,32 @@ fn spawn_download_engine(app: AppHandle) {
     }
 
     let _ = child.wait().await;
+    let sidecar: tauri::State<'_, SidecarState> = app.state();
+    sidecar.clear_port();
+    sidecar.set_booting(false);
     log::warn!("download-engine exited");
   });
+}
+
+async fn ensure_sidecar_running(app: AppHandle) -> Result<u16, String> {
+  if let Ok(port) = get_sidecar_port(&app) {
+    return Ok(port);
+  }
+
+  let sidecar: tauri::State<'_, SidecarState> = app.state();
+  if !sidecar.is_booting() {
+    drop(sidecar);
+    spawn_download_engine(app.clone());
+  }
+
+  for _ in 0..20 {
+    if let Ok(port) = get_sidecar_port(&app) {
+      return Ok(port);
+    }
+    sleep(Duration::from_millis(200)).await;
+  }
+
+  Err("sidecar_not_running".to_string())
 }
 
 // ── DB Helpers ────────────────────────────────────────────────────────────────
@@ -1275,6 +1457,14 @@ fn validate_job_url(value: &str) -> Result<(), String> {
   let parsed = Url::parse(value).map_err(|_| "invalid_job_url".to_string())?;
   if !matches!(parsed.scheme(), "http" | "https" | "magnet") {
     return Err("job_url_must_be_http_https_or_magnet".to_string());
+  }
+  if parsed.scheme() == "magnet" {
+    let has_btih = parsed
+      .query_pairs()
+      .any(|(key, val)| key == "xt" && val.to_ascii_lowercase().starts_with("urn:btih:"));
+    if !has_btih {
+      return Err("invalid_magnet_missing_btih".to_string());
+    }
   }
   Ok(())
 }
@@ -2202,6 +2392,8 @@ pub fn run() {
       search_download_options,
       set_default_download_path,
       get_default_download_path,
+      scan_default_download_path,
+      delete_local_library_item,
       remove_source,
       test_download_source,
       get_download_sources_changes,
