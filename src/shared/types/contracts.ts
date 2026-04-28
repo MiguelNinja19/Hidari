@@ -114,6 +114,18 @@ export type SearchDownloadOptionsInput = {
   query: string
 }
 
+export type CatalogGame = {
+  id: string
+  title: string
+  genre: string
+  coverUrl?: string | null
+  source: string
+}
+
+export type SearchCatalogInput = {
+  query: string
+}
+
 export type LocalLibraryItem = {
   name: string
   path: string

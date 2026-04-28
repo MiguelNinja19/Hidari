@@ -1,0 +1,62 @@
+[
+  {
+    "title": "Elden Ring",
+    "genre": "Ação, Aventura",
+    "steam_app_id": 1245620
+  },
+  {
+    "title": "God of War",
+    "genre": "Ação, Aventura",
+    "steam_app_id": 1593500
+  },
+  {
+    "title": "Horizon Zero Dawn",
+    "genre": "Ação, RPG",
+    "steam_app_id": 1151640
+  },
+  {
+    "title": "The Witcher 3",
+    "genre": "RPG, Aventura",
+    "steam_app_id": 292030
+  },
+  {
+    "title": "Red Dead Redemption 2",
+    "genre": "Ação, Aventura",
+    "steam_app_id": 1174180
+  },
+  {
+    "title": "Hades",
+    "genre": "Roguelike, Ação",
+    "steam_app_id": 1145360
+  },
+  {
+    "title": "Hollow Knight",
+    "genre": "Ação, Aventura",
+    "steam_app_id": 367520
+  },
+  {
+    "title": "Stardew Valley",
+    "genre": "Simulação, RPG",
+    "steam_app_id": 413150
+  },
+  {
+    "title": "Celeste",
+    "genre": "Plataforma, Aventura",
+    "steam_app_id": 504230
+  },
+  {
+    "title": "Dark Souls III",
+    "genre": "RPG, Ação",
+    "steam_app_id": 374320
+  },
+  {
+    "title": "Projeto Demo (sem Steam)",
+    "genre": "Indie",
+    "steam_app_id": null
+  },
+  {
+    "title": "Outro título local",
+    "genre": "Placeholder",
+    "steam_app_id": null
+  }
+]

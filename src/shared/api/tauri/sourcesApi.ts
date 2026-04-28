@@ -1,9 +1,11 @@
 import { tauriClient } from './client'
 import type {
   AddSourceInput,
+  CatalogGame,
   DownloadOption,
   GameSourceChange,
   LocalLibraryItem,
+  SearchCatalogInput,
   SearchDownloadOptionsInput,
   Source,
   SourceTestResult,
@@ -22,6 +24,8 @@ export const sourcesApi = {
     tauriClient.invoke<GameSourceChange[]>('check_download_sources_changes'),
   searchDownloadOptions: (payload: SearchDownloadOptionsInput) =>
     tauriClient.invoke<DownloadOption[]>('search_download_options', { payload }),
+  searchGameCatalog: (payload: SearchCatalogInput) =>
+    tauriClient.invoke<CatalogGame[]>('search_game_catalog', { payload }),
   searchGameDownloadOptions: (gameId: number) =>
     tauriClient.invoke<DownloadOption[]>('search_game_download_options', {
       payload: { gameId },
@@ -34,6 +38,12 @@ export const sourcesApi = {
     tauriClient.invoke<void>('set_seed_torrents_enabled', { payload: { enabled } }),
   getSeedTorrentsEnabled: () =>
     tauriClient.invoke<boolean>('get_seed_torrents_enabled'),
+  getAppSetting: (key: string) =>
+    tauriClient.invoke<string | null>('get_app_setting', { payload: { key } }),
+  setAppSetting: (key: string, value: string) =>
+    tauriClient.invoke<void>('set_app_setting', { payload: { key, value } }),
+  getDiskFreeBytesForPath: (path: string) =>
+    tauriClient.invoke<number | null>('get_disk_free_bytes_for_path', { payload: { path } }),
   scanDefaultDownloadPath: () =>
     tauriClient.invoke<LocalLibraryItem[]>('scan_default_download_path'),
   deleteLocalLibraryItem: (path: string) =>

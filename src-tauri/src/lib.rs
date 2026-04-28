@@ -1,7 +1,9 @@
 use regex::Regex;
+use rusqlite::OptionalExtension;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -187,6 +189,29 @@ struct SearchDownloadOptionsPayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SearchCatalogPayload {
+  query: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct EmbeddedCatalogEntry {
+  title: String,
+  genre: String,
+  steam_app_id: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CatalogGameDto {
+  id: String,
+  title: String,
+  genre: String,
+  cover_url: Option<String>,
+  source: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SetDefaultDownloadPathPayload {
   path: String,
 }
@@ -195,6 +220,25 @@ struct SetDefaultDownloadPathPayload {
 #[serde(rename_all = "camelCase")]
 struct SetSeedTorrentsEnabledPayload {
   enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetAppSettingPayload {
+  key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetAppSettingPayload {
+  key: String,
+  value: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DiskPathPayload {
+  path: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -568,13 +612,17 @@ async fn search_download_options(
 
   let conn = open_database_connection(&app)?;
   let hydra_sources = list_hydra_sources(&conn)?;
+  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
   drop(conn);
 
   if hydra_sources.is_empty() {
     return Ok(Vec::new());
   }
 
-  let local_options = search_download_options_from_local_sources(query, &hydra_sources).await;
+  let mut local_options = search_download_options_from_local_sources(query, &hydra_sources).await;
+  if !disabled.is_empty() {
+    local_options.retain(|opt| !disabled.contains(&opt.source_id));
+  }
   if !local_options.is_empty() {
     return Ok(local_options);
   }
@@ -644,6 +692,130 @@ fn get_seed_torrents_enabled(app: AppHandle) -> Result<bool, String> {
     .ok();
 
   Ok(!matches!(value.as_deref(), Some("0") | Some("false") | Some("FALSE")))
+}
+
+fn validate_app_setting_key(key: &str) -> Result<(), String> {
+  if key.is_empty() || key.len() > 80 {
+    return Err("invalid_app_setting_key".to_string());
+  }
+  if !key
+    .chars()
+    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+  {
+    return Err("invalid_app_setting_key".to_string());
+  }
+  Ok(())
+}
+
+fn get_disabled_hydra_source_ids_from_conn(
+  conn: &Connection,
+) -> Result<HashSet<String>, String> {
+  let value: Option<String> = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = 'disabled_hydra_source_ids'",
+      [],
+      |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("could_not_read_disabled_hydra_sources: {e}"))?;
+  let Some(json) = value else {
+    return Ok(HashSet::new());
+  };
+  let list: Vec<String> = serde_json::from_str(&json)
+    .map_err(|e| format!("could_not_parse_disabled_hydra_sources: {e}"))?;
+  Ok(list.into_iter().collect())
+}
+
+#[tauri::command]
+fn get_app_setting(app: AppHandle, payload: GetAppSettingPayload) -> Result<Option<String>, String> {
+  validate_app_setting_key(&payload.key)?;
+  let conn = open_database_connection(&app)?;
+  let value: Option<String> = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = ?1",
+      params![&payload.key],
+      |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("could_not_get_app_setting: {e}"))?;
+  Ok(value)
+}
+
+#[tauri::command]
+fn set_app_setting(app: AppHandle, payload: SetAppSettingPayload) -> Result<(), String> {
+  validate_app_setting_key(&payload.key)?;
+  if payload.value.len() > 65_000 {
+    return Err("app_setting_value_too_large".to_string());
+  }
+  let conn = open_database_connection(&app)?;
+  conn
+    .execute(
+      "INSERT INTO app_settings (key, value) VALUES (?1, ?2) \
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      params![&payload.key, &payload.value],
+    )
+    .map_err(|e| format!("could_not_set_app_setting: {e}"))?;
+  Ok(())
+}
+
+/// Espaço livre no volume que contém o caminho (bytes). Útil para mostrar no UI de pastas.
+#[tauri::command]
+fn get_disk_free_bytes_for_path(
+  payload: DiskPathPayload,
+) -> Result<Option<u64>, String> {
+  use sysinfo::Disks;
+
+  let path_arg = payload.path.trim();
+  if path_arg.is_empty() {
+    return Ok(None);
+  }
+  let path = Path::new(path_arg);
+  if path == Path::new("") {
+    return Ok(None);
+  }
+  let candidate = if path.exists() {
+    path
+      .canonicalize()
+      .map_err(|e| format!("disk_path_error: {e}"))?
+  } else {
+    // Pasta ainda não criada: usa o root do caminho inserido
+    // (ex. "D:\Games" → tenta achar o disco "D:\").
+    let mut p = path.to_path_buf();
+    if !p.has_root() {
+      return Ok(None);
+    }
+    while p.parent().is_some() && !p.as_path().exists() {
+      if let Some(parent) = p.parent() {
+        p = parent.to_path_buf();
+      } else {
+        break;
+      }
+    }
+    p
+  };
+
+  let s = candidate.to_string_lossy().to_string();
+  #[cfg(windows)]
+  let s_norm: String = s.to_lowercase();
+  #[cfg(not(windows))]
+  let s_norm = s;
+
+  let disks = Disks::new_with_refreshed_list();
+  let mut best: Option<(usize, u64)> = None;
+  for disk in disks.list() {
+    let m = disk.mount_point().to_string_lossy();
+    #[cfg(windows)]
+    let m_norm: String = m.to_lowercase();
+    #[cfg(not(windows))]
+    let m_norm: String = m.to_string();
+    if s_norm.starts_with(m_norm.as_str()) {
+      let len = m_norm.len();
+      if best.map_or(true, |(best_len, _)| len > best_len) {
+        best = Some((len, disk.available_space()));
+      }
+    }
+  }
+  Ok(best.map(|(_, space)| space))
 }
 
 #[tauri::command]
@@ -1226,6 +1398,15 @@ async fn sidecar_enqueue_job(
     .ok()
     .map(|value| !matches!(value.as_str(), "0" | "false" | "FALSE"))
     .unwrap_or(true);
+  let max_speed_bps = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = 'download_speed_limit_bps'",
+      [],
+      |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|s| s.parse::<u64>().ok())
+    .filter(|&v| v > 0);
   let dest_path = payload
     .dest_path
     .clone()
@@ -1233,16 +1414,24 @@ async fn sidecar_enqueue_job(
     .ok_or_else(|| "default_download_path_not_configured".to_string())?;
   drop(conn);
 
-  let client = reqwest::Client::new();
-  client
-    .post(format!("http://127.0.0.1:{port}/jobs"))
-    .json(&serde_json::json!({
+  let body = {
+    let mut b = serde_json::json!({
       "title": payload.title,
       "url": payload.url,
       "destPath": dest_path,
       "priority": payload.priority,
       "seedEnabled": seed_enabled
-    }))
+    });
+    if let Some(bps) = max_speed_bps {
+      b["maxDownloadSpeedBps"] = bps.into();
+    }
+    b
+  };
+
+  let client = reqwest::Client::new();
+  client
+    .post(format!("http://127.0.0.1:{port}/jobs"))
+    .json(&body)
     .send()
     .await
     .map_err(|e| format!("sidecar_request_failed: {e}"))?
@@ -2294,7 +2483,23 @@ fn open_database_connection(app: &AppHandle) -> Result<Connection, String> {
   let conn = Connection::open(dir.join("launcher.db"))
     .map_err(|e| format!("could_not_open_db: {e}"))?;
   initialize_database(&conn)?;
+  ensure_default_hydra_sources(&conn)?;
   Ok(conn)
+}
+
+/// Garante pelo menos uma fonte reconhecida (FitGirl) para pesquisa em Explorar funcionar sem configuração manual.
+fn ensure_default_hydra_sources(conn: &Connection) -> Result<(), String> {
+  let count: i64 = conn
+    .query_row("SELECT COUNT(*) FROM hydra_download_sources", [], |row| {
+      row.get(0)
+    })
+    .map_err(|e| format!("could_not_count_hydra_sources: {e}"))?;
+  if count > 0 {
+    return Ok(());
+  }
+  let default = create_local_hydra_source("https://fitgirl-repacks.site/");
+  upsert_hydra_source(conn, &default)
+    .map_err(|e| format!("could_not_seed_default_hydra_source: {e}"))
 }
 
 fn initialize_database(conn: &Connection) -> Result<(), String> {
@@ -2371,9 +2576,328 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS catalog_steam_cache (
+        query_norm   TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        fetched_ts   INTEGER NOT NULL
+      );
       ",
     )
-    .map_err(|e| format!("could_not_initialize_database: {e}"))
+    .map_err(|e| format!("could_not_initialize_database: {e}"))?;
+  migrate_catalog_steam_cache_hd_covers(conn)
+}
+
+/// Invalida cache do catálogo Steam uma vez após passar a gravar URLs de cápsula HD em vez de `tiny_image`.
+fn migrate_catalog_steam_cache_hd_covers(conn: &Connection) -> Result<(), String> {
+  const KEY: &str = "catalog_steam_cache_hd_covers_v1";
+  let already: Option<String> = conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = ?1",
+      params![KEY],
+      |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|e| format!("migrate_catalog_cache_read: {e}"))?;
+  if already.is_some() {
+    return Ok(());
+  }
+  conn
+    .execute("DELETE FROM catalog_steam_cache", [])
+    .map_err(|e| format!("migrate_catalog_cache_clear: {e}"))?;
+  conn
+    .execute(
+      "INSERT INTO app_settings (key, value) VALUES (?1, '1')",
+      params![KEY],
+    )
+    .map_err(|e| format!("migrate_catalog_cache_mark: {e}"))?;
+  Ok(())
+}
+
+const EMBEDDED_CATALOG_JSON: &str = include_str!("../resources/embedded_catalog.json");
+
+fn embedded_catalog_entries() -> Vec<EmbeddedCatalogEntry> {
+  serde_json::from_str(EMBEDDED_CATALOG_JSON).unwrap_or_else(|_| Vec::new())
+}
+
+fn stable_embedded_id(title: &str) -> String {
+  let mut hasher = DefaultHasher::new();
+  title.hash(&mut hasher);
+  format!("emb_{:x}", hasher.finish())
+}
+
+/// Cápsula da biblioteca Steam @2x (~1200×1800). Evitar `tiny_image` da API storesearch (muito pequena).
+fn steam_capsule_cover(app_id: u32) -> String {
+  format!(
+    "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/library_600x900_2x.jpg",
+    app_id
+  )
+}
+
+fn is_likely_dlc_item(item: &serde_json::Value, title: &str) -> bool {
+  let title_norm = title.to_lowercase();
+  if title_norm.contains(" dlc")
+    || title_norm.contains("dlc ")
+    || title_norm.contains("soundtrack")
+    || title_norm.contains("ost")
+    || title_norm.contains("season pass")
+    || title_norm.contains("expansion pass")
+    || title_norm.contains("skin pack")
+    || title_norm.contains("cosmetic pack")
+    || title_norm.contains("booster pack")
+  {
+    return true;
+  }
+
+  let item_type = item
+    .get("type")
+    .and_then(|v| v.as_str())
+    .unwrap_or("")
+    .to_lowercase();
+  if item_type == "dlc" {
+    return true;
+  }
+
+  let item_type_label = item
+    .get("type_label")
+    .and_then(|v| v.as_str())
+    .unwrap_or("")
+    .to_lowercase();
+  if item_type_label.contains("dlc") {
+    return true;
+  }
+
+  false
+}
+
+fn embedded_entry_to_dto(entry: &EmbeddedCatalogEntry) -> CatalogGameDto {
+  CatalogGameDto {
+    id: stable_embedded_id(&entry.title),
+    title: entry.title.clone(),
+    genre: entry.genre.clone(),
+    cover_url: entry.steam_app_id.map(steam_capsule_cover),
+    source: "embedded".to_string(),
+  }
+}
+
+fn filter_embedded_catalog(query_norm: &str) -> Vec<CatalogGameDto> {
+  let entries = embedded_catalog_entries();
+  let mut out = Vec::new();
+  if query_norm.is_empty() {
+    for e in entries.into_iter().take(24) {
+      out.push(embedded_entry_to_dto(&e));
+    }
+    return out;
+  }
+  for e in entries {
+    let t = e.title.to_lowercase();
+    let g = e.genre.to_lowercase();
+    if t.contains(query_norm) || g.contains(query_norm) {
+      out.push(embedded_entry_to_dto(&e));
+    }
+  }
+  out
+}
+
+fn normalize_catalog_match_text(value: &str) -> String {
+  value
+    .to_lowercase()
+    .chars()
+    .map(|c| if c.is_ascii_alphanumeric() || c.is_whitespace() { c } else { ' ' })
+    .collect::<String>()
+    .split_whitespace()
+    .collect::<Vec<_>>()
+    .join(" ")
+}
+
+fn filter_catalog_games_by_available_options(
+  games: Vec<CatalogGameDto>,
+  options: &[DownloadOptionDto],
+) -> Vec<CatalogGameDto> {
+  if games.is_empty() || options.is_empty() {
+    return Vec::new();
+  }
+  let option_titles: Vec<String> = options
+    .iter()
+    .map(|opt| normalize_catalog_match_text(&opt.title))
+    .filter(|t| !t.is_empty())
+    .collect();
+  if option_titles.is_empty() {
+    return Vec::new();
+  }
+
+  games
+    .into_iter()
+    .filter(|game| {
+      let game_title = normalize_catalog_match_text(&game.title);
+      if game_title.is_empty() {
+        return false;
+      }
+      option_titles.iter().any(|opt_title| {
+        opt_title.contains(&game_title) || game_title.contains(opt_title)
+      })
+    })
+    .collect()
+}
+
+fn steam_cache_get(conn: &Connection, query_norm: &str) -> Option<Vec<CatalogGameDto>> {
+  let now = i64::try_from(
+    SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .ok()?
+      .as_secs(),
+  )
+  .ok()?;
+  let row_result = conn.query_row(
+    "SELECT payload_json, fetched_ts FROM catalog_steam_cache WHERE query_norm = ?1",
+    params![query_norm],
+    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+  );
+  let (json, ts) = match row_result.optional() {
+    Ok(Some(pair)) => pair,
+    Ok(None) | Err(_) => return None,
+  };
+  if now - ts > 86_400 {
+    return None;
+  }
+  serde_json::from_str(&json).ok()
+}
+
+fn steam_cache_put(conn: &Connection, query_norm: &str, games: &[CatalogGameDto]) -> Result<(), String> {
+  let json = serde_json::to_string(games).map_err(|e| format!("steam_cache_encode: {e}"))?;
+  let ts = i64::try_from(
+    SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .unwrap_or_default()
+      .as_secs(),
+  )
+  .unwrap_or(0);
+  conn
+    .execute(
+      "INSERT INTO catalog_steam_cache (query_norm, payload_json, fetched_ts) VALUES (?1, ?2, ?3) \
+       ON CONFLICT(query_norm) DO UPDATE SET \
+       payload_json = excluded.payload_json, fetched_ts = excluded.fetched_ts",
+      params![query_norm, json, ts],
+    )
+    .map_err(|e| format!("steam_cache_put: {e}"))?;
+  Ok(())
+}
+
+async fn fetch_steam_catalog_games(search_term: &str) -> Result<Vec<CatalogGameDto>, String> {
+  let client = reqwest::Client::builder()
+    .timeout(Duration::from_secs(12))
+    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Hydra-Tauri-Launcher/1.0")
+    .build()
+    .map_err(|e| format!("steam_client_build: {e}"))?;
+
+  let response = client
+    .get("https://store.steampowered.com/api/storesearch/")
+    .query(&[("term", search_term), ("cc", "US"), ("l", "en")])
+    .send()
+    .await
+    .map_err(|e| format!("steam_catalog_request_failed: {e}"))?;
+
+  if !response.status().is_success() {
+    return Err(format!("steam_catalog_http_{}", response.status()));
+  }
+
+  let value: serde_json::Value = response
+    .json()
+    .await
+    .map_err(|e| format!("steam_catalog_parse_failed: {e}"))?;
+
+  let mut out = Vec::new();
+  let Some(items) = value.get("items").and_then(|v| v.as_array()) else {
+    return Ok(out);
+  };
+
+  for item in items.iter().take(32) {
+    let Some(app_id) = item.get("id").and_then(|v| v.as_u64()).map(|v| v as u32) else {
+      continue;
+    };
+    let title = item
+      .get("name")
+      .and_then(|v| v.as_str())
+      .unwrap_or("")
+      .trim()
+      .to_string();
+    if title.is_empty() {
+      continue;
+    }
+    if is_likely_dlc_item(item, &title) {
+      continue;
+    }
+    let cover = Some(steam_capsule_cover(app_id));
+
+    out.push(CatalogGameDto {
+      id: format!("steam_{app_id}"),
+      title,
+      genre: "Steam".to_string(),
+      cover_url: cover,
+      source: "steam".to_string(),
+    });
+  }
+
+  Ok(out)
+}
+
+#[tauri::command]
+async fn search_game_catalog(app: AppHandle, payload: SearchCatalogPayload) -> Result<Vec<CatalogGameDto>, String> {
+  let trimmed = payload.query.trim();
+  let query_norm = trimmed.to_lowercase();
+  let conn = open_database_connection(&app)?;
+
+  // Sem lista “fixa” quando a pesquisa está vazia ou curta — só resultados após 2+ caracteres.
+  if query_norm.len() < 2 {
+    return Ok(vec![]);
+  }
+
+  let mut merged = filter_embedded_catalog(&query_norm);
+  let mut seen: HashSet<String> = merged.iter().map(|g| g.title.to_lowercase()).collect();
+
+  let steam_chunk = if let Some(cached) = steam_cache_get(&conn, &query_norm) {
+    cached
+  } else {
+    let fetched = fetch_steam_catalog_games(trimmed).await.unwrap_or_default();
+    if !fetched.is_empty() {
+      let _ = steam_cache_put(&conn, &query_norm, &fetched);
+    }
+    fetched
+  };
+
+  for game in steam_chunk {
+    let key = game.title.to_lowercase();
+    if seen.contains(&key) {
+      continue;
+    }
+    seen.insert(key);
+    merged.push(game);
+    if merged.len() >= 56 {
+      break;
+    }
+  }
+
+  // Filtra para mostrar apenas jogos que realmente existem nas fontes instaladas/ativas.
+  let hydra_sources = list_hydra_sources(&conn)?;
+  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
+  let active_sources: Vec<HydraSourceDto> = hydra_sources
+    .into_iter()
+    .filter(|source| !disabled.contains(&source.id))
+    .collect();
+  drop(conn);
+
+  if active_sources.is_empty() {
+    return Ok(Vec::new());
+  }
+
+  let available_options =
+    search_download_options_from_local_sources(trimmed, &active_sources).await;
+  if available_options.is_empty() {
+    return Ok(Vec::new());
+  }
+
+  let merged = filter_catalog_games_by_available_options(merged, &available_options);
+  Ok(merged)
 }
 
 fn fetch_source_by_id(conn: &Connection, id: i64) -> Result<SourceDto, String> {
@@ -2673,10 +3197,14 @@ pub fn run() {
       get_download_sources,
       remove_download_source,
       search_download_options,
+      search_game_catalog,
       set_default_download_path,
       get_default_download_path,
       set_seed_torrents_enabled,
       get_seed_torrents_enabled,
+      get_app_setting,
+      set_app_setting,
+      get_disk_free_bytes_for_path,
       scan_default_download_path,
       delete_local_library_item,
       remove_source,

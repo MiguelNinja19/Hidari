@@ -14,25 +14,57 @@ const clampProgress = (value: number) => {
   return Math.max(0, Math.min(100, value))
 }
 
+/** Alguns motores enviam fração 0–1 em vez de percentagem 0–100. */
+const coerceProgressToPercent = (value: number): number => {
+  if (!Number.isFinite(value) || value < 0) return 0
+  if (value > 0 && value <= 1) return value * 100
+  return value
+}
+
 const normalizeJobProgress = (job: DownloadJob) => {
-  const normalized = clampProgress(job.progress)
-  const hasKnownTotal = Number.isFinite(job.totalBytes) && job.totalBytes > 0
-  const hasDownloadedBytes = Number.isFinite(job.bytesDownloaded) && job.bytesDownloaded > 0
-  const reachedKnownTotal =
-    hasKnownTotal && Number.isFinite(job.bytesDownloaded) && job.bytesDownloaded >= job.totalBytes
+  const totalBytes = Number.isFinite(job.totalBytes) ? job.totalBytes : 0
+  const bytesDownloaded = Number.isFinite(job.bytesDownloaded) ? Math.max(0, job.bytesDownloaded) : 0
+  const hasKnownTotal = totalBytes > 0
+
+  const fromBytes = hasKnownTotal ? clampProgress((bytesDownloaded / totalBytes) * 100) : null
+  const server = clampProgress(coerceProgressToPercent(job.progress))
+
+  let blended = fromBytes != null ? fromBytes : server
+
+  if (hasKnownTotal && fromBytes != null) {
+    blended = fromBytes
+  }
+
   const hasTransferSignal =
     (Number.isFinite(job.speedBps) && (job.speedBps ?? 0) > 0) ||
     (Number.isFinite(job.etaSeconds) && (job.etaSeconds ?? 0) > 0)
 
-  // Evita glitch visual de 100% em estados não finalizados.
-  if (job.status === 'completed' || job.status === 'seeding') return 100
-  if (reachedKnownTotal) return 100
-  if (job.status === 'cancelled' || job.status === 'failed') return normalized
-  if (normalized >= 100) return 99
-  if (normalized > 0) return normalized
-  if (hasDownloadedBytes || hasKnownTotal) return normalized
-  if (hasTransferSignal) return 1
-  return normalized
+  if (job.status === 'completed') return 100
+
+  if (job.status === 'seeding') {
+    if (hasKnownTotal && bytesDownloaded >= totalBytes) return 100
+    if (hasKnownTotal && bytesDownloaded < totalBytes) {
+      return clampProgress((bytesDownloaded / totalBytes) * 100)
+    }
+    return Math.min(99, blended >= 100 ? 99 : blended)
+  }
+
+  if (job.status === 'cancelled' || job.status === 'failed') return blended
+
+  if (hasKnownTotal && bytesDownloaded >= totalBytes) return 100
+
+  if (blended >= 100) return 99
+
+  if (blended > 0) return blended
+
+  if (
+    hasTransferSignal &&
+    (job.status === 'downloading' || job.status === 'retrying' || job.status === 'pending')
+  ) {
+    return Math.max(blended, 1)
+  }
+
+  return blended
 }
 
 const normalizeJob = (job: DownloadJob): DownloadJob => ({
