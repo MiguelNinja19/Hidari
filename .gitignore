@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.tmp-7z-setup
+scripts/.tmp-hydra-db-snapshot
+src-tauri/binaries/*.exe
+src-tauri/binaries/*.dll

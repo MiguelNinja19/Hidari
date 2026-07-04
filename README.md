@@ -1,75 +1,52 @@
-# Hydrax
+# MyLauncher (Hydrax)
 
-## React + TypeScript + Vite
+Launcher desktop para descoberta, download e gestão de jogos — **Tauri 2** + **React** + **TypeScript**.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Início rápido
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run tauri:dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+O `npm install` executa automaticamente `setup:binaries`, que baixa o **7-Zip** (7za) e sincroniza `aria2c` e `download-engine` para `src-tauri/binaries/`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Se a extração falhar com `7z_not_found`, execute manualmente:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run setup:binaries
 ```
+
+## Documentação
+
+Toda a documentação do projeto está em **[`docs/`](./docs/README.md)**:
+
+- [Primeiros passos](./docs/getting-started.md) — instalação e comandos
+- [Arquitetura](./docs/architecture.md) — estrutura e fluxo de dados
+- [API Tauri](./docs/api.md) — comandos e eventos
+- [Build e release](./docs/build-and-release.md) — binários e empacotamento
+
+## Scripts
+
+| Comando | Descrição |
+|---------|-----------|
+| `npm run setup:binaries` | Baixa 7-Zip e sincroniza binários nativos |
+| `npm run tauri:dev` | Desenvolvimento (app desktop) |
+| `npm run tauri:build` | Build de produção |
+| `npm run dev` | Só frontend (sem APIs nativas) |
+| `npm run lint` | ESLint |
+| `npm run test` | Testes Vitest |
+
+## Fluxo completo
+
+1. **Configurações** — defina a pasta de download e ative a fonte FitGirl
+2. **Explorar** — pesquise um jogo e escolha um torrent
+3. **Downloads** — acompanhe o progresso; ao concluir, a extração inicia automaticamente
+4. **Biblioteca** — quando o status for *Pronto para jogar*, clique em **JOGAR**
+
+## Stack
+
+- Frontend: React 19, Vite 8, Redux Toolkit
+- Backend: Rust, SQLite (rusqlite), Tauri plugins (dialog, notification, log)
+- Downloads: sidecar `download-engine` + `aria2c`
+- Extração: 7-Zip (`7za.exe`) incluído via setup
