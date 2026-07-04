@@ -1,75 +1,44 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { open } from '@tauri-apps/plugin-dialog'
+import { open, ask } from '@tauri-apps/plugin-dialog'
 import { useAppDispatch, useAppSelector } from './app/hooks'
+import { store } from './app/store'
 import { addSource, fetchSources } from './features/sources/sourcesSlice'
 import {
   enqueueJob,
   fetchJobs,
   pauseJob,
   resumeJob,
+  cancelJob,
+  clearCompletedJobs,
+  extractStatusReceived,
+  removeJobLocally,
+  jobProgressReceived,
 } from './features/queue/queueSlice'
 import { queueApi } from './shared/api/tauri/queueApi'
+import { tauriClient } from './shared/api/tauri/client'
 import { sourcesApi } from './shared/api/tauri/sourcesApi'
-import type { CatalogGame, DownloadJob, DownloadOption } from './shared/types/contracts'
+import { resolveDeletePath } from './shared/utils/archive'
+import { jobPathsOverlap } from './shared/utils/jobExtraction'
+import { dedupeLibraryEntries, findRelatedLibraryJobs, libraryGameKey } from './shared/utils/libraryDedupe'
+import { useGameCovers } from './features/covers/useGameCovers'
+import { AppShell } from './layout/AppShell'
+import type { NavTab } from './layout/types'
+import { DiscoverPage } from './features/discover/DiscoverPage'
+import { DownloadsPage } from './features/downloads/DownloadsPage'
+import { LibraryPage } from './features/library/LibraryPage'
+import { SettingsPage } from './features/settings/SettingsPage'
+import type { LibraryEntry } from './features/library/types'
+import { formatLaunchError } from './shared/utils/launchErrors'
+import {
+  formatProgressPercent,
+  isTorrentMetadataPhase,
+  metadataPhaseDetail,
+  resolveJobProgressPercent,
+} from './shared/utils/jobProgress'
+import type { CatalogGame, DownloadJob, DownloadOption, LibraryPathState, LocalLibraryItem } from './shared/types/contracts'
 import './App.css'
 
-type NavTab = 'discover' | 'library' | 'downloads' | 'settings'
-
-function buildCoverCandidates(coverUrl?: string | null): string[] {
-  if (!coverUrl) return []
-  const out = [coverUrl]
-  const appId = coverUrl.match(/\/steam\/apps\/(\d+)\//)?.[1]
-  if (!appId) return out
-  out.push(`https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/library_600x900.jpg`)
-  out.push(`https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`)
-  out.push(`https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/capsule_616x353.jpg`)
-  out.push(`https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/capsule_231x87.jpg`)
-  return [...new Set(out)]
-}
-
-function CatalogCover({
-  title,
-  coverUrl,
-  onExhausted,
-}: {
-  title: string
-  coverUrl?: string | null
-  onExhausted?: () => void
-}) {
-  const candidates = useMemo(() => buildCoverCandidates(coverUrl), [coverUrl])
-  const [candidateIndex, setCandidateIndex] = useState(0)
-
-  useEffect(() => {
-    setCandidateIndex(0)
-  }, [coverUrl])
-
-  useEffect(() => {
-    if (candidateIndex >= candidates.length) {
-      onExhausted?.()
-    }
-  }, [candidateIndex, candidates.length, onExhausted])
-
-  const activeCover = candidates[candidateIndex]
-  if (!activeCover) {
-    return (
-      <div className="game-card__placeholder" aria-hidden="true">
-        <span>{title.slice(0, 2).toUpperCase()}</span>
-      </div>
-    )
-  }
-  return (
-    <img
-      src={activeCover}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      onError={() => {
-        setCandidateIndex((idx) => idx + 1)
-      }}
-    />
-  )
-}
 
 const SETTING_KEY = {
   installOrganization: 'install_organization',
@@ -102,6 +71,212 @@ const bpsToSpeedKey = (value: string | null | undefined) => {
   return 'ilimitado'
 }
 
+const buildSourceSearchQuery = (title: string) => {
+  const cleaned = title.replace(/[™®©]/g, '').trim()
+  const head = cleaned.split(':')[0]?.split(' - ')[0]?.trim()
+  return head || cleaned
+}
+
+const isDownloadableOption = (option: DownloadOption) =>
+  option.downloadType === 'torrent' ||
+  (option.downloadType === 'http' && !option.url.includes('fitgirl-repacks.site/'))
+
+const pathStateKey = (
+  path: string,
+  ctx?: { jobId?: string; title?: string },
+) => {
+  if (ctx?.jobId) return `job:${ctx.jobId}`
+  const base = resolveDeletePath(path).toLowerCase()
+  if (ctx?.title) return `${base}::${ctx.title.trim().toLowerCase()}`
+  return base
+}
+
+const getPathState = (
+  path: string,
+  pathStateByKey: Record<string, LibraryPathState>,
+  ctx?: { jobId?: string; title?: string },
+) => pathStateByKey[pathStateKey(path, ctx)]
+
+const jobPathCtx = (job: DownloadJob) => ({ jobId: job.id, title: job.title })
+
+const itemPathCtx = (item: LibraryEntry) => ({
+  jobId: item.kind === 'job' ? item.id : undefined,
+  title: item.title,
+})
+
+const itemHasGame = (
+  path: string,
+  pathStateByKey: Record<string, LibraryPathState>,
+  ctx?: { jobId?: string; title?: string },
+) => {
+  const state = getPathState(path, pathStateByKey, ctx)
+  return state?.hasGame === true || state?.playable === true
+}
+
+const isPlayableLibraryItem = (
+  item: LibraryEntry,
+  allJobs: DownloadJob[],
+  pathStateByKey: Record<string, LibraryPathState>,
+) => {
+  if (needsInstallItem(item, pathStateByKey)) return false
+
+  const hasGame = itemHasGame(item.destPath, pathStateByKey, itemPathCtx(item))
+  if (!hasGame) return false
+
+  if (item.kind === 'job') {
+    return true
+  }
+
+  const folderPath = item.destPath
+  const blockedByActiveJob = allJobs.some(
+    (job) =>
+      job.status !== 'extracted' &&
+      job.status !== 'cancelled' &&
+      !itemHasGame(job.destPath, pathStateByKey, jobPathCtx(job)) &&
+      jobPathsOverlap(folderPath, job.destPath),
+  )
+  return !blockedByActiveJob
+}
+
+const needsInstallItem = (
+  item: LibraryEntry,
+  pathStateByKey: Record<string, LibraryPathState>,
+) => {
+  const state = getPathState(item.destPath, pathStateByKey, itemPathCtx(item))
+  return state?.needsInstall === true
+}
+
+const jobNeedsInstall = (job: DownloadJob, pathStateByKey: Record<string, LibraryPathState>) => {
+  const state = getPathState(job.destPath, pathStateByKey, jobPathCtx(job))
+  return state?.needsInstall === true
+}
+
+const isJobFinished = (job: DownloadJob) =>
+  job.status === 'extracted' ||
+  job.status === 'completed' ||
+  job.status === 'seeding' ||
+  job.status === 'skipped' ||
+  (job.progress >= 99 &&
+    !['downloading', 'pending', 'retrying', 'cancelled', 'extracting'].includes(job.status))
+
+const itemAwaitingInstall = (
+  item: LibraryEntry,
+  allJobs: DownloadJob[],
+  pathStateByKey: Record<string, LibraryPathState>,
+) => {
+  if (isPlayableLibraryItem(item, allJobs, pathStateByKey)) return false
+
+  const state = getPathState(item.destPath, pathStateByKey, itemPathCtx(item))
+  if (state?.needsInstall || state?.needsExtraction) return true
+
+  if (item.kind === 'job') {
+    if (
+      ['downloading', 'pending', 'retrying', 'extracting', 'paused', 'cancelled'].includes(
+        item.status,
+      )
+    ) {
+      return false
+    }
+    if (
+      item.status === 'extracted' ||
+      item.status === 'completed' ||
+      item.status === 'seeding' ||
+      item.status === 'skipped' ||
+      (item.job && isJobFinished(item.job))
+    ) {
+      return !itemHasGame(item.destPath, pathStateByKey, itemPathCtx(item))
+    }
+  }
+
+  return false
+}
+
+const showPlayAction = (
+  item: LibraryEntry,
+  jobs: DownloadJob[],
+  pathStateByKey: Record<string, LibraryPathState>,
+) => isPlayableLibraryItem(item, jobs, pathStateByKey)
+
+const showInstallAction = (
+  item: LibraryEntry,
+  jobs: DownloadJob[],
+  pathStateByKey: Record<string, LibraryPathState>,
+) => itemAwaitingInstall(item, jobs, pathStateByKey)
+
+const showLocateInstallAction = (
+  item: LibraryEntry,
+  jobs: DownloadJob[],
+  pathStateByKey: Record<string, LibraryPathState>,
+) => {
+  if (showPlayAction(item, jobs, pathStateByKey)) return false
+  if (itemAwaitingInstall(item, jobs, pathStateByKey)) return false
+  if (item.kind === 'job' && item.job && !isJobFinished(item.job)) return false
+  return true
+}
+
+const hasManualInstallRoot = (
+  item: LibraryEntry,
+  pathStateByKey: Record<string, LibraryPathState>,
+) => {
+  const state = getPathState(item.destPath, pathStateByKey, itemPathCtx(item))
+  return Boolean(state?.customGameRoot?.trim())
+}
+
+function libraryStatusMeta(
+  item: LibraryEntry,
+  jobs: DownloadJob[],
+  pathStateByKey: Record<string, LibraryPathState>,
+): { label: string; tone: string } {
+  const state = getPathState(item.destPath, pathStateByKey, itemPathCtx(item))
+
+  if (itemAwaitingInstall(item, jobs, pathStateByKey)) {
+    return { label: 'Instalar', tone: 'waiting' }
+  }
+  if (state?.hasGame || state?.playable || isPlayableLibraryItem(item, jobs, pathStateByKey)) {
+    return { label: 'Jogar', tone: 'ready' }
+  }
+  if (item.kind === 'folder') {
+    return { label: 'Na biblioteca', tone: 'idle' }
+  }
+  if (
+    item.status === 'downloading' ||
+    item.status === 'pending' ||
+    item.status === 'retrying'
+  ) {
+    const asJob: DownloadJob = item.job ?? {
+      id: item.id,
+      title: item.title,
+      url: '',
+      destPath: item.destPath,
+      status: item.status,
+      priority: 0,
+      progress: 0,
+      bytesDownloaded: 0,
+      totalBytes: 0,
+      errorMsg: null,
+      createdAt: '',
+      updatedAt: '',
+    }
+    if (isTorrentMetadataPhase(asJob)) {
+      return { label: 'A ligar peers', tone: 'downloading' }
+    }
+    const pct = resolveJobProgressPercent(asJob)
+    const pctLabel =
+      pct > 0 && pct < 100 ? `${pct.toFixed(1).replace('.', ',')}%` : pct >= 100 ? '100%' : ''
+    return {
+      label: pctLabel ? `A transferir · ${pctLabel}` : 'A transferir',
+      tone: 'downloading',
+    }
+  }
+  if (item.status === 'paused') {
+    return { label: 'Pausado', tone: 'paused' }
+  }
+  if (item.status === 'failed') {
+    return { label: 'Falhou', tone: 'failed' }
+  }
+  return { label: 'Aguardando', tone: 'idle' }
+}
+
 function App() {
   const dispatch = useAppDispatch()
   const sources = useAppSelector((state) => state.sources.items)
@@ -115,12 +290,16 @@ function App() {
   const [discoverSearch, setDiscoverSearch] = useState<string>('')
   const [defaultDownloadPath, setDefaultDownloadPath] = useState<string>('')
   const [savePathError, setSavePathError] = useState<string>('')
+  const [actionMessage, setActionMessage] = useState<string>('')
+  const [playBusyId, setPlayBusyId] = useState<string | null>(null)
+  const [installBusyId, setInstallBusyId] = useState<string | null>(null)
   const [discoverError, setDiscoverError] = useState<string>('')
   const [discoverBusy, setDiscoverBusy] = useState<string | null>(null)
   const [discoverPickGame, setDiscoverPickGame] = useState<CatalogGame | null>(null)
   const [discoverPickOptions, setDiscoverPickOptions] = useState<DownloadOption[]>([])
   const [discoverPickLoading, setDiscoverPickLoading] = useState(false)
   const [discoverPickError, setDiscoverPickError] = useState<string | null>(null)
+  const [downloadsBooting, setDownloadsBooting] = useState(false)
   const [seedTorrentsEnabled, setSeedTorrentsEnabled] = useState<boolean>(true)
   const [verifyAfterDownload, setVerifyAfterDownload] = useState<boolean>(true)
   const [removeTemporaryFiles, setRemoveTemporaryFiles] = useState<boolean>(true)
@@ -131,20 +310,155 @@ function App() {
   const [diskFreeBytes, setDiskFreeBytes] = useState<number | null>(null)
   const [activeTab, setActiveTab] = useState<NavTab>('discover')
   const [libraryFilter, setLibraryFilter] = useState<string>('')
+  const [libraryStatusFilter, setLibraryStatusFilter] = useState<
+    'all' | 'installed' | 'not_installed'
+  >('all')
+  const [localLibraryItems, setLocalLibraryItems] = useState<LocalLibraryItem[]>([])
+  const [pathStateByKey, setPathStateByKey] = useState<Record<string, LibraryPathState>>({})
+  const [hiddenLibraryKeys, setHiddenLibraryKeys] = useState<Set<string>>(() => new Set())
+  const installWatchRef = useRef<Map<string, number>>(new Map())
+  const pathStateByKeyRef = useRef(pathStateByKey)
+  const refreshInstallableDebounceRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    pathStateByKeyRef.current = pathStateByKey
+  }, [pathStateByKey])
+
+  const refreshPathState = useCallback(async (title: string, path: string, jobId?: string) => {
+    const key = pathStateKey(path, { jobId, title })
+    const state = await sourcesApi.inspectLibraryPath(title, path, jobId)
+    setPathStateByKey((prev) => ({ ...prev, [key]: state }))
+    return state
+  }, [])
+
+  const watchForInstalledGame = useCallback(
+    (title: string, destPath: string, jobId?: string) => {
+      const watchKey = pathStateKey(destPath, { jobId, title })
+      const existing = installWatchRef.current.get(watchKey)
+      if (existing != null) {
+        window.clearInterval(existing)
+      }
+      let ticks = 0
+      const intervalId = window.setInterval(() => {
+        ticks += 1
+        void refreshPathState(title, destPath, jobId).then((state) => {
+          if (state.hasGame) {
+            setActionMessage('Instalação concluída — pode jogar.')
+            window.clearInterval(intervalId)
+            installWatchRef.current.delete(watchKey)
+          }
+        })
+        if (ticks >= 90 && installWatchRef.current.has(watchKey)) {
+          window.clearInterval(intervalId)
+          installWatchRef.current.delete(watchKey)
+        }
+      }, 2000)
+      installWatchRef.current.set(watchKey, intervalId)
+    },
+    [refreshPathState],
+  )
+
+  const refreshInstallablePaths = useCallback(() => {
+    const states = pathStateByKeyRef.current
+    for (const job of jobs) {
+      if (!isJobFinished(job)) continue
+      const state = states[pathStateKey(job.destPath, jobPathCtx(job))]
+      if (state?.hasGame) continue
+      void refreshPathState(job.title, job.destPath, job.id)
+    }
+    const jobPaths = new Set(
+      jobs.map((job) => resolveDeletePath(job.destPath).toLowerCase()).filter(Boolean),
+    )
+    for (const item of localLibraryItems) {
+      if (!item.isDir) continue
+      if (jobPaths.has(item.path.toLowerCase())) continue
+      const state = states[pathStateKey(item.path, { title: item.name })]
+      if (state?.hasGame) continue
+      void refreshPathState(item.name, item.path)
+    }
+  }, [jobs, localLibraryItems, refreshPathState])
+
+  useEffect(() => {
+    const watches = installWatchRef.current
+    return () => {
+      for (const intervalId of watches.values()) {
+        window.clearInterval(intervalId)
+      }
+      watches.clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'library') return
+    refreshInstallablePaths()
+  }, [activeTab, refreshInstallablePaths])
+
+  useEffect(() => {
+    if (activeTab !== 'library') return
+
+    const debouncedRefresh = () => {
+      if (refreshInstallableDebounceRef.current != null) {
+        window.clearTimeout(refreshInstallableDebounceRef.current)
+      }
+      refreshInstallableDebounceRef.current = window.setTimeout(() => {
+        refreshInstallablePaths()
+      }, 1500)
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        debouncedRefresh()
+      }
+    }
+    window.addEventListener('focus', debouncedRefresh)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', debouncedRefresh)
+      document.removeEventListener('visibilitychange', onVisible)
+      if (refreshInstallableDebounceRef.current != null) {
+        window.clearTimeout(refreshInstallableDebounceRef.current)
+      }
+    }
+  }, [activeTab, refreshInstallablePaths])
+
+  const pendingInstallSignature = useMemo(
+    () =>
+      jobs
+        .filter((job) => isJobFinished(job) && jobNeedsInstall(job, pathStateByKey))
+        .map((job) => job.id)
+        .join('|'),
+    [jobs, pathStateByKey],
+  )
+
+  useEffect(() => {
+    if (activeTab !== 'library' || !pendingInstallSignature) return
+    refreshInstallablePaths()
+    const timer = window.setInterval(refreshInstallablePaths, 6000)
+    return () => window.clearInterval(timer)
+  }, [activeTab, pendingInstallSignature, refreshInstallablePaths])
+
+  const refreshLibraryScan = useCallback(() => {
+    void sourcesApi
+      .scanDefaultDownloadPath()
+      .then((items) => setLocalLibraryItems(items))
+      .catch(() => {
+        /* mantém lista anterior se o scan falhar */
+      })
+  }, [])
 
   useEffect(() => {
     void dispatch(fetchSources())
     void sourcesApi.syncSources().then(() => dispatch(fetchSources()))
     void dispatch(fetchJobs())
 
-    const polling = window.setInterval(() => {
-      void dispatch(fetchJobs())
-    }, 5000)
-
     void (async () => {
       try {
         const path = await sourcesApi.getDefaultDownloadPath()
-        if (path) setDefaultDownloadPath(path)
+        if (path) {
+          setDefaultDownloadPath(path)
+          const scanned = await sourcesApi.scanDefaultDownloadPath()
+          setLocalLibraryItems(scanned)
+        }
         const enabled = await sourcesApi.getSeedTorrentsEnabled()
         setSeedTorrentsEnabled(enabled)
         const [org, after, ver, rem, speed, dis] = await Promise.all([
@@ -175,10 +489,57 @@ function App() {
       }
     })()
 
+    let unlistenExtract: (() => void) | undefined
+    let unlistenJob: (() => void) | undefined
+    void tauriClient.listenExtractStatus((event) => {
+      dispatch(extractStatusReceived(event))
+      const job = store.getState().queue.jobs.find((row) => row.id === event.jobId)
+      if (job) {
+        void refreshPathState(job.title, job.destPath, job.id)
+      }
+    }).then((fn) => {
+      unlistenExtract = fn
+    })
+    void tauriClient.listenJobProgress((event) => {
+      dispatch(jobProgressReceived(event))
+    }).then((fn) => {
+      unlistenJob = fn
+    })
+
     return () => {
-      window.clearInterval(polling)
+      unlistenExtract?.()
+      unlistenJob?.()
     }
-  }, [dispatch])
+  }, [dispatch, refreshPathState])
+
+  useEffect(() => {
+    if (activeTab !== 'library') return
+    refreshLibraryScan()
+    void dispatch(fetchJobs())
+  }, [activeTab, dispatch, refreshLibraryScan])
+
+  useEffect(() => {
+    if (!defaultDownloadPath.trim()) return
+    refreshLibraryScan()
+  }, [defaultDownloadPath, refreshLibraryScan])
+
+  const needsFastJobPolling = jobs.some(
+    (job) =>
+      job.status === 'downloading' ||
+      job.status === 'pending' ||
+      job.status === 'retrying',
+  )
+
+  useEffect(() => {
+    if (activeTab !== 'downloads' && activeTab !== 'library' && !needsFastJobPolling) return
+
+    const intervalMs =
+      activeTab === 'downloads' ? 2500 : needsFastJobPolling ? 4000 : 12000
+    const polling = window.setInterval(() => {
+      void dispatch(fetchJobs())
+    }, intervalMs)
+    return () => window.clearInterval(polling)
+  }, [dispatch, activeTab, needsFastJobPolling])
 
   useEffect(() => {
     if (activeTab !== 'settings') return
@@ -200,37 +561,207 @@ function App() {
 
   const [catalogGames, setCatalogGames] = useState<CatalogGame[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
-  const [failedCoverIds, setFailedCoverIds] = useState<string[]>([])
+  const [catalogError, setCatalogError] = useState<string>('')
+  const [downloadNow, setDownloadNow] = useState(() => Date.now())
 
-  const visibleCatalogGames = useMemo(
-    () => catalogGames.filter((g) => !!g.coverUrl && !failedCoverIds.includes(g.id)),
-    [catalogGames, failedCoverIds],
+  const jobPathSignature = jobs
+    .map((job) => `${job.id}:${job.status}:${job.destPath}`)
+    .join('|')
+  const libraryPathSignature = localLibraryItems
+    .filter((item) => item.isDir)
+    .map((item) => item.path)
+    .sort()
+    .join('|')
+
+  useEffect(() => {
+    if (activeTab !== 'library') return
+
+    let cancelled = false
+    const candidates = new Map<string, { title: string; path: string; jobId?: string }>()
+    for (const job of jobs) {
+      const pathKey = pathStateKey(job.destPath, jobPathCtx(job))
+      if (job.destPath.trim()) {
+        candidates.set(pathKey, { title: job.title, path: job.destPath, jobId: job.id })
+      }
+    }
+    for (const item of localLibraryItems) {
+      if (!item.isDir) continue
+      const pathKey = pathStateKey(item.path, { title: item.name })
+      if (!candidates.has(pathKey)) {
+        candidates.set(pathKey, { title: item.name, path: item.path })
+      }
+    }
+    if (candidates.size === 0) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    void Promise.all(
+      [...candidates.entries()].map(async ([pathKey, entry]) => {
+        try {
+          const state = await sourcesApi.inspectLibraryPath(
+            entry.title,
+            entry.path,
+            entry.jobId,
+          )
+          return [pathKey, state] as const
+        } catch {
+          return [
+            pathKey,
+            {
+              playable: false,
+              hasGame: false,
+              needsInstall: false,
+              needsExtraction: false,
+              installPath: null,
+            },
+          ] as const
+        }
+      }),
+    ).then((results) => {
+      if (!cancelled) {
+        setPathStateByKey((prev) => ({ ...prev, ...Object.fromEntries(results) }))
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stable path signatures
+  }, [activeTab, jobPathSignature, libraryPathSignature])
+
+  const metadataJobSignature = jobs
+    .filter((job) => isTorrentMetadataPhase(job))
+    .map((job) => job.id)
+    .join('|')
+
+  useEffect(() => {
+    if (!metadataJobSignature) return
+    const timer = window.setInterval(() => setDownloadNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [metadataJobSignature])
+
+  const isSourceEnabled = (sourceId: string) => !disabledSourceIds.includes(sourceId)
+
+  const enabledSourcesCount = useMemo(
+    () => sources.filter((source) => !disabledSourceIds.includes(source.id)).length,
+    [sources, disabledSourceIds],
   )
+
+  const {
+    resolveCover,
+    warmCover,
+    warmCovers,
+    refreshCovers,
+    syncJobCovers,
+    lookupCoverForTitle,
+    lookupMissingLibraryCover,
+    invalidateLocalCover,
+  } = useGameCovers(catalogGames)
+
+  useEffect(() => {
+    const items = catalogGames
+      .filter((game) => game.coverUrl?.trim())
+      .map((game) => ({ title: game.title, coverUrl: game.coverUrl!.trim() }))
+    if (items.length > 0) warmCovers(items)
+  }, [catalogGames, warmCovers])
+
+  const displayCatalogSource = useMemo(() => {
+    const q = discoverSearch.trim()
+    if (q.length < 2) return []
+    return catalogGames
+  }, [catalogGames, discoverSearch])
+
+  useEffect(() => {
+    syncJobCovers(jobs)
+  }, [jobs, syncJobCovers])
 
   useEffect(() => {
     let cancelled = false
-    const delay = discoverSearch.trim().length >= 2 ? 420 : 0
+    const query = discoverSearch.trim()
+    if (query.length < 2) {
+      setCatalogGames([])
+      setCatalogLoading(false)
+      setCatalogError('')
+      return
+    }
+
+    if (enabledSourcesCount === 0) {
+      setCatalogGames([])
+      setCatalogLoading(false)
+      setCatalogError('')
+      return
+    }
+
     const timer = window.setTimeout(() => {
       setCatalogLoading(true)
       void (async () => {
         try {
-          const rows = await sourcesApi.searchGameCatalog({ query: discoverSearch })
+          const rows = await sourcesApi.searchGameCatalog({
+            query: discoverSearch,
+            includeSteam: false,
+            onlyWithSources: true,
+          })
           if (!cancelled) {
             setCatalogGames(rows)
-            setFailedCoverIds([])
+            setCatalogError('')
           }
-        } catch {
-          if (!cancelled) setCatalogGames([])
+        } catch (error) {
+          if (!cancelled) {
+            setCatalogError(
+              error instanceof Error
+                ? error.message
+                : 'Falha ao pesquisar nas fontes. Tente novamente.',
+            )
+          }
         } finally {
           if (!cancelled) setCatalogLoading(false)
         }
       })()
-    }, delay)
+    }, 220)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [discoverSearch])
+  }, [discoverSearch, enabledSourcesCount])
+
+  useEffect(() => {
+    if (activeTab !== 'library' && activeTab !== 'downloads') return
+
+    let cancelled = false
+
+    const loadQueue = async (attempt = 0) => {
+      if (activeTab === 'downloads') setDownloadsBooting(true)
+      const result = await dispatch(fetchJobs())
+      if (cancelled) return
+
+      const shouldRetry =
+        activeTab === 'downloads' &&
+        fetchJobs.rejected.match(result) &&
+        attempt < 8 &&
+        (result.error.message?.includes('sidecar') ||
+          result.error.message?.includes('download-engine'))
+
+      if (shouldRetry) {
+        await new Promise((resolve) => window.setTimeout(resolve, 400))
+        return loadQueue(attempt + 1)
+      }
+
+      if (activeTab === 'downloads') setDownloadsBooting(false)
+
+      if (activeTab === 'library') {
+        refreshLibraryScan()
+      }
+    }
+
+    void loadQueue()
+
+    return () => {
+      cancelled = true
+      setDownloadsBooting(false)
+    }
+  }, [activeTab, dispatch, refreshLibraryScan])
 
   const closeDiscoverPicker = useCallback(() => {
     setDiscoverPickGame(null)
@@ -245,13 +776,37 @@ function App() {
     setDiscoverPickOptions([])
     setDiscoverPickError(null)
     setDiscoverPickLoading(true)
+
     void (async () => {
+      if (enabledSourcesCount === 0) {
+        setDiscoverPickError(
+          'Nenhuma fonte ativa. Ative pelo menos uma fonte (ex.: FitGirl) em Configurações.',
+        )
+        setDiscoverPickLoading(false)
+        return
+      }
+
+      const hasPath =
+        defaultDownloadPath.trim().length > 0 || (await sourcesApi.getDefaultDownloadPath())
+      if (!hasPath) {
+        setDiscoverPickError(
+          'Defina a pasta de downloads em Configurações antes de baixar.',
+        )
+        setDiscoverPickLoading(false)
+        return
+      }
+
       try {
-        const rows = await sourcesApi.searchDownloadOptions({ query: game.title })
-        setDiscoverPickOptions(rows)
-        if (rows.length === 0) {
+        const rows = await sourcesApi.searchDownloadOptions({
+          query: buildSourceSearchQuery(game.title),
+        })
+        const downloadable = rows.filter(isDownloadableOption)
+        setDiscoverPickOptions(downloadable)
+        if (downloadable.length === 0) {
           setDiscoverPickError(
-            'Nenhuma ligação encontrada para este título. Confirme que tem fontes ativas (ex. FitGirl) em Configurações.',
+            rows.length > 0
+              ? 'Foram encontradas páginas, mas sem torrents válidos. Tente outro jogo ou fonte.'
+              : 'Nenhum torrent encontrado para este título. Verifique se a fonte FitGirl está ativa.',
           )
         }
       } catch {
@@ -261,7 +816,7 @@ function App() {
         setDiscoverPickLoading(false)
       }
     })()
-  }, [])
+  }, [defaultDownloadPath, enabledSourcesCount])
 
   useEffect(() => {
     if (!discoverPickGame) return
@@ -272,24 +827,177 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [discoverPickGame, closeDiscoverPicker])
 
-  const isSourceEnabled = (sourceId: string) => !disabledSourceIds.includes(sourceId)
+  useEffect(() => {
+    if (!discoverPickGame?.coverUrl) return
+    warmCover(discoverPickGame.title, discoverPickGame.coverUrl)
+  }, [discoverPickGame, warmCover])
 
   const canSubmitSource = useMemo(() => sourceUrl.trim().length > 0, [sourceUrl])
 
+  const isLibraryInstalled = (item: LibraryEntry) =>
+    isPlayableLibraryItem(item, jobs, pathStateByKey)
+
+  const handlePickGameInstallFolder = async (
+    title: string,
+    destPath: string,
+    busyKey: string,
+    jobId?: string,
+  ) => {
+    setSavePathError('')
+    setActionMessage('')
+    setInstallBusyId(busyKey)
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Onde instalou o jogo?',
+        defaultPath: destPath || defaultDownloadPath || undefined,
+      })
+      if (typeof selected !== 'string') return
+
+      const state = await sourcesApi.setLibraryGameRoot(title, destPath, selected, jobId)
+      setPathStateByKey((prev) => ({
+        ...prev,
+        [pathStateKey(destPath, { jobId, title })]: state,
+      }))
+      if (state.hasGame) {
+        setActionMessage('Pasta de instalação guardada — pode jogar.')
+      } else {
+        setSavePathError(
+          'Pasta guardada, mas ainda não encontrámos o executável. Verifique se escolheu a pasta certa.',
+        )
+      }
+    } catch (error) {
+      setSavePathError(
+        error instanceof Error ? error.message : 'Não foi possível guardar a pasta de instalação.',
+      )
+    } finally {
+      setInstallBusyId(null)
+    }
+  }
+
+  const handlePlayLibraryItem = async (item: LibraryEntry) => {
+    setSavePathError('')
+    setActionMessage('')
+    const busyKey = item.kind === 'job' ? item.id : item.destPath
+    setPlayBusyId(busyKey)
+    try {
+      let launched = ''
+      if (item.kind === 'job') {
+        launched = await queueApi.launchJob(item.id)
+      } else {
+        launched = await sourcesApi.launchGame(item.title, item.destPath)
+      }
+      const name = launched.split(/[/\\]/).pop() ?? launched
+      setActionMessage(`A iniciar ${name}…`)
+    } catch (launchError) {
+      setSavePathError(formatLaunchError(launchError))
+    } finally {
+      setPlayBusyId(null)
+    }
+  }
+
+  const handleInstallItem = async (item: LibraryEntry) => {
+    setSavePathError('')
+    setActionMessage('A abrir instalador…')
+    const busyKey = item.kind === 'job' ? item.id : item.destPath
+    const jobId = item.kind === 'job' ? item.id : undefined
+    setInstallBusyId(busyKey)
+    try {
+      await sourcesApi.launchSetup(item.title, item.destPath, jobId)
+      setActionMessage('Siga o assistente na janela do instalador.')
+      watchForInstalledGame(item.title, item.destPath, jobId)
+      await refreshPathState(item.title, item.destPath, jobId)
+    } catch (error) {
+      setSavePathError(formatLaunchError(error))
+      setActionMessage('')
+    } finally {
+      setInstallBusyId(null)
+    }
+  }
+
+
   const libraryItems = useMemo(() => {
     const normalizedFilter = libraryFilter.trim().toLowerCase()
-    const sorted = [...jobs].sort((a, b) => {
-      const updatedA = a.updatedAt ?? a.createdAt ?? ''
-      const updatedB = b.updatedAt ?? b.createdAt ?? ''
-      return updatedB.localeCompare(updatedA)
-    })
-    if (!normalizedFilter) return sorted
-    return sorted.filter(
-      (item) =>
-        item.title.toLowerCase().includes(normalizedFilter) ||
-        item.url.toLowerCase().includes(normalizedFilter),
+
+    const jobPaths = new Set(
+      jobs.map((job) => resolveDeletePath(job.destPath).toLowerCase()).filter(Boolean),
     )
-  }, [jobs, libraryFilter])
+
+    const folderEntries: LibraryEntry[] = localLibraryItems
+      .filter((item) => item.isDir)
+      .filter((item) => {
+        const folderPath = item.path.toLowerCase()
+        if (jobPaths.has(folderPath)) return false
+        const blockedByActiveJob = jobs.some(
+          (job) =>
+            ['downloading', 'pending', 'retrying', 'extracting', 'paused'].includes(job.status) &&
+            jobPathsOverlap(item.path, job.destPath),
+        )
+        return !blockedByActiveJob
+      })
+      .map((item) => ({
+        id: `folder-${item.path}`,
+        title: item.name,
+        status: 'installed',
+        destPath: item.path,
+        kind: 'folder' as const,
+      }))
+
+    const jobEntries: LibraryEntry[] = jobs
+      .filter((job) => job.status !== 'cancelled')
+      .map((job) => ({
+        id: job.id,
+        title: job.title,
+        status: job.status,
+        destPath: job.destPath,
+        kind: 'job' as const,
+        job,
+      }))
+
+    const scoreLibraryEntry = (item: LibraryEntry): number => {
+      if (isPlayableLibraryItem(item, jobs, pathStateByKey)) return 100
+      if (
+        item.kind === 'job' &&
+        ['downloading', 'pending', 'retrying', 'extracting', 'paused'].includes(item.status)
+      ) {
+        return 80
+      }
+      if (needsInstallItem(item, pathStateByKey)) return 60
+      if (item.kind === 'folder') return 40
+      return 20
+    }
+
+    const merged = dedupeLibraryEntries([...jobEntries, ...folderEntries], scoreLibraryEntry)
+      .filter((item) => !hiddenLibraryKeys.has(libraryGameKey(item.title)))
+
+    const sorted = merged.sort((a, b) =>
+      b.title.localeCompare(a.title, 'pt', { sensitivity: 'base' }),
+    )
+
+    const byStatus = sorted.filter((item) => {
+      if (libraryStatusFilter === 'installed') {
+        return isPlayableLibraryItem(item, jobs, pathStateByKey)
+      }
+      if (libraryStatusFilter === 'not_installed') {
+        return item.kind === 'job' && !isPlayableLibraryItem(item, jobs, pathStateByKey)
+      }
+      return true
+    })
+
+    if (!normalizedFilter) return byStatus
+    return byStatus.filter((item) => item.title.toLowerCase().includes(normalizedFilter))
+  }, [jobs, localLibraryItems, libraryFilter, libraryStatusFilter, pathStateByKey, hiddenLibraryKeys])
+
+  useEffect(() => {
+    if (activeTab !== 'library') return
+    const timer = window.setTimeout(() => {
+      for (const item of libraryItems) {
+        lookupMissingLibraryCover(item.title)
+      }
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [activeTab, libraryItems, lookupMissingLibraryCover])
 
   const handleAddSource = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -358,7 +1066,7 @@ function App() {
     })
   }
 
-  const handleEnqueueFromDiscover = async (title: string, url: string) => {
+  const handleEnqueueFromDiscover = async (title: string, url: string, coverUrl?: string | null) => {
     setDiscoverError('')
     setDiscoverBusy(url)
     try {
@@ -369,9 +1077,16 @@ function App() {
         return
       }
       const destPath = defaultDownloadPath.trim() || fromDb || undefined
+      const resolvedCover = coverUrl ?? discoverPickGame?.coverUrl ?? null
       await dispatch(
-        enqueueJob({ title, url, destPath: destPath ?? undefined }),
+        enqueueJob({
+          title,
+          url,
+          destPath: destPath ?? undefined,
+          coverUrl: resolvedCover ?? undefined,
+        }),
       ).unwrap()
+      if (resolvedCover) refreshCovers()
       closeDiscoverPicker()
       setActiveTab('downloads')
     } catch (error) {
@@ -439,525 +1154,264 @@ function App() {
     return `${h} h ${m % 60} min`
   }
 
-  const jobStatusLabel = (status: string) => {
-    switch (status) {
+  const jobStatusLabel = (job: DownloadJob) => {
+    if (isTorrentMetadataPhase(job)) return 'A ligar peers'
+    switch (job.status) {
       case 'pending':
         return 'Na fila'
       case 'downloading':
         return 'A transferir'
       case 'seeding':
-        return 'A semear'
+        return 'Download completo · a semear'
       case 'retrying':
         return 'A repetir'
       case 'paused':
         return 'Pausado'
       case 'completed':
         return 'Concluído'
+      case 'extracting':
+        return 'A processar'
+      case 'extracted':
+        return 'Instalado'
       case 'failed':
         return 'Falhou'
+      case 'skipped':
+        return 'Pronto'
       case 'cancelled':
         return 'Cancelado'
       default:
-        return status
+        return job.status
     }
   }
 
   const showEtaForJob = (job: DownloadJob) => {
+    if (isTorrentMetadataPhase(job)) return false
     if (job.status !== 'downloading' && job.status !== 'retrying') return false
     const eta = job.etaSeconds
     return eta != null && Number.isFinite(eta) && eta > 0 && eta < 86400 * 2
   }
 
-  const renderDiscover = () => {
-    return (
-      <section className="page-stack page-stack--discover">
-        <article className="glass-card">
-          <header className="section-row">
-            <div>
-              <h2>Explorar</h2>
-              <p className="small-note">
-                Pesquise no catálogo (2+ letras): lista local + Steam opcional (cache 24h). Toque num jogo para ver
-                as ligações das suas fontes e escolher o download.
-              </p>
-            </div>
-          </header>
-          <div className="home-controls">
-            <div className="discover-search discover-search--compact">
-              <span className="discover-search__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="6" />
-                  <path d="M20 20l-4.2-4.2" />
-                </svg>
-              </span>
-              <input
-                placeholder="Pesquisar no catálogo (mín. 2 caracteres)…"
-                value={discoverSearch}
-                onChange={(event) => setDiscoverSearch(event.target.value)}
-                autoComplete="off"
-              />
-            </div>
-          </div>
-
-          {discoverError && !discoverPickGame ? (
-            <p className="error discover-error">{discoverError}</p>
-          ) : null}
-
-          {visibleCatalogGames.length > 0 ? (
-            <>
-              <p className="small-note discover-grid-label">
-                Catálogo ({visibleCatalogGames.length})
-                {catalogLoading ? ' · a atualizar…' : ''}
-              </p>
-              <ul className="game-grid">
-                {visibleCatalogGames.map((game) => (
-                  <li key={game.id} className="game-card">
-                    <button
-                      type="button"
-                      className="game-card__hitbox"
-                      onClick={() => openDiscoverPicker(game)}
-                      aria-label={`Ver opções de download: ${game.title}`}
-                    >
-                      <CatalogCover
-                        title={game.title}
-                        coverUrl={game.coverUrl}
-                        onExhausted={() => {
-                          setFailedCoverIds((prev) =>
-                            prev.includes(game.id) ? prev : [...prev, game.id],
-                          )
-                        }}
-                      />
-                      <div className="game-card__overlay">
-                        <strong>{game.title}</strong>
-                        {game.genre.trim().toLowerCase() !== 'steam' ? (
-                          <span>{game.genre}</span>
-                        ) : null}
-        </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : catalogLoading ? (
-            <p className="small-note discover-grid-label">Catálogo (a atualizar…)</p>
-          ) : (
-            <p className="small-note discover-empty-hint">
-              {discoverSearch.trim().length < 2
-                ? 'Escreva pelo menos 2 letras para ver jogos no catálogo.'
-                : 'Nenhum jogo encontrado para esta pesquisa.'}
-            </p>
-          )}
-
-          {discoverPickGame ? (
-            <div
-              className="discover-modal-backdrop"
-              role="presentation"
-              onClick={() => closeDiscoverPicker()}
-            >
-              <div
-                className="discover-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="discover-modal-title"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <header className="discover-modal__header">
-        <div>
-                    <h3 id="discover-modal-title">{discoverPickGame.title}</h3>
-                    <p className="small-note discover-modal__subtitle">
-                      Ligações encontradas nas suas fontes ativas
-          </p>
-        </div>
-        <button
-          type="button"
-                    className="discover-modal__close"
-                    onClick={() => closeDiscoverPicker()}
-                    aria-label="Fechar"
-                  >
-                    ×
-                  </button>
-                </header>
-                {discoverPickLoading ? (
-                  <p className="small-note discover-modal__body">A consultar fontes…</p>
-                ) : null}
-                {!discoverPickLoading && discoverPickError ? (
-                  <p className="error discover-modal__body">{discoverPickError}</p>
-                ) : null}
-                {discoverError && discoverPickGame ? (
-                  <p className="error discover-modal__body">{discoverError}</p>
-                ) : null}
-                {!discoverPickLoading && discoverPickOptions.length > 0 ? (
-                  <ul className="discover-source-list discover-source-list--modal">
-                    {discoverPickOptions.map((opt, index) => (
-                      <li key={`${opt.url}-${index}`} className="discover-source-row">
-                        <div className="discover-source-row__text">
-                          <strong>{opt.title}</strong>
-                          <span className="small-note">
-                            {opt.sourceName} · {opt.downloadType}
-                            {opt.quality ? ` · ${opt.quality}` : ''}
-                          </span>
-                        </div>
-                        <button
-                          className="btn btn-outline"
-                          type="button"
-                          disabled={discoverBusy === opt.url}
-                          onClick={() => void handleEnqueueFromDiscover(opt.title, opt.url)}
-                        >
-                          {discoverBusy === opt.url ? 'A adicionar…' : 'Baixar'}
-        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-        </article>
-      </section>
-    )
+  const jobTransferDetail = (job: DownloadJob) => {
+    if (isTorrentMetadataPhase(job)) {
+      return metadataPhaseDetail(job, downloadNow)
+    }
+    const total = job.totalBytes > 0 ? formatSize(job.totalBytes) : 'tamanho desconhecido'
+    return `${formatSize(job.bytesDownloaded)} / ${total}`
   }
 
-  const renderDownloads = () => {
-    const queuedJobs = jobs.filter((job) => job.status !== 'completed')
+  const handleDeleteLibraryItem = async (item: LibraryEntry) => {
+    const confirmed = await ask(`Apagar "${item.title}" e os ficheiros na pasta de instalação?`, {
+      title: 'Confirmar exclusão',
+      kind: 'warning',
+    })
+    if (!confirmed) return
 
-    return (
-      <article className="glass-card downloads-page">
-        <header className="section-row downloads-page__header">
-          <div>
-            <h2>Downloads</h2>
-            <p className="small-note">Acompanhe o progresso dos seus downloads.</p>
-          </div>
-          <button
-            className="btn btn-outline btn-downloads-pause-all"
-            type="button"
-            onClick={() => {
-              queuedJobs.forEach((job) => {
-                if (job.status === 'downloading' || job.status === 'pending' || job.status === 'retrying') {
-                  void dispatch(pauseJob(job.id))
-                }
-              })
-            }}
-          >
-            Pausar todos
-          </button>
-        </header>
+    const gameKey = libraryGameKey(item.title)
+    const deletePath = resolveDeletePath(item.destPath)
+    const relatedJobs = findRelatedLibraryJobs(item, jobs)
 
-        {queueError ? <p className="error">{queueError}</p> : null}
-
-        <ul className="download-list download-list--compact">
-          {queuedJobs.map((job) => (
-            <li key={job.id} className="download-item download-item--compact">
-              <div className="download-item__thumb">
-                <CatalogCover title={job.title} coverUrl={null} />
-              </div>
-              <div className="download-item__main">
-                <div className="download-item__header">
-                  <strong>{job.title}</strong>
-                </div>
-                <div className="progress-bar progress-bar--large">
-                  <div className="progress-fill" style={{ width: `${job.progress}%` }} />
-                </div>
-                <div className="download-item__meta download-item__meta--compact download-item__meta--detail">
-                  <span>
-                    <span className="download-item__status-tag">{jobStatusLabel(job.status)}</span>
-                    {' · '}
-                    {formatSize(job.bytesDownloaded)}
-                    {' / '}
-                    {job.totalBytes > 0 ? formatSize(job.totalBytes) : 'tamanho desconhecido'}
-                  </span>
-                  {(job.status === 'downloading' ||
-                    job.status === 'retrying' ||
-                    job.status === 'seeding') &&
-                  (job.speedBps ?? 0) > 0 ? (
-                    <span>
-                      {job.status === 'seeding' ? 'Velocidade (semear)' : 'Velocidade'}:{' '}
-                      {formatSpeed(job.speedBps)}
-                    </span>
-                  ) : null}
-                  {showEtaForJob(job) && formatEta(job.etaSeconds) ? (
-                    <span>Tempo restante (est.): {formatEta(job.etaSeconds)}</span>
-                  ) : null}
-                  {job.errorMsg ? <span className="error">{job.errorMsg}</span> : null}
-                </div>
-              </div>
-              <div className="download-item__actions">
-                <span className="download-item__percent">{Math.round(job.progress)}%</span>
-                {(job.status === 'downloading' ||
-                  job.status === 'pending' ||
-                  job.status === 'retrying' ||
-                  job.status === 'seeding') && (
-                  <button
-                    className="download-action-circle"
-                    type="button"
-                    onClick={() => void dispatch(pauseJob(job.id))}
-                    aria-label={`Pausar ${job.title}`}
-                  >
-                    ❚❚
-                  </button>
-                )}
-                {(job.status === 'paused' || job.status === 'failed') && (
-                  <button
-                    className="download-action-circle"
-                    type="button"
-                    onClick={() => void dispatch(resumeJob(job.id))}
-                    aria-label={`Continuar ${job.title}`}
-                  >
-                    ▶
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-
-        {!queueLoading && queuedJobs.length === 0 ? (
-          <p className="empty-message">Nenhum download em andamento no momento.</p>
-        ) : null}
-
-        <footer className="downloads-footer">
-          <div className="downloads-footer__meta">
-            <span>
-              Velocidade combinada:{' '}
-              {formatSpeed(queuedJobs.reduce((sum, job) => sum + (job.speedBps ?? 0), 0))}
-            </span>
-            <span>
-              {queuedJobs.length} item(ns) na fila (inclui semeadura se aplicável)
-            </span>
-          </div>
-        </footer>
-      </article>
+    setHiddenLibraryKeys((prev) => new Set(prev).add(gameKey))
+    setLocalLibraryItems((prev) =>
+      prev.filter((folder) => {
+        if (!folder.isDir) return true
+        if (libraryGameKey(folder.name) === gameKey) return false
+        if (resolveDeletePath(folder.path).toLowerCase() === deletePath.toLowerCase()) return false
+        return !relatedJobs.some((job) => jobPathsOverlap(folder.path, job.destPath))
+      }),
     )
+    for (const job of relatedJobs) {
+      dispatch(removeJobLocally(job.id))
+    }
+    setPathStateByKey((prev) => {
+      const next = { ...prev }
+      for (const key of Object.keys(next)) {
+        const matchesPath = key.includes(deletePath.toLowerCase())
+        const matchesJob = relatedJobs.some((job) => key === `job:${job.id}`)
+        if (matchesPath || matchesJob) delete next[key]
+      }
+      return next
+    })
+
+    try {
+      if (deletePath) {
+        try {
+          await sourcesApi.deleteLocalLibraryItem(deletePath)
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          if (
+            !msg.includes('local_item_not_found') &&
+            !msg.includes('path_outside_default_download_path')
+          ) {
+            throw error
+          }
+        }
+      }
+
+      for (const job of relatedJobs) {
+        try {
+          await queueApi.removeJobFromLibrary(job.id)
+        } catch {
+          try {
+            await dispatch(cancelJob(job.id)).unwrap()
+          } catch {
+            /* já removido localmente */
+          }
+        }
+      }
+
+      const scanned = await sourcesApi.scanDefaultDownloadPath()
+      setLocalLibraryItems(
+        scanned.filter((folder) => !folder.isDir || libraryGameKey(folder.name) !== gameKey),
+      )
+    } catch (error) {
+      setHiddenLibraryKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(gameKey)
+        return next
+      })
+      setSavePathError(error instanceof Error ? error.message : 'Falha ao apagar item.')
+      void dispatch(fetchJobs())
+      const scanned = await sourcesApi.scanDefaultDownloadPath().catch(() => [] as LocalLibraryItem[])
+      setLocalLibraryItems(scanned)
+    }
   }
+
+  const renderDiscover = () => (
+    <DiscoverPage
+      discoverSearch={discoverSearch}
+      catalogLoading={catalogLoading}
+      discoverError={discoverError}
+      catalogError={catalogError}
+      displayCatalogSource={displayCatalogSource}
+      discoverPickGame={discoverPickGame}
+      discoverPickLoading={discoverPickLoading}
+      discoverPickError={discoverPickError}
+      discoverPickOptions={discoverPickOptions}
+      discoverBusy={discoverBusy}
+      enabledSourcesCount={enabledSourcesCount}
+      setDiscoverSearch={setDiscoverSearch}
+      onGoSettings={() => setActiveTab('settings')}
+      openDiscoverPicker={openDiscoverPicker}
+      closeDiscoverPicker={closeDiscoverPicker}
+      handleEnqueueFromDiscover={handleEnqueueFromDiscover}
+      resolveCover={resolveCover}
+      warmCover={warmCover}
+      lookupCoverForTitle={lookupCoverForTitle}
+      invalidateLocalCover={invalidateLocalCover}
+    />
+  )
+
+  const renderDownloads = () => (
+    <DownloadsPage
+      jobs={jobs}
+      queueLoading={queueLoading}
+      queueError={queueError}
+      downloadsBooting={downloadsBooting}
+      savePathError={savePathError}
+      actionMessage={actionMessage}
+      isTorrentMetadataPhase={isTorrentMetadataPhase}
+      resolveJobProgressPercent={resolveJobProgressPercent}
+      formatProgressPercent={formatProgressPercent}
+      formatSpeed={formatSpeed}
+      formatEta={formatEta}
+      jobStatusLabel={jobStatusLabel}
+      showEtaForJob={showEtaForJob}
+      jobTransferDetail={jobTransferDetail}
+      onOpenFolder={queueApi.openJobFolder}
+      onPauseJob={async (id) => {
+        await dispatch(pauseJob(id))
+      }}
+      onResumeJob={async (id) => {
+        await dispatch(resumeJob(id))
+      }}
+      onCancelJob={async (id) => {
+        await dispatch(cancelJob(id))
+      }}
+      onClearCompleted={async () => {
+        await dispatch(clearCompletedJobs())
+      }}
+      onPauseAll={async () => {
+        const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
+        activeJobs.forEach((job) => {
+          if (
+            job.status === 'downloading' ||
+            job.status === 'pending' ||
+            job.status === 'retrying'
+          ) {
+            void dispatch(pauseJob(job.id))
+          }
+        })
+      }}
+      resolveCover={resolveCover}
+      invalidateLocalCover={invalidateLocalCover}
+    />
+  )
 
   const renderLibrary = () => (
-    <article className="glass-card library-page">
-      <div className="library-page__controls">
-        <div className="library-toolbar">
-          <button className="chip chip--active" type="button">Todos</button>
-          <button className="chip" type="button">Instalados</button>
-          <button className="chip" type="button">Não instalados</button>
-          <button className="chip" type="button">Favoritos</button>
-        </div>
-        <div className="library-controls-right">
-          <div className="view-actions view-actions--compact">
-            <button className="btn btn-outline" type="button" aria-label="Visualização em grade">⊞</button>
-            <button className="btn btn-outline" type="button" aria-label="Visualização em lista">☰</button>
-          </div>
-          <button className="library-sort-btn" type="button">
-            Recentes <span aria-hidden="true">⌄</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="library-filter-row">
-        <div className="source-form source-form--single">
-          <input
-            placeholder="Filtrar por nome..."
-            value={libraryFilter}
-            onChange={(event) => setLibraryFilter(event.target.value)}
-          />
-        </div>
-      </div>
-
-      <ul className="game-grid library-grid-modern">
-        {libraryItems.map((item) => (
-          <li key={item.id} className="game-card library-game-card">
-            <CatalogCover title={item.title} coverUrl={null} />
-            <div className="game-card__overlay library-game-card__overlay">
-              <strong>{item.title}</strong>
-              <span>
-                {item.status === 'completed' || item.status === 'seeding'
-                  ? 'Instalado'
-                  : item.status === 'downloading' || item.status === 'pending' || item.status === 'retrying'
-                    ? 'A transferir'
-                    : item.status === 'paused'
-                      ? 'Pausado'
-                      : item.status === 'failed'
-                        ? 'Falhou'
-                        : 'Não instalado'}
-              </span>
-            </div>
-            {(item.status === 'completed' || item.status === 'seeding') && (
-              <button className="card-action card-action--library" type="button" onClick={() => { void queueApi.launchJob(item.id) }}>
-                ▷
-              </button>
-            )}
-            {(item.status === 'downloading' || item.status === 'pending' || item.status === 'retrying') && (
-              <button className="card-action card-action--library card-action--download-indicator" type="button" onClick={() => setActiveTab('downloads')}>
-                ↓
-              </button>
-            )}
-            {(item.status === 'paused' || item.status === 'failed') && (
-              <button className="card-action card-action--library" type="button" onClick={() => void dispatch(resumeJob(item.id))}>
-                ↻
-              </button>
-            )}
-            </li>
-        ))}
-          </ul>
-      {libraryItems.length === 0 ? <p className="empty-message">Nenhum jogo encontrado.</p> : null}
-    </article>
+    <LibraryPage
+      libraryItems={libraryItems}
+      jobs={jobs}
+      pathStateByKey={pathStateByKey}
+      libraryFilter={libraryFilter}
+      libraryStatusFilter={libraryStatusFilter}
+      playBusyId={playBusyId}
+      installBusyId={installBusyId}
+      savePathError={savePathError}
+      actionMessage={actionMessage}
+      setLibraryFilter={setLibraryFilter}
+      setLibraryStatusFilter={setLibraryStatusFilter}
+      setActiveTabDownloads={() => setActiveTab('downloads')}
+      onGoDiscover={() => setActiveTab('discover')}
+      resolveCover={resolveCover}
+      invalidateLocalCover={invalidateLocalCover}
+      libraryStatusMeta={libraryStatusMeta}
+      showPlayAction={showPlayAction}
+      showInstallAction={showInstallAction}
+      showLocateInstallAction={showLocateInstallAction}
+      hasManualInstallRoot={hasManualInstallRoot}
+      isLibraryInstalled={isLibraryInstalled}
+      handlePlayLibraryItem={handlePlayLibraryItem}
+      handleInstallItem={handleInstallItem}
+      handlePickGameInstallFolder={handlePickGameInstallFolder}
+      handleDeleteLibraryItem={handleDeleteLibraryItem}
+      onResumeItem={async (id) => {
+        await dispatch(resumeJob(id))
+      }}
+      onOpenLocalPath={sourcesApi.openLocalPath}
+    />
   )
 
   const renderSettings = () => (
-    <article className="glass-card settings-page">
-      <header className="section-row">
-        <div>
-          <h2>Configurações</h2>
-          <p className="small-note">Personalize sua experiência.</p>
-        </div>
-      </header>
-
-      <section className="settings-grid settings-grid-modern">
-        <article className="settings-panel settings-panel-modern">
-          <h3>Local de instalação</h3>
-          <p className="small-note">Escolha onde os jogos serão baixados e instalados.</p>
-          <div className="source-form source-form--single">
-            <input
-              placeholder="C:\\Games\\Downloads"
-              value={defaultDownloadPath}
-              onChange={(event) => setDefaultDownloadPath(event.target.value)}
-            />
-            <button className="btn btn-outline" type="button" onClick={() => void handleSelectDefaultPath()}>
-              Alterar
-            </button>
-          </div>
-          <p className="small-note">
-            Espaço disponível:{' '}
-            <span className="settings-highlight">
-              {diskFreeBytes != null ? formatSize(diskFreeBytes) : '—'}
-            </span>
-          </p>
-          <div className="settings-select-row">
-            <label>Organização</label>
-            <select
-              className="settings-select"
-              value={installOrganization}
-              onChange={(event) => setInstallOrganization(event.target.value)}
-            >
-              <option value="separate-folder">Criar pasta para cada jogo</option>
-              <option value="single-folder">Salvar tudo na mesma pasta</option>
-            </select>
-          </div>
-          <div className="settings-select-row">
-            <label>Após a instalação</label>
-            <select
-              className="settings-select"
-              value={afterInstallAction}
-              onChange={(event) => setAfterInstallAction(event.target.value)}
-            >
-              <option value="ask">Perguntar o que fazer</option>
-              <option value="open-folder">Abrir pasta</option>
-              <option value="launch-game">Iniciar jogo</option>
-            </select>
-          </div>
-          <div className="actions">
-            <button className="btn btn-primary" type="button" onClick={() => void handleSaveInstallSettings()}>
-              Salvar
-            </button>
-          </div>
-          {savePathError ? <p className="error">{savePathError}</p> : null}
-        </article>
-
-        <article className="settings-panel settings-panel-modern">
-          <h3>Fontes de download</h3>
-          <p className="small-note">Selecione as fontes de onde os jogos serão baixados.</p>
-          <ul className="source-toggles source-toggles-modern">
-            {sources.map((source) => (
-              <li key={source.id}>
-                <div>
-                  <strong>{source.name}</strong>
-                  <span>{source.url.replace(/^https?:\/\//, '')}</span>
-                </div>
-                <button
-                  type="button"
-                  className={isSourceEnabled(source.id) ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                  aria-label={`Ativar ${source.name}`}
-                  onClick={() => handleToggleSource(source.id)}
-                />
-            </li>
-            ))}
-          </ul>
-          <p className="small-note settings-hint">Fontes são agregadas de várias comunidades.</p>
-          <form onSubmit={handleAddSource} className="source-form source-form--single">
-            <input
-              placeholder="URL da fonte (.json)"
-              value={sourceUrl}
-              onChange={(event) => setSourceUrl(event.target.value)}
-            />
-            <button className="btn btn-outline" type="submit" disabled={!canSubmitSource}>
-              Adicionar
-            </button>
-          </form>
-        </article>
-      </section>
-      <section className="settings-panel settings-panel-modern settings-panel-full">
-        <h3>Outras opções</h3>
-        <div className="settings-option-row">
-          <div>
-            <strong>Verificar arquivos após o download</strong>
-            <span>Garante que os arquivos baixados não estão corrompidos.</span>
-          </div>
-          <button
-            type="button"
-            className={verifyAfterDownload ? 'switch-btn switch-btn--on' : 'switch-btn'}
-            aria-label="Verificar arquivos"
-            onClick={() => void handleToggleVerify(!verifyAfterDownload)}
-          />
-        </div>
-        <div className="settings-option-row">
-          <div>
-            <strong>Limitar velocidade de download</strong>
-            <span>Defina um limite máximo para os downloads.</span>
-          </div>
-          <select
-            className="settings-select settings-select--small"
-            value={downloadSpeedLimit}
-            onChange={(event) => void handleSpeedLimitChange(event.target.value)}
-          >
-            <option value="ilimitado">Ilimitado</option>
-            <option value="50mb">50 MB/s</option>
-            <option value="20mb">20 MB/s</option>
-            <option value="10mb">10 MB/s</option>
-          </select>
-        </div>
-        <div className="settings-option-row">
-          <div>
-            <strong>Excluir arquivos temporários</strong>
-            <span>Arquivos temporários serão removidos após a instalação.</span>
-          </div>
-          <button
-            type="button"
-            className={removeTemporaryFiles ? 'switch-btn switch-btn--on' : 'switch-btn'}
-            aria-label="Excluir temporários"
-            onClick={() => void handleToggleRemoveTemp(!removeTemporaryFiles)}
-          />
-        </div>
-        <div className="settings-option-row">
-          <div>
-            <strong>Semear torrent após concluir</strong>
-            <span>Mantém o compartilhamento ativo após finalizar o download.</span>
-          </div>
-          <button
-            type="button"
-            className={seedTorrentsEnabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
-            aria-label="Semear torrent após concluir"
-            onClick={() => void handleToggleSeed(!seedTorrentsEnabled)}
-          />
-        </div>
-        <div className="settings-option-row settings-option-row--stacked">
-          <div>
-            <strong>Estado das fontes</strong>
-            <span>Resumo das fontes configuradas no sistema.</span>
-          </div>
-          {sourcesLoading ? <p>Carregando fontes...</p> : null}
-          {sourcesError ? <p className="error">{sourcesError}</p> : null}
-          {!sourcesLoading && sources.length === 0 ? <p className="empty-message">Nenhuma fonte configurada ainda.</p> : null}
-          {!sourcesLoading && sources.length > 0 ? (
-            <p className="small-note">{sources.length} fonte(s) configurada(s).</p>
-          ) : null}
-        </div>
-      </section>
-    </article>
+    <SettingsPage
+      sourceUrl={sourceUrl}
+      defaultDownloadPath={defaultDownloadPath}
+      savePathError={savePathError}
+      diskFreeBytes={diskFreeBytes}
+      installOrganization={installOrganization}
+      afterInstallAction={afterInstallAction}
+      sources={sources}
+      sourcesLoading={sourcesLoading}
+      sourcesError={sourcesError}
+      verifyAfterDownload={verifyAfterDownload}
+      removeTemporaryFiles={removeTemporaryFiles}
+      seedTorrentsEnabled={seedTorrentsEnabled}
+      downloadSpeedLimit={downloadSpeedLimit}
+      canSubmitSource={canSubmitSource}
+      isSourceEnabled={isSourceEnabled}
+      setSourceUrl={setSourceUrl}
+      setDefaultDownloadPath={setDefaultDownloadPath}
+      setInstallOrganization={setInstallOrganization}
+      setAfterInstallAction={setAfterInstallAction}
+      handleSelectDefaultPath={handleSelectDefaultPath}
+      handleSaveInstallSettings={handleSaveInstallSettings}
+      handleAddSource={handleAddSource}
+      handleToggleSource={handleToggleSource}
+      handleToggleVerify={handleToggleVerify}
+      handleToggleRemoveTemp={handleToggleRemoveTemp}
+      handleToggleSeed={handleToggleSeed}
+      handleSpeedLimitChange={handleSpeedLimitChange}
+      formatSize={formatSize}
+    />
   )
 
   const renderMainContent = () => {
@@ -976,22 +1430,9 @@ function App() {
   }
 
   return (
-    <main className="nova-shell">
-      <aside className="sidebar">
-        <div className="sidebar__logo">N O V A</div>
-        <nav className="sidebar__nav">
-          <button className={activeTab === 'discover' ? 'sidebar-link sidebar-link--active' : 'sidebar-link'} type="button" onClick={() => setActiveTab('discover')}>Explorar</button>
-          <button className={activeTab === 'downloads' ? 'sidebar-link sidebar-link--active' : 'sidebar-link'} type="button" onClick={() => setActiveTab('downloads')}>Downloads</button>
-          <button className={activeTab === 'library' ? 'sidebar-link sidebar-link--active' : 'sidebar-link'} type="button" onClick={() => setActiveTab('library')}>Biblioteca</button>
-          <button className={activeTab === 'settings' ? 'sidebar-link sidebar-link--active' : 'sidebar-link'} type="button" onClick={() => setActiveTab('settings')}>Configurações</button>
-        </nav>
-        <div className="sidebar__theme">Tema escuro</div>
-      </aside>
-
-      <section className="main-panel">
-        <section className="main-content">{renderMainContent()}</section>
-      </section>
-    </main>
+    <AppShell activeTab={activeTab} onTabChange={setActiveTab}>
+      {renderMainContent()}
+    </AppShell>
   )
 }
 

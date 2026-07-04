@@ -1,22 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
-
-:root {
-  font-family: Poppins, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  color-scheme: dark;
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: #0b0c0f;
-  color: #eff3ff;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  line-height: 1.5;
-}
-
-* {
-  box-sizing: border-box;
 }
 
 #root {
