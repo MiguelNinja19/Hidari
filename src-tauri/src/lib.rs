@@ -1,14 +1,17 @@
+mod archive;
+mod launch;
+
 use regex::Regex;
 use rusqlite::OptionalExtension;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -20,6 +23,7 @@ use url::Url;
 const DOWNLOAD_EVENT_PROGRESS: &str = "download://progress";
 const QUEUE_EVENT_JOB_PROGRESS: &str = "queue://job-progress";
 const APP_EVENT_DEEP_LINK: &str = "app://deep-link";
+const EXTRACT_EVENT_STATUS: &str = "extract://status";
 
 // ── Sidecar State ─────────────────────────────────────────────────────────────
 
@@ -27,6 +31,26 @@ const APP_EVENT_DEEP_LINK: &str = "app://deep-link";
 struct SidecarState {
   port: Mutex<Option<u16>>,
   booting: Mutex<bool>,
+}
+
+#[derive(Default)]
+struct ExtractionState {
+  busy: Mutex<bool>,
+}
+
+impl ExtractionState {
+  fn try_acquire(&self) -> bool {
+    let mut guard = self.busy.lock().unwrap();
+    if *guard {
+      return false;
+    }
+    *guard = true;
+    true
+  }
+
+  fn release(&self) {
+    *self.busy.lock().unwrap() = false;
+  }
 }
 
 impl SidecarState {
@@ -179,6 +203,8 @@ struct DownloadOptionDto {
   download_type: String,
   url: String,
   quality: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  cover_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -191,6 +217,8 @@ struct SearchDownloadOptionsPayload {
 #[serde(rename_all = "camelCase")]
 struct SearchCatalogPayload {
   query: String,
+  include_steam: Option<bool>,
+  only_with_sources: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -239,23 +267,6 @@ struct SetAppSettingPayload {
 #[serde(rename_all = "camelCase")]
 struct DiskPathPayload {
   path: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HydraCatalogueSuggestion {
-  title: String,
-  object_id: String,
-  shop: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HydraGameDownloadSourceItem {
-  title: String,
-  uris: Vec<String>,
-  download_source_id: Option<String>,
-  download_source_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -382,11 +393,15 @@ struct DownloadJobDto {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct JobProgressEvent {
-  job_id: i64,
-  progress: i64,
+  job_id: String,
+  progress: f64,
   status: String,
   speed_bytes_per_sec: u64,
   eta_seconds: i64,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  bytes_downloaded: Option<i64>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  total_bytes: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -615,19 +630,16 @@ async fn search_download_options(
   let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
   drop(conn);
 
-  if hydra_sources.is_empty() {
+  let active_sources: Vec<HydraSourceDto> = hydra_sources
+    .into_iter()
+    .filter(|source| !disabled.contains(&source.id))
+    .collect();
+
+  if active_sources.is_empty() {
     return Ok(Vec::new());
   }
 
-  let mut local_options = search_download_options_from_local_sources(query, &hydra_sources).await;
-  if !disabled.is_empty() {
-    local_options.retain(|opt| !disabled.contains(&opt.source_id));
-  }
-  if !local_options.is_empty() {
-    return Ok(local_options);
-  }
-
-  Ok(Vec::new())
+  Ok(search_download_options_from_local_sources(query, &active_sources).await)
 }
 
 #[tauri::command]
@@ -855,7 +867,7 @@ fn scan_default_download_path(app: AppHandle) -> Result<Vec<LocalLibraryItemDto>
     });
   }
 
-  items.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+  items.sort_by_key(|b| std::cmp::Reverse(b.modified_at));
   Ok(items)
 }
 
@@ -1184,15 +1196,62 @@ fn resume_job(app: AppHandle, payload: JobIdPayload) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn clear_completed_jobs(app: AppHandle) -> Result<(), String> {
+async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String> {
+  let port = ensure_sidecar_running(app.clone()).await?;
+  let client = reqwest::Client::new();
+  let value = client
+    .get(format!("http://127.0.0.1:{port}/jobs"))
+    .send()
+    .await
+    .map_err(|e| format!("sidecar_request_failed: {e}"))?
+    .json::<serde_json::Value>()
+    .await
+    .map_err(|e| format!("sidecar_parse_failed: {e}"))?;
+
+  let rows = match value {
+    serde_json::Value::Array(items) => items,
+    serde_json::Value::Object(map) => map
+      .get("jobs")
+      .or_else(|| map.get("data"))
+      .and_then(|v| v.as_array())
+      .cloned()
+      .unwrap_or_default(),
+    _ => Vec::new(),
+  };
+
   let conn = open_database_connection(&app)?;
+  let mut removed: Vec<String> = Vec::new();
+
+  for row in rows {
+    let job = match serde_json::from_value::<SidecarJobWatcher>(row) {
+      Ok(job) => job,
+      Err(_) => continue,
+    };
+    let extracted = get_extraction_status(&conn, &job.id);
+    let should_remove = matches!(job.status.as_str(), "completed" | "cancelled" | "failed")
+      || matches!(extracted.as_deref(), Some("extracted"));
+    if !should_remove {
+      continue;
+    }
+    let _ = client
+      .delete(format!("http://127.0.0.1:{port}/jobs/{}", job.id))
+      .send()
+      .await;
+    let _ = conn.execute(
+      "DELETE FROM extraction_log WHERE job_id = ?1",
+      params![job.id],
+    );
+    removed.push(job.id);
+  }
+
   conn
     .execute(
-      "DELETE FROM download_jobs WHERE status IN ('completed', 'cancelled')",
+      "DELETE FROM download_jobs WHERE status IN ('completed', 'cancelled', 'failed')",
       [],
     )
     .map_err(|e| format!("could_not_clear_jobs: {e}"))?;
-  Ok(())
+
+  Ok(removed)
 }
 
 // ── Queue Engine ──────────────────────────────────────────────────────────────
@@ -1283,11 +1342,13 @@ fn maybe_start_next_job(
       let _ = app_c.emit(
         QUEUE_EVENT_JOB_PROGRESS,
         JobProgressEvent {
-          job_id,
-          progress,
+          job_id: job_id.to_string(),
+          progress: progress as f64,
           status: "downloading".to_string(),
           speed_bytes_per_sec: 1_200_000,
           eta_seconds: (100 - progress) * 2,
+          bytes_downloaded: None,
+          total_bytes: None,
         },
       );
 
@@ -1307,11 +1368,13 @@ fn maybe_start_next_job(
     let _ = app_c.emit(
       QUEUE_EVENT_JOB_PROGRESS,
       JobProgressEvent {
-        job_id,
-        progress: final_progress,
+        job_id: job_id.to_string(),
+        progress: final_progress as f64,
         status: final_status.to_string(),
         speed_bytes_per_sec: 0,
         eta_seconds: 0,
+        bytes_downloaded: None,
+        total_bytes: None,
       },
     );
 
@@ -1362,16 +1425,15 @@ struct SidecarEnqueuePayload {
   url: String,
   dest_path: Option<String>,
   priority: Option<i32>,
+  cover_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct SidecarJobForLaunch {
   id: String,
   title: String,
+  #[serde(default, alias = "destPath")]
   dest_path: String,
-  status: String,
-  progress: f64,
 }
 
 #[tauri::command]
@@ -1412,12 +1474,13 @@ async fn sidecar_enqueue_job(
     .clone()
     .or(default_dest_path)
     .ok_or_else(|| "default_download_path_not_configured".to_string())?;
+  let job_url = enrich_magnet_url(&payload.url);
   drop(conn);
 
   let body = {
     let mut b = serde_json::json!({
       "title": payload.title,
-      "url": payload.url,
+      "url": job_url,
       "destPath": dest_path,
       "priority": payload.priority,
       "seedEnabled": seed_enabled
@@ -1429,7 +1492,7 @@ async fn sidecar_enqueue_job(
   };
 
   let client = reqwest::Client::new();
-  client
+  let job = client
     .post(format!("http://127.0.0.1:{port}/jobs"))
     .json(&body)
     .send()
@@ -1437,21 +1500,48 @@ async fn sidecar_enqueue_job(
     .map_err(|e| format!("sidecar_request_failed: {e}"))?
     .json::<serde_json::Value>()
     .await
-    .map_err(|e| format!("sidecar_parse_failed: {e}"))
+    .map_err(|e| format!("sidecar_parse_failed: {e}"))?;
+
+  if let Some(cover_url) = payload
+    .cover_url
+    .as_ref()
+    .map(|value| value.trim())
+    .filter(|value| !value.is_empty())
+  {
+    if let Ok(conn) = open_database_connection(&app) {
+      if let Ok(Some(path)) = upsert_game_cover(&conn, &payload.title, cover_url) {
+        remove_cover_file(&path);
+      }
+    }
+    let app_bg = app.clone();
+    let title_bg = payload.title.clone();
+    let cover_bg = cover_url.to_string();
+    tauri::async_runtime::spawn(async move {
+      let _ = download_and_cache_cover(&app_bg, &title_bg, &cover_bg).await;
+    });
+  }
+
+  Ok(job)
 }
 
 #[tauri::command]
 async fn sidecar_list_jobs(app: AppHandle) -> Result<serde_json::Value, String> {
   let port = ensure_sidecar_running(app.clone()).await?;
   let client = reqwest::Client::new();
-  client
+  let mut value = client
     .get(format!("http://127.0.0.1:{port}/jobs"))
     .send()
     .await
     .map_err(|e| format!("sidecar_request_failed: {e}"))?
     .json::<serde_json::Value>()
     .await
-    .map_err(|e| format!("sidecar_parse_failed: {e}"))
+    .map_err(|e| format!("sidecar_parse_failed: {e}"))?;
+
+  if let Ok(conn) = open_database_connection(&app) {
+    enrich_jobs_with_extraction(&mut value, &conn);
+  }
+
+  Ok(value)
 }
 
 #[tauri::command]
@@ -1491,6 +1581,27 @@ async fn sidecar_cancel_job(app: AppHandle, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn remove_job_from_library(app: AppHandle, id: String) -> Result<(), String> {
+  if let Ok(port) = ensure_sidecar_running(app.clone()).await {
+    let client = reqwest::Client::new();
+    let _ = client
+      .delete(format!("http://127.0.0.1:{port}/jobs/{id}"))
+      .send()
+      .await;
+  }
+
+  let conn = open_database_connection(&app)?;
+  let _ = conn.execute(
+    "DELETE FROM extraction_log WHERE job_id = ?1",
+    params![id],
+  );
+  conn
+    .execute("DELETE FROM download_jobs WHERE id = ?1", params![id])
+    .map_err(|error| format!("could_not_remove_job: {error}"))?;
+  Ok(())
+}
+
+#[tauri::command]
 async fn sidecar_open_job_folder(app: AppHandle, id: String) -> Result<(), String> {
   let job = fetch_sidecar_job(&app, &id).await?;
   let target_path = resolve_job_folder(&job.dest_path);
@@ -1525,25 +1636,54 @@ async fn sidecar_open_job_folder(app: AppHandle, id: String) -> Result<(), Strin
   Ok(())
 }
 
-#[tauri::command]
-async fn sidecar_launch_job(app: AppHandle, id: String) -> Result<(), String> {
-  let job = fetch_sidecar_job(&app, &id).await?;
-  if job.status != "completed" && job.status != "seeding" {
-    return Err("job_not_ready_to_launch".to_string());
+fn open_path_in_shell(target: &Path) -> Result<(), String> {
+  if !target.exists() {
+    return Err("local_path_not_found".to_string());
   }
 
-  let launch_target = resolve_launch_target(&job.title, &job.dest_path)?;
-  StdCommand::new(&launch_target)
-    .current_dir(
-      launch_target
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from(".")),
-    )
-    .spawn()
-    .map_err(|error| format!("could_not_launch_game: {error}"))?;
+  #[cfg(target_os = "windows")]
+  {
+    StdCommand::new("explorer")
+      .arg(target.as_os_str())
+      .spawn()
+      .map_err(|error| format!("could_not_open_folder: {error}"))?;
+  }
+
+  #[cfg(target_os = "linux")]
+  {
+    StdCommand::new("xdg-open")
+      .arg(target.as_os_str())
+      .spawn()
+      .map_err(|error| format!("could_not_open_folder: {error}"))?;
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    StdCommand::new("open")
+      .arg(target.as_os_str())
+      .spawn()
+      .map_err(|error| format!("could_not_open_folder: {error}"))?;
+  }
 
   Ok(())
+}
+
+#[tauri::command]
+fn open_local_path(path: String) -> Result<(), String> {
+  open_path_in_shell(&PathBuf::from(path.trim()))
+}
+
+#[tauri::command]
+async fn sidecar_launch_job(app: AppHandle, id: String) -> Result<String, String> {
+  let job = fetch_sidecar_job(&app, &id).await?;
+  let extra_roots = launch_extra_roots(&app, &job.title, &job.dest_path, Some(&id));
+  let launched = launch::resolve_and_launch_game_with_extra_roots(
+    &job.title,
+    &job.dest_path,
+    &extra_roots,
+  )
+  .map_err(|error| map_launch_user_error(&error, &job.dest_path))?;
+  Ok(launched.to_string_lossy().to_string())
 }
 
 async fn fetch_sidecar_job(app: &AppHandle, id: &str) -> Result<SidecarJobForLaunch, String> {
@@ -1570,96 +1710,232 @@ fn resolve_job_folder(dest_path: &str) -> PathBuf {
   }
 }
 
-fn resolve_launch_target(title: &str, dest_path: &str) -> Result<PathBuf, String> {
-  let root = resolve_job_folder(dest_path);
-  if !root.exists() {
-    return Err("launch_target_root_not_found".to_string());
+fn map_launch_user_error(error: &str, dest_path: &str) -> String {
+  if error.contains("launch_target_root_not_found") {
+    return "Pasta do jogo não encontrada. Confirme o caminho de download em Configurações.".to_string();
   }
-
-  let mut candidates: Vec<(i64, PathBuf)> = Vec::new();
-  collect_executable_candidates(&root, 0, &mut candidates);
-
-  if candidates.is_empty() {
-    return Err("no_executable_found_in_job_folder".to_string());
+  if error.contains("game_not_installed_use_installer") {
+    return "O jogo ainda não está instalado. Clique em INSTALAR para executar o instalador na pasta do download.".to_string();
   }
-
-  let title_tokens = tokenize_title(title);
-  candidates.sort_by(|(score_a, _), (score_b, _)| score_b.cmp(score_a));
-
-  for (base_score, path) in candidates {
-    let file_name = path
-      .file_name()
-      .and_then(|value| value.to_str())
-      .unwrap_or_default()
-      .to_lowercase();
-    let mut score = base_score;
-    for token in &title_tokens {
-      if file_name.contains(token) {
-        score += 400;
-      }
+  if error.contains("no_executable_found_in_job_folder") {
+    if archive::find_job_archive(dest_path).is_some() {
+      return "Este repack precisa de setup.exe (ex.: FitGirl). Instale manualmente ou escolha outro torrent.".to_string();
     }
-    if file_name.contains("setup")
-      || file_name.contains("unins")
-      || file_name.contains("crash")
-      || file_name.contains("redist")
-    {
-      score -= 500;
+    if launch::find_setup_executable("", dest_path).is_some() {
+      return "O jogo ainda não está instalado. Clique em INSTALAR para executar o instalador.".to_string();
     }
-    if score > -200 {
-      return Ok(path);
-    }
+    return "Nenhum executável de jogo encontrado na pasta. Instale o jogo com o setup.exe primeiro.".to_string();
   }
-
-  Err("no_viable_executable_found".to_string())
+  if error.contains("193")
+    || error.contains("não é um aplicativo Win32 válido")
+    || error.contains("not a valid Win32 application")
+  {
+    return "Não foi possível iniciar o jogo automaticamente. Abra a pasta, execute o setup se existir, ou inicie o .exe principal manualmente.".to_string();
+  }
+  if error.contains("1392")
+    || error.contains("corrompido")
+    || error.contains("corrupt")
+    || error.contains("ilegível")
+    || error.contains("illegible")
+  {
+    return "O Windows bloqueou o ficheiro (erro 1392). Abra a pasta do jogo, clique duas vezes em setup.exe manualmente, ou mova o jogo para outro disco (ex. C:). Se persistir, execute: chkdsk J: /F".to_string();
+  }
+  if error.contains("nenhum executável válido encontrado") {
+    return "Nenhum executável válido encontrado na pasta do jogo.".to_string();
+  }
+  error.to_string()
 }
 
-fn collect_executable_candidates(root: &Path, depth: usize, out: &mut Vec<(i64, PathBuf)>) {
-  if depth > 5 {
-    return;
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchGamePayload {
+  title: String,
+  path: String,
+  job_id: Option<String>,
+}
+
+#[tauri::command]
+fn launch_game_from_path(app: AppHandle, payload: LaunchGamePayload) -> Result<String, String> {
+  let extra_roots = launch_extra_roots(
+    &app,
+    &payload.title,
+    &payload.path,
+    payload.job_id.as_deref(),
+  );
+  let launched = launch::resolve_and_launch_game_with_extra_roots(
+    &payload.title,
+    &payload.path,
+    &extra_roots,
+  )
+  .map_err(|error| map_launch_user_error(&error, &payload.path))?;
+  Ok(launched.to_string_lossy().to_string())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetLibraryGameRootPayload {
+  title: String,
+  dest_path: String,
+  game_root: String,
+  job_id: Option<String>,
+}
+
+#[tauri::command]
+fn set_library_game_root(app: AppHandle, payload: SetLibraryGameRootPayload) -> Result<LibraryPathStateDto, String> {
+  let game_root = PathBuf::from(payload.game_root.trim());
+  if !game_root.is_dir() {
+    return Err("A pasta escolhida não existe.".to_string());
+  }
+  if !launch::folder_has_playable_game_exe(&payload.title, &game_root) {
+    return Err(
+      "Não encontrámos um executável jogável nessa pasta. Escolha a pasta onde o jogo foi instalado (com o .exe do jogo)."
+        .to_string(),
+    );
   }
 
-  let entries = match fs::read_dir(root) {
-    Ok(values) => values,
-    Err(_) => return,
-  };
+  let conn = open_database_connection(&app)?;
+  upsert_library_game_root(&conn, &payload.dest_path, &payload.title, &game_root)?;
+  Ok(inspect_library_path_internal(
+    &app,
+    &payload.title,
+    &payload.dest_path,
+    payload.job_id.as_deref(),
+  ))
+}
 
-  for entry in entries.flatten() {
-    let path = entry.path();
-    let metadata = match entry.metadata() {
-      Ok(value) => value,
-      Err(_) => continue,
-    };
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryPathStateDto {
+  has_game: bool,
+  needs_install: bool,
+  install_path: Option<String>,
+  needs_extraction: bool,
+  /// Alias de `has_game` para compatibilidade com clientes antigos.
+  playable: bool,
+  /// Pasta de instalação indicada manualmente pelo utilizador (fora da pasta de download).
+  custom_game_root: Option<String>,
+}
 
-    if metadata.is_dir() {
-      collect_executable_candidates(&path, depth + 1, out);
-      continue;
-    }
+fn folder_extraction_job_id(path: &str) -> String {
+  let mut hasher = DefaultHasher::new();
+  path.to_lowercase().hash(&mut hasher);
+  format!("folder:{:x}", hasher.finish())
+}
 
-    let is_executable = if cfg!(target_os = "windows") {
-      path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("exe"))
-        .unwrap_or(false)
-    } else {
-      metadata.permissions().readonly() == false
-    };
+fn inspect_library_path_internal(
+  app: &AppHandle,
+  title: &str,
+  path: &str,
+  job_id: Option<&str>,
+) -> LibraryPathStateDto {
+  let extra_roots = launch_extra_roots(app, title, path, job_id);
+  let custom_game_root = open_database_connection(app)
+    .ok()
+    .and_then(|conn| read_library_game_root(&conn, path, title))
+    .map(|path| path.to_string_lossy().to_string());
+  let content_path = launch::resolve_game_content_root(title, path)
+    .to_string_lossy()
+    .to_string();
+  let has_game =
+    launch::resolve_launch_candidates_with_extra_roots(title, path, &extra_roots).is_ok();
+  let install_path = launch::find_setup_executable_with_extra_roots(title, path, &extra_roots)
+    .map(|p| p.to_string_lossy().to_string());
+  let needs_install = !has_game && install_path.is_some();
+  let has_archive = archive::find_job_archive(&content_path).is_some();
+  // FitGirl e similares: setup.exe + .rar na mesma pasta — não forçar extração.
+  let needs_extraction = has_archive && !has_game && install_path.is_none();
 
-    if !is_executable {
-      continue;
-    }
-
-    let size_score = (metadata.len() / (1024 * 1024)) as i64;
-    out.push((size_score, path));
+  LibraryPathStateDto {
+    has_game,
+    needs_install,
+    install_path,
+    needs_extraction,
+    playable: has_game,
+    custom_game_root,
   }
 }
 
-fn tokenize_title(title: &str) -> Vec<String> {
-  title
-    .split(|ch: char| !ch.is_alphanumeric())
-    .filter(|token| token.len() >= 3)
-    .map(|token| token.to_lowercase())
-    .collect()
+#[tauri::command]
+fn inspect_library_path(app: AppHandle, payload: LaunchGamePayload) -> LibraryPathStateDto {
+  inspect_library_path_internal(&app, &payload.title, &payload.path, payload.job_id.as_deref())
+}
+
+#[tauri::command]
+async fn launch_setup_from_path(app: AppHandle, payload: LaunchGamePayload) -> Result<String, String> {
+  let extra_roots = payload
+    .job_id
+    .as_deref()
+    .map(|job_id| extraction_roots_for_job(&app, job_id))
+    .unwrap_or_default();
+
+  if let Some(job_id) = payload.job_id.clone() {
+    let app_pause = app.clone();
+    tauri::async_runtime::spawn(async move {
+      let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(4))
+        .build()
+      {
+        Ok(value) => value,
+        Err(_) => return,
+      };
+      let Ok(port) = ensure_sidecar_running(app_pause.clone()).await else {
+        return;
+      };
+      let _ = client
+        .post(format!("http://127.0.0.1:{port}/jobs/{job_id}/pause"))
+        .send()
+        .await;
+    });
+  }
+
+  let setup = launch::find_setup_executable_with_extra_roots(
+    &payload.title,
+    &payload.path,
+    &extra_roots,
+  )
+  .ok_or_else(|| {
+    "Nenhum instalador (setup.exe) encontrado na pasta do download.".to_string()
+  })?;
+  let install_dir = launch::resolve_game_content_root(&payload.title, &payload.path);
+  if !setup.is_file() {
+    return Err("setup.exe ainda não está disponível na pasta. Aguarde o download terminar.".to_string());
+  }
+  if !install_dir.exists() {
+    return Err("Pasta do repack não encontrada. Aguarde o download terminar.".to_string());
+  }
+
+  launch::spawn_setup_executable_in(&setup, Some(&install_dir))
+    .map_err(|error| map_launch_user_error(&error, &payload.path))?;
+  Ok(setup.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn extract_library_folder(app: AppHandle, payload: LaunchGamePayload) -> Result<(), String> {
+  let extraction = app.state::<ExtractionState>();
+  if !extraction.try_acquire() {
+    return Err("extraction_busy".to_string());
+  }
+
+  let job_id = folder_extraction_job_id(&payload.path);
+  let app_clone = app.clone();
+  let title = payload.title.clone();
+  let dest_path = payload.path.clone();
+
+  let result = process_job_post_download(app_clone.clone(), job_id.clone(), title, dest_path).await;
+  extraction.release();
+
+  if let Err(ref error) = result {
+    let _ = upsert_extraction_log(
+      &open_database_connection(&app_clone)?,
+      &job_id,
+      "failed",
+      None,
+      None,
+      Some(error),
+    );
+    emit_extract_status(&app_clone, &job_id, "failed", Some(error.clone()));
+  }
+  result
 }
 
 async fn pause_all_active_sidecar_jobs(app: AppHandle) -> Result<(), String> {
@@ -1754,49 +2030,33 @@ fn spawn_download_engine(app: AppHandle) {
     } else {
       "download-engine"
     };
-    let mut engine_candidates: Vec<std::path::PathBuf> = Vec::new();
-    if let Ok(cwd) = std::env::current_dir() {
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target9").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target9").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target8").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target8").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target7").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target7").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target6").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target6").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target5").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target5").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target4").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target4").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target3").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target3").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target2").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target2").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("download-engine").join("target").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target9").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target9").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target8").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target8").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target7").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target7").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target6").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target6").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target5").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target5").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target4").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target4").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target3").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target3").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target2").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target2").join("release").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target").join("debug").join(exe_name));
-      engine_candidates.push(cwd.join("..").join("..").join("download-engine").join("target").join("release").join(exe_name));
-      engine_candidates.push(cwd.join(exe_name));
-    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut engine_candidates: Vec<std::path::PathBuf> = vec![
+      manifest_dir.join("binaries").join(exe_name),
+      manifest_dir.join(exe_name),
+    ];
     if let Ok(resource_dir) = app.path().resource_dir() {
-      engine_candidates.push(resource_dir.join(exe_name));
       engine_candidates.push(resource_dir.join("binaries").join(exe_name));
+      engine_candidates.push(resource_dir.join(exe_name));
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+      engine_candidates.push(cwd.join(exe_name));
+      engine_candidates.push(cwd.join("src-tauri").join(exe_name));
+      engine_candidates.push(cwd.join("src-tauri").join("binaries").join(exe_name));
+      engine_candidates.push(
+        cwd.join("..")
+          .join("download-engine")
+          .join("target")
+          .join("release")
+          .join(exe_name),
+      );
+      engine_candidates.push(
+        cwd.join("..")
+          .join("download-engine")
+          .join("target")
+          .join("debug")
+          .join(exe_name),
+      );
     }
     if let Ok(app_data_dir) = app.path().app_data_dir() {
       engine_candidates.push(app_data_dir.parent().unwrap_or(&app_data_dir).join(exe_name));
@@ -1888,9 +2148,11 @@ async fn ensure_sidecar_running(app: AppHandle) -> Result<u16, String> {
     return Ok(port);
   }
 
-  let sidecar: tauri::State<'_, SidecarState> = app.state();
-  if !sidecar.is_booting() {
-    drop(sidecar);
+  let should_spawn = {
+    let sidecar: tauri::State<'_, SidecarState> = app.state();
+    !sidecar.is_booting()
+  };
+  if should_spawn {
     spawn_download_engine(app.clone());
   }
 
@@ -1929,6 +2191,55 @@ fn validate_job_url(value: &str) -> Result<(), String> {
     }
   }
   Ok(())
+}
+
+const FALLBACK_MAGNET_TRACKERS: &[&str] = &[
+  "udp://tracker.opentrackr.org:1337/announce",
+  "udp://open.stealth.si:80/announce",
+  "udp://tracker.torrent.eu.org:451/announce",
+  "udp://exodus.desync.com:6969/announce",
+  "udp://tracker.tiny-vps.com:6969/announce",
+  "udp://retracker.lanta.me:2710/announce",
+  "udp://tracker.openbittorrent.com:6969/announce",
+  "udp://opentracker.i2p.rocks:6969/announce",
+  "udp://tracker1.bt.moack.co.kr:80/announce",
+  "udp://explodie.org:6969/announce",
+];
+
+fn percent_encode_tracker(tracker: &str) -> String {
+  let mut out = String::with_capacity(tracker.len() + 8);
+  for byte in tracker.bytes() {
+    match byte {
+      b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+        out.push(byte as char);
+      }
+      _ => out.push_str(&format!("%{byte:02X}")),
+    }
+  }
+  out
+}
+
+/// Adds public trackers to magnet links with few or no trackers (speeds up metadata fetch).
+fn enrich_magnet_url(raw: &str) -> String {
+  if !raw.to_ascii_lowercase().starts_with("magnet:?") {
+    return raw.to_string();
+  }
+
+  let lower = raw.to_lowercase();
+  let tracker_count = lower.matches("&tr=").count() + if lower.contains("?tr=") { 1 } else { 0 };
+  if tracker_count >= 6 {
+    return raw.to_string();
+  }
+
+  let mut enriched = raw.to_string();
+  for tracker in FALLBACK_MAGNET_TRACKERS {
+    if lower.contains(&tracker.to_lowercase()) {
+      continue;
+    }
+    enriched.push_str("&tr=");
+    enriched.push_str(&percent_encode_tracker(tracker));
+  }
+  enriched
 }
 
 fn load_sources(conn: &Connection) -> Result<Vec<SourceEntry>, String> {
@@ -2050,92 +2361,12 @@ async fn fetch_options_from_sources(
         download_type: item.download_type.unwrap_or_else(|| "http".to_string()),
         url: item.url,
         quality: item.quality.unwrap_or_else(|| "standard".to_string()),
+        cover_url: None,
       });
     }
   }
 
   options
-}
-
-async fn hydra_search_download_options(
-  query: &str,
-  source_ids: &[String],
-) -> Result<Vec<DownloadOptionDto>, String> {
-  let client = hydra_http_client()?;
-  let suggestions = client
-    .get(format!("{}/catalogue/search/suggestions", hydra_api_base_url()))
-    .query(&[("query", query), ("limit", "8")])
-    .send()
-    .await
-    .map_err(|error| format!("hydra_suggestions_request_failed: {error}"))?;
-
-  if !suggestions.status().is_success() {
-    let status = suggestions.status().as_u16();
-    let body = suggestions.text().await.unwrap_or_default();
-    return Err(format!("hydra_suggestions_failed_http_{status}: {body}"));
-  }
-
-  let suggestions = suggestions
-    .json::<Vec<HydraCatalogueSuggestion>>()
-    .await
-    .map_err(|error| format!("hydra_suggestions_parse_failed: {error}"))?;
-
-  let mut options: Vec<DownloadOptionDto> = Vec::new();
-  let source_ids_csv = source_ids.join(",");
-  for game in suggestions {
-    let response = client
-      .get(format!(
-        "{}/games/{}/{}/download-sources",
-        hydra_api_base_url(),
-        game.shop,
-        game.object_id
-      ))
-      .query(&[
-        ("take", "30"),
-        ("skip", "0"),
-        ("downloadSourceIds", source_ids_csv.as_str()),
-      ])
-      .send()
-      .await
-      .map_err(|error| format!("hydra_download_sources_request_failed: {error}"))?;
-
-    if !response.status().is_success() {
-      continue;
-    }
-
-    let repacks = match response.json::<Vec<HydraGameDownloadSourceItem>>().await {
-      Ok(items) => items,
-      Err(_) => continue,
-    };
-
-    for repack in repacks {
-      let source_id = repack
-        .download_source_id
-        .clone()
-        .unwrap_or_else(|| "hydra".to_string());
-      let source_name = repack
-        .download_source_name
-        .clone()
-        .unwrap_or_else(|| "Hydra".to_string());
-      for uri in repack.uris {
-        let download_type = if uri.starts_with("magnet:") {
-          "torrent".to_string()
-        } else {
-          "http".to_string()
-        };
-        options.push(DownloadOptionDto {
-          source_id: source_id.clone(),
-          source_name: source_name.clone(),
-          title: format!("{} - {}", game.title, repack.title),
-          download_type,
-          url: uri,
-          quality: "standard".to_string(),
-        });
-      }
-    }
-  }
-
-  Ok(options)
 }
 
 async fn search_download_options_from_local_sources(
@@ -2204,9 +2435,13 @@ async fn search_fitgirl_options(
   source: &HydraSourceDto,
   query: &str,
 ) -> Vec<DownloadOptionDto> {
-  let normalized_query = query.trim().to_lowercase();
+  let search_term = simplify_source_search_query(query);
   let base = fitgirl_base_url(source);
-  let search_response = client.get(format!("{base}/")).query(&[("s", query)]).send().await;
+  let search_response = client
+    .get(format!("{base}/"))
+    .query(&[("s", search_term.as_str())])
+    .send()
+    .await;
   let Ok(search_response) = search_response else {
     return Vec::new();
   };
@@ -2218,13 +2453,17 @@ async fn search_fitgirl_options(
     Err(_) => return Vec::new(),
   };
 
-  let post_links = extract_fitgirl_post_links(&search_html);
+  let post_links: Vec<String> = extract_fitgirl_post_links(&search_html)
+    .into_iter()
+    .filter(|url| !is_fitgirl_noise_post(url, ""))
+    .take(8)
+    .collect();
   if post_links.is_empty() {
     return Vec::new();
   }
 
   let mut options: Vec<DownloadOptionDto> = Vec::new();
-  for post_url in post_links.into_iter().take(5) {
+  for post_url in post_links {
     let post_response = client.get(&post_url).send().await;
     let Ok(post_response) = post_response else {
       continue;
@@ -2237,24 +2476,14 @@ async fn search_fitgirl_options(
       Err(_) => continue,
     };
 
-    let title = extract_fitgirl_title(&post_html).unwrap_or_else(|| query.to_string());
-    if !title.to_lowercase().contains(&normalized_query) {
-      continue;
-    }
-    let magnets = extract_magnet_links(&post_html);
-    if magnets.is_empty() {
-      options.push(DownloadOptionDto {
-        source_id: source.id.clone(),
-        source_name: source.name.clone(),
-        title: format!("{title} (pagina da fonte)"),
-        download_type: "http".to_string(),
-        url: post_url.clone(),
-        quality: "standard".to_string(),
-      });
+    let title = extract_fitgirl_title(&post_html).unwrap_or_else(|| search_term.clone());
+    if is_fitgirl_noise_post(&post_url, &title) || !title_matches_query(&title, query) {
       continue;
     }
 
-    for magnet in magnets.into_iter().take(2) {
+    let post_cover = extract_fitgirl_cover_image(&post_html);
+    let magnets = dedupe_magnets(extract_magnet_links(&post_html));
+    for magnet in magnets.into_iter().take(1) {
       options.push(DownloadOptionDto {
         source_id: source.id.clone(),
         source_name: source.name.clone(),
@@ -2262,11 +2491,310 @@ async fn search_fitgirl_options(
         download_type: "torrent".to_string(),
         url: magnet,
         quality: "standard".to_string(),
+        cover_url: post_cover.clone(),
       });
+    }
+    if options.len() >= 12 {
+      break;
     }
   }
 
   options
+}
+
+struct SourceProbeCache {
+  entries: HashMap<String, (bool, u64)>,
+}
+
+impl SourceProbeCache {
+  fn get(&self, key: &str) -> Option<bool> {
+    const TTL_MS: u64 = 30 * 60 * 1000;
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map(|duration| duration.as_millis())
+      .unwrap_or(0) as u64;
+    let (hit, at) = self.entries.get(key)?;
+    if now.saturating_sub(*at) > TTL_MS {
+      return None;
+    }
+    Some(*hit)
+  }
+
+  fn put(&mut self, key: String, hit: bool) {
+    let now = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .map(|duration| duration.as_millis())
+      .unwrap_or(0) as u64;
+    self.entries.insert(key, (hit, now));
+  }
+}
+
+fn source_probe_cache() -> &'static Mutex<SourceProbeCache> {
+  static CACHE: OnceLock<Mutex<SourceProbeCache>> = OnceLock::new();
+  CACHE.get_or_init(|| Mutex::new(SourceProbeCache {
+    entries: HashMap::new(),
+  }))
+}
+
+fn source_probe_cache_get(key: &str) -> Option<bool> {
+  source_probe_cache()
+    .lock()
+    .ok()
+    .and_then(|cache| cache.get(key))
+}
+
+fn source_probe_cache_put(key: String, hit: bool) {
+  if let Ok(mut cache) = source_probe_cache().lock() {
+    cache.put(key, hit);
+  }
+}
+
+fn fitgirl_slug_title(url: &str) -> String {
+  let slug = url.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+  slug.replace('-', " ")
+}
+
+async fn quick_fitgirl_has_sources(client: &reqwest::Client, game_title: &str) -> bool {
+  let cache_key = normalize_match_text(game_title);
+  if cache_key.is_empty() {
+    return false;
+  }
+  if let Some(hit) = source_probe_cache_get(&cache_key) {
+    return hit;
+  }
+
+  let search_term = simplify_source_search_query(game_title);
+  if search_term.trim().len() < 2 {
+    source_probe_cache_put(cache_key, false);
+    return false;
+  }
+
+  let base = "https://fitgirl-repacks.site";
+  let search_response = client
+    .get(format!("{base}/"))
+    .query(&[("s", search_term.as_str())])
+    .send()
+    .await;
+  let Ok(search_response) = search_response else {
+    return false;
+  };
+  if !search_response.status().is_success() {
+    source_probe_cache_put(cache_key, false);
+    return false;
+  }
+  let search_html = match search_response.text().await {
+    Ok(body) => body,
+    Err(_) => {
+      source_probe_cache_put(cache_key, false);
+      return false;
+    }
+  };
+
+  let post_links: Vec<String> = extract_fitgirl_post_links(&search_html)
+    .into_iter()
+    .filter(|url| !is_fitgirl_noise_post(url, ""))
+    .take(6)
+    .collect();
+
+  for post_url in post_links {
+    let slug_title = fitgirl_slug_title(&post_url);
+    if !title_matches_query(&slug_title, game_title) {
+      continue;
+    }
+
+    let post_response = client.get(&post_url).send().await;
+    let Ok(post_response) = post_response else {
+      continue;
+    };
+    if !post_response.status().is_success() {
+      continue;
+    }
+    let post_html = match post_response.text().await {
+      Ok(body) => body,
+      Err(_) => continue,
+    };
+
+    let title = extract_fitgirl_title(&post_html).unwrap_or(slug_title);
+    if is_fitgirl_noise_post(&post_url, &title) || !title_matches_query(&title, game_title) {
+      continue;
+    }
+    if extract_magnet_links(&post_html).is_empty() {
+      continue;
+    }
+
+    source_probe_cache_put(cache_key.clone(), true);
+    return true;
+  }
+
+  source_probe_cache_put(cache_key, false);
+  false
+}
+
+async fn game_has_active_sources(
+  client: &reqwest::Client,
+  sources: &[HydraSourceDto],
+  game_title: &str,
+) -> bool {
+  for source in sources {
+    if !is_fitgirl_source(source) {
+      continue;
+    }
+    if quick_fitgirl_has_sources(client, game_title).await {
+      return true;
+    }
+  }
+  false
+}
+
+async fn filter_catalog_with_sources(
+  games: Vec<CatalogGameDto>,
+  sources: &[HydraSourceDto],
+) -> Vec<CatalogGameDto> {
+  if games.is_empty() || sources.is_empty() {
+    return Vec::new();
+  }
+
+  let client = reqwest::Client::builder()
+    .timeout(Duration::from_secs(8))
+    .cookie_store(true)
+    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Hydra-Tauri-Launcher")
+    .build()
+    .unwrap_or_else(|_| reqwest::Client::new());
+
+  let client = Arc::new(client);
+  let mut filtered = Vec::new();
+
+  for chunk in games.chunks(3) {
+    let mut handles = Vec::new();
+    for game in chunk {
+      let client = client.clone();
+      let title = game.title.clone();
+      let sources = sources.to_vec();
+      handles.push(tauri::async_runtime::spawn(async move {
+        let has_source = game_has_active_sources(&client, &sources, &title).await;
+        (title, has_source)
+      }));
+    }
+
+    for handle in handles {
+      let Ok((title, has_source)) = handle.await else {
+        continue;
+      };
+      if !has_source {
+        continue;
+      }
+      if let Some(game) = chunk.iter().find(|row| row.title == title) {
+        filtered.push(game.clone());
+      }
+    }
+  }
+
+  filtered
+}
+
+async fn apply_catalog_source_filter(
+  app: &AppHandle,
+  games: Vec<CatalogGameDto>,
+) -> Vec<CatalogGameDto> {
+  let conn = match open_database_connection(app) {
+    Ok(conn) => conn,
+    Err(_) => return games,
+  };
+  let hydra_sources = list_hydra_sources(&conn).unwrap_or_default();
+  let disabled = get_disabled_hydra_source_ids_from_conn(&conn).unwrap_or_default();
+  drop(conn);
+
+  let active_sources: Vec<HydraSourceDto> = hydra_sources
+    .into_iter()
+    .filter(|source| !disabled.contains(&source.id))
+    .collect();
+  if active_sources.is_empty() {
+    return Vec::new();
+  }
+
+  filter_catalog_with_sources(games, &active_sources).await
+}
+
+fn simplify_source_search_query(query: &str) -> String {
+  let mut value = query
+    .replace(['™', '®', '©'], "")
+    .trim()
+    .to_string();
+  if let Some((head, _)) = value.split_once(':') {
+    value = head.trim().to_string();
+  }
+  if let Some((head, _)) = value.split_once(" - ") {
+    value = head.trim().to_string();
+  }
+  value
+}
+
+fn normalize_match_text(value: &str) -> String {
+  value
+    .to_lowercase()
+    .replace(['™', '®', '©', '–', '—', '-', ':', ',', '.', '\'', '"', '’'], " ")
+    .chars()
+    .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+    .collect::<String>()
+    .split_whitespace()
+    .collect::<Vec<_>>()
+    .join(" ")
+}
+
+fn title_word_matches_query_word(title_word: &str, query_word: &str) -> bool {
+  if title_word == query_word {
+    return true;
+  }
+  // Ex.: "hades" casa com "hadesii" raro; prefixo só se a palavra do título começa com a query completa.
+  query_word.len() >= 4 && title_word.starts_with(query_word)
+}
+
+fn title_matches_query(title: &str, query: &str) -> bool {
+  let title_norm = normalize_match_text(title);
+  let query_norm = normalize_match_text(query);
+  let title_words: Vec<&str> = title_norm.split_whitespace().collect();
+  let query_words: Vec<&str> = query_norm
+    .split_whitespace()
+    .filter(|word| !word.is_empty())
+    .collect();
+
+  if query_words.is_empty() {
+    return true;
+  }
+
+  query_words.iter().all(|query_word| {
+    if query_word.len() <= 2 {
+      return title_words.iter().any(|title_word| title_word == query_word);
+    }
+    title_words
+      .iter()
+      .any(|title_word| title_word_matches_query_word(title_word, query_word))
+  })
+}
+
+fn is_fitgirl_noise_post(url: &str, title: &str) -> bool {
+  let url_l = url.to_lowercase();
+  let title_l = title.to_lowercase();
+  url_l.contains("updates-digest")
+    || url_l.contains("/category/")
+    || url_l.contains("/tag/")
+    || url_l.contains("/author/")
+    || url_l.contains("/popular-repacks")
+    || url_l.contains("/all-my-repacks")
+    || title_l.starts_with("updates digest")
+    || title_l.contains("digest for ")
+}
+
+fn dedupe_magnets(magnets: Vec<String>) -> Vec<String> {
+  let mut seen = HashSet::new();
+  let mut out = Vec::new();
+  for magnet in magnets {
+    let key = magnet.to_lowercase();
+    if seen.insert(key) {
+      out.push(magnet);
+    }
+  }
+  out
 }
 
 fn extract_fitgirl_post_links(html: &str) -> Vec<String> {
@@ -2274,27 +2802,47 @@ fn extract_fitgirl_post_links(html: &str) -> Vec<String> {
     r#"<h[12][^>]*class="[^"]*entry-title[^"]*"[^>]*>\s*<a[^>]*href="(https?://fitgirl-repacks\.site/[^"]+)""#,
   )
   .expect("fitgirl title link regex must compile");
+  let fallback_re = Regex::new(r#"href="(https?://fitgirl-repacks\.site/[a-z0-9][a-z0-9-]*/?)""#)
+    .expect("fitgirl fallback link regex must compile");
   let mut links: Vec<String> = Vec::new();
+
   for captures in title_link_re.captures_iter(html) {
     let Some(url_match) = captures.get(1) else {
       continue;
     };
-    let url = url_match.as_str().to_string();
-    if url.contains("/wp-content/")
-      || url.contains("/feed/")
-      || url.contains("/search/")
-      || url.contains("/tag/")
-      || url.contains("/category/")
-      || url.ends_with(".js")
-      || url.ends_with(".css")
-    {
-      continue;
-    }
-    if !links.contains(&url) {
-      links.push(url);
+    push_fitgirl_post_link(&mut links, url_match.as_str());
+  }
+
+  if links.is_empty() {
+    for captures in fallback_re.captures_iter(html) {
+      let Some(url_match) = captures.get(1) else {
+        continue;
+      };
+      push_fitgirl_post_link(&mut links, url_match.as_str());
     }
   }
+
   links
+}
+
+fn push_fitgirl_post_link(links: &mut Vec<String>, raw_url: &str) {
+  let url = raw_url.to_string();
+  if url.contains("/wp-content/")
+    || url.contains("/feed/")
+    || url.contains("/search/")
+    || url.contains("/tag/")
+    || url.contains("/category/")
+    || url.contains("/author/")
+    || url.contains("/comments/")
+    || url.ends_with(".js")
+    || url.ends_with(".css")
+    || is_fitgirl_noise_post(&url, "")
+  {
+    return;
+  }
+  if !links.contains(&url) {
+    links.push(url);
+  }
 }
 
 fn extract_magnet_links(html: &str) -> Vec<String> {
@@ -2323,6 +2871,52 @@ fn extract_fitgirl_title(html: &str) -> Option<String> {
   }
 }
 
+fn extract_fitgirl_cover_image(html: &str) -> Option<String> {
+  static OG_IMAGE: OnceLock<Regex> = OnceLock::new();
+  let re = OG_IMAGE.get_or_init(|| {
+    Regex::new(r#"(?i)<meta\s+property="og:image"\s+content="([^"]+)""#)
+      .expect("og:image regex must compile")
+  });
+  let url = re.captures(html)?.get(1)?.as_str().trim();
+  if url.starts_with("http") && !url.to_lowercase().contains("logo") {
+    Some(url.to_string())
+  } else {
+    None
+  }
+}
+
+fn clean_title_for_cover(title: &str) -> String {
+  let mut value = title
+    .replace(['™', '®', '©'], "")
+    .trim()
+    .to_string();
+  value = Regex::new(r"(?i)\(.*?fitgirl.*?\)")
+    .ok()
+    .and_then(|re| Some(re.replace_all(&value, "").to_string()))
+    .unwrap_or(value);
+  value = Regex::new(r"(?i)fitgirl[- ]?repack")
+    .ok()
+    .and_then(|re| Some(re.replace_all(&value, "").to_string()))
+    .unwrap_or(value);
+  value = Regex::new(r"\[.*?\]")
+    .ok()
+    .and_then(|re| Some(re.replace_all(&value, "").to_string()))
+    .unwrap_or(value);
+  for sep in ['–', '—'] {
+    if let Some((head, _)) = value.split_once(sep) {
+      value = head.trim().to_string();
+      break;
+    }
+  }
+  if let Some((head, _)) = value.split_once(" - v") {
+    value = head.trim().to_string();
+  }
+  if let Some((head, _)) = value.split_once(" + ") {
+    value = head.trim().to_string();
+  }
+  value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn hydra_api_base_url() -> String {
   std::env::var("HYDRA_API_URL").unwrap_or_else(|_| "https://api.hydralauncher.gg".to_string())
 }
@@ -2332,48 +2926,6 @@ fn hydra_http_client() -> Result<reqwest::Client, String> {
     .timeout(Duration::from_secs(20))
     .build()
     .map_err(|error| format!("could_not_create_hydra_client: {error}"))
-}
-
-async fn hydra_post_download_source(url: &str) -> Result<HydraSourceDto, String> {
-  let client = hydra_http_client()?;
-  let response = client
-    .post(format!("{}/download-sources", hydra_api_base_url()))
-    .json(&serde_json::json!({ "url": url }))
-    .send()
-    .await
-    .map_err(|error| format!("hydra_add_source_request_failed: {error}"))?;
-
-  if !response.status().is_success() {
-    let status = response.status().as_u16();
-    let body = response.text().await.unwrap_or_default();
-    return Err(format!("hydra_add_source_failed_http_{status}: {body}"));
-  }
-
-  response
-    .json::<HydraSourceDto>()
-    .await
-    .map_err(|error| format!("hydra_add_source_parse_failed: {error}"))
-}
-
-async fn hydra_sync_download_sources(ids: Vec<String>) -> Result<Vec<HydraSourceDto>, String> {
-  let client = hydra_http_client()?;
-  let response = client
-    .post(format!("{}/download-sources/sync", hydra_api_base_url()))
-    .json(&serde_json::json!({ "ids": ids }))
-    .send()
-    .await
-    .map_err(|error| format!("hydra_sync_sources_request_failed: {error}"))?;
-
-  if !response.status().is_success() {
-    let status = response.status().as_u16();
-    let body = response.text().await.unwrap_or_default();
-    return Err(format!("hydra_sync_sources_failed_http_{status}: {body}"));
-  }
-
-  response
-    .json::<Vec<HydraSourceDto>>()
-    .await
-    .map_err(|error| format!("hydra_sync_sources_parse_failed: {error}"))
 }
 
 async fn hydra_check_download_sources_changes(
@@ -2577,15 +3129,412 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
         value TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS extraction_log (
+        job_id       TEXT PRIMARY KEY,
+        status       TEXT NOT NULL,
+        archive_path TEXT,
+        extract_path TEXT,
+        error        TEXT,
+        updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS catalog_steam_cache (
         query_norm   TEXT PRIMARY KEY,
         payload_json TEXT NOT NULL,
         fetched_ts   INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS game_covers (
+        title_key   TEXT PRIMARY KEY,
+        cover_url   TEXT NOT NULL,
+        local_path  TEXT,
+        updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS library_game_roots (
+        library_key TEXT PRIMARY KEY,
+        title       TEXT NOT NULL,
+        dest_path   TEXT NOT NULL,
+        game_root   TEXT NOT NULL,
+        updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
       ",
     )
     .map_err(|e| format!("could_not_initialize_database: {e}"))?;
   migrate_catalog_steam_cache_hd_covers(conn)
+}
+
+fn normalize_title_key(title: &str) -> String {
+  let cleaned = title
+    .to_lowercase()
+    .replace(['™', '®', '©'], "")
+    .chars()
+    .map(|c| {
+      if c.is_alphanumeric() || c == ' ' {
+        c
+      } else {
+        ' '
+      }
+    })
+    .collect::<String>();
+  cleaned
+    .split_whitespace()
+    .take(6)
+    .collect::<Vec<_>>()
+    .join(" ")
+}
+
+fn covers_dir_for_app(app: &AppHandle) -> Result<PathBuf, String> {
+  let dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("could_not_resolve_app_data_dir: {e}"))?
+    .join("covers");
+  fs::create_dir_all(&dir).map_err(|e| format!("could_not_create_covers_dir: {e}"))?;
+  Ok(dir)
+}
+
+fn is_valid_cover_bytes(bytes: &[u8]) -> bool {
+  if bytes.len() < 256 {
+    return false;
+  }
+  if bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+    return true;
+  }
+  if bytes.len() >= 8 && bytes[0..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+    return true;
+  }
+  if bytes.len() >= 12 && bytes[0..4] == *b"RIFF" && bytes[8..12] == *b"WEBP" {
+    return true;
+  }
+  if bytes.len() >= 6 && (bytes[0..6] == *b"GIF87a" || bytes[0..6] == *b"GIF89a") {
+    return true;
+  }
+  false
+}
+
+fn is_usable_cover_file(path: &Path, covers_dir: &Path) -> bool {
+  if !path.is_file() {
+    return false;
+  }
+  let Ok(meta) = fs::metadata(path) else {
+    return false;
+  };
+  if meta.len() < 256 {
+    return false;
+  }
+  let Ok(canon_file) = path.canonicalize() else {
+    return false;
+  };
+  let Ok(canon_dir) = covers_dir.canonicalize() else {
+    return false;
+  };
+  if !canon_file.starts_with(&canon_dir) {
+    return false;
+  }
+  let Ok(bytes) = fs::read(path) else {
+    return false;
+  };
+  is_valid_cover_bytes(&bytes)
+}
+
+fn cover_download_urls(cover_url: &str) -> Vec<String> {
+  let trimmed = cover_url.trim();
+  let mut urls = Vec::new();
+  if let Some(rest) = trimmed.split("/steam/apps/").nth(1) {
+    if let Some(app_id) = rest.split('/').next().filter(|id| !id.is_empty()) {
+      urls.push(format!(
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg"
+      ));
+      urls.push(format!(
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900_2x.jpg"
+      ));
+      urls.push(format!(
+        "https://steamcdn-a.akamaihd.net/steam/apps/{app_id}/library_600x900.jpg"
+      ));
+      urls.push(format!(
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/library_600x900.jpg"
+      ));
+      urls.push(format!(
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/header.jpg"
+      ));
+      urls.push(format!(
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/capsule_616x353.jpg"
+      ));
+    }
+  }
+  urls.push(trimmed.to_string());
+  let mut seen = HashSet::new();
+  urls.retain(|url| seen.insert(url.clone()));
+  urls
+}
+
+async fn fetch_cover_bytes(client: &reqwest::Client, cover_url: &str) -> Option<Vec<u8>> {
+  for attempt in 0..2 {
+    match client.get(cover_url).send().await {
+      Ok(response) if response.status().is_success() => {
+        if let Ok(bytes) = response.bytes().await {
+          if is_valid_cover_bytes(&bytes) {
+            return Some(bytes.to_vec());
+          }
+        }
+      }
+      Ok(response)
+        if !response.status().is_server_error() && response.status().as_u16() != 429 =>
+      {
+        break;
+      }
+      Ok(_) | Err(_) => {}
+    }
+    if attempt + 1 < 2 {
+      sleep(Duration::from_millis(350 * (attempt as u64 + 1))).await;
+    }
+  }
+  None
+}
+
+fn remove_cover_file(path: &str) {
+  let _ = fs::remove_file(path);
+}
+
+/// Insere ou atualiza a URL da capa. Se a URL mudar, devolve o `local_path` antigo para apagar o ficheiro.
+fn upsert_game_cover(
+  conn: &Connection,
+  title: &str,
+  cover_url: &str,
+) -> Result<Option<String>, String> {
+  let title_key = normalize_title_key(title);
+  if title_key.is_empty() || cover_url.trim().is_empty() {
+    return Ok(None);
+  }
+  let trimmed = cover_url.trim();
+
+  let stale_local: Option<String> = conn
+    .query_row(
+      "SELECT local_path FROM game_covers WHERE title_key = ?1 AND cover_url != ?2",
+      params![title_key, trimmed],
+      |row| row.get(0),
+    )
+    .ok()
+    .flatten();
+
+  conn
+    .execute(
+      "INSERT INTO game_covers (title_key, cover_url, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP) \
+       ON CONFLICT(title_key) DO UPDATE SET \
+         cover_url = excluded.cover_url, \
+         local_path = CASE WHEN game_covers.cover_url != excluded.cover_url THEN NULL ELSE game_covers.local_path END, \
+         updated_at = CURRENT_TIMESTAMP",
+      params![title_key, trimmed],
+    )
+    .map_err(|e| format!("could_not_upsert_game_cover: {e}"))?;
+  Ok(stale_local)
+}
+
+async fn download_and_cache_cover(
+  app: &AppHandle,
+  title: &str,
+  cover_url: &str,
+) -> Result<Option<String>, String> {
+  let title_key = normalize_title_key(title);
+  if title_key.is_empty() {
+    return Ok(None);
+  }
+
+  let covers_dir = covers_dir_for_app(app)?;
+
+  let mut hasher = DefaultHasher::new();
+  title_key.hash(&mut hasher);
+  cover_url.hash(&mut hasher);
+  let file_name = format!("{:x}.jpg", hasher.finish());
+  let file_path = covers_dir.join(file_name);
+
+  if file_path.exists() && !is_usable_cover_file(&file_path, &covers_dir) {
+    remove_cover_file(&file_path.to_string_lossy());
+  }
+
+  if is_usable_cover_file(&file_path, &covers_dir) {
+    let local_path = file_path.to_string_lossy().to_string();
+    let conn = open_database_connection(app)?;
+    conn
+      .execute(
+        "UPDATE game_covers SET local_path = ?1, updated_at = CURRENT_TIMESTAMP WHERE title_key = ?2",
+        params![local_path, title_key],
+      )
+      .map_err(|e| format!("could_not_update_cover_local_path: {e}"))?;
+    return Ok(Some(local_path));
+  }
+
+  let client = reqwest::Client::builder()
+    .timeout(Duration::from_secs(20))
+    .user_agent("MyLauncher/1.0")
+    .build()
+    .map_err(|e| format!("could_not_create_http_client: {e}"))?;
+
+  let mut downloaded: Option<Vec<u8>> = None;
+  for candidate_url in cover_download_urls(cover_url) {
+    if let Some(bytes) = fetch_cover_bytes(&client, &candidate_url).await {
+      downloaded = Some(bytes);
+      break;
+    }
+  }
+
+  let Some(bytes) = downloaded else {
+    eprintln!("cover_cache_miss: all candidates failed for {title_key}");
+    return Ok(None);
+  };
+  fs::write(&file_path, &bytes).map_err(|e| format!("could_not_write_cover_cache: {e}"))?;
+
+  let local_path = file_path.to_string_lossy().to_string();
+  let conn = open_database_connection(app)?;
+  conn
+    .execute(
+      "UPDATE game_covers SET local_path = ?1, updated_at = CURRENT_TIMESTAMP WHERE title_key = ?2",
+      params![local_path, title_key],
+    )
+    .map_err(|e| format!("could_not_update_cover_local_path: {e}"))?;
+  Ok(Some(local_path))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GameCoverDto {
+  title_key: String,
+  cover_url: String,
+  local_path: Option<String>,
+}
+
+#[tauri::command]
+fn list_game_covers(app: AppHandle) -> Result<Vec<GameCoverDto>, String> {
+  let covers_dir = covers_dir_for_app(&app)?;
+  let conn = open_database_connection(&app)?;
+  let mut stmt = conn
+    .prepare("SELECT title_key, cover_url, local_path FROM game_covers ORDER BY updated_at DESC")
+    .map_err(|e| format!("could_not_prepare_list_game_covers: {e}"))?;
+  let rows = stmt
+    .query_map([], |row| {
+      let local_path: Option<String> = row.get(2)?;
+      let local_path = local_path.filter(|path| is_usable_cover_file(Path::new(path), &covers_dir));
+      Ok(GameCoverDto {
+        title_key: row.get(0)?,
+        cover_url: row.get(1)?,
+        local_path,
+      })
+    })
+    .map_err(|e| format!("could_not_query_game_covers: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("could_not_map_game_covers: {e}"))?;
+  Ok(rows)
+}
+
+#[tauri::command]
+async fn ensure_game_cover_cached(app: AppHandle, title: String) -> Result<Option<String>, String> {
+  let conn = open_database_connection(&app)?;
+  let title_key = normalize_title_key(&title);
+  let (cover_url, local_path): (String, Option<String>) = match conn.query_row(
+    "SELECT cover_url, local_path FROM game_covers WHERE title_key = ?1",
+    params![title_key],
+    |row| Ok((row.get(0)?, row.get(1)?)),
+  ) {
+    Ok(row) => row,
+    Err(_) => return Ok(None),
+  };
+  drop(conn);
+
+  let covers_dir = covers_dir_for_app(&app)?;
+  if let Some(path) = local_path {
+    if is_usable_cover_file(Path::new(&path), &covers_dir) {
+      return Ok(Some(path));
+    }
+    remove_cover_file(&path);
+    let conn = open_database_connection(&app)?;
+    conn
+      .execute(
+        "UPDATE game_covers SET local_path = NULL WHERE title_key = ?1",
+        params![title_key],
+      )
+      .map_err(|e| format!("could_not_clear_cover_local_path: {e}"))?;
+  }
+  download_and_cache_cover(&app, &title, &cover_url).await
+}
+
+#[tauri::command]
+fn invalidate_game_cover_local(app: AppHandle, title: String) -> Result<(), String> {
+  let title_key = normalize_title_key(&title);
+  if title_key.is_empty() {
+    return Ok(());
+  }
+  let conn = open_database_connection(&app)?;
+  let local_path: Option<String> = conn
+    .query_row(
+      "SELECT local_path FROM game_covers WHERE title_key = ?1",
+      params![title_key],
+      |row| row.get(0),
+    )
+    .unwrap_or(None);
+  conn
+    .execute(
+      "UPDATE game_covers SET local_path = NULL WHERE title_key = ?1",
+      params![title_key],
+    )
+    .map_err(|e| format!("could_not_clear_cover_local_path: {e}"))?;
+  if let Some(path) = local_path {
+    remove_cover_file(&path);
+  }
+  Ok(())
+}
+
+#[tauri::command]
+async fn save_game_cover(app: AppHandle, title: String, cover_url: String) -> Result<(), String> {
+  let trimmed = cover_url.trim().to_string();
+  if trimmed.is_empty() {
+    return Ok(());
+  }
+
+  let stale = {
+    let conn = open_database_connection(&app)?;
+    upsert_game_cover(&conn, &title, &trimmed)?
+  };
+  if let Some(path) = stale {
+    remove_cover_file(&path);
+  }
+
+  let covers_dir = covers_dir_for_app(&app)?;
+  let needs_download = {
+    let conn = open_database_connection(&app)?;
+    let title_key = normalize_title_key(&title);
+    let local_path: Option<String> = conn
+      .query_row(
+        "SELECT local_path FROM game_covers WHERE title_key = ?1",
+        params![title_key],
+        |row| row.get(0),
+      )
+      .unwrap_or(None);
+    !local_path
+      .as_deref()
+      .is_some_and(|path| is_usable_cover_file(Path::new(path), &covers_dir))
+  };
+
+  if needs_download {
+    let app_bg = app.clone();
+    let title_bg = title.clone();
+    tauri::async_runtime::spawn(async move {
+      let _ = download_and_cache_cover(&app_bg, &title_bg, &trimmed).await;
+    });
+  }
+
+  Ok(())
+}
+
+#[tauri::command]
+fn check_path_playable(app: AppHandle, payload: LaunchGamePayload) -> bool {
+  let extra_roots = launch_extra_roots(
+    &app,
+    &payload.title,
+    &payload.path,
+    payload.job_id.as_deref(),
+  );
+  launch::resolve_launch_candidates_with_extra_roots(&payload.title, &payload.path, &extra_roots).is_ok()
 }
 
 /// Invalida cache do catálogo Steam uma vez após passar a gravar URLs de cápsula HD em vez de `tiny_image`.
@@ -2626,10 +3575,10 @@ fn stable_embedded_id(title: &str) -> String {
   format!("emb_{:x}", hasher.finish())
 }
 
-/// Cápsula da biblioteca Steam @2x (~1200×1800). Evitar `tiny_image` da API storesearch (muito pequena).
-fn steam_capsule_cover(app_id: u32) -> String {
+/// Cápsula vertical otimizada para grelha (~600×900). Mais leve que a variante @2x.
+fn steam_grid_cover(app_id: u32) -> String {
   format!(
-    "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/library_600x900_2x.jpg",
+    "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/library_600x900.jpg",
     app_id
   )
 }
@@ -2675,7 +3624,7 @@ fn embedded_entry_to_dto(entry: &EmbeddedCatalogEntry) -> CatalogGameDto {
     id: stable_embedded_id(&entry.title),
     title: entry.title.clone(),
     genre: entry.genre.clone(),
-    cover_url: entry.steam_app_id.map(steam_capsule_cover),
+    cover_url: entry.steam_app_id.map(steam_grid_cover),
     source: "embedded".to_string(),
   }
 }
@@ -2697,47 +3646,6 @@ fn filter_embedded_catalog(query_norm: &str) -> Vec<CatalogGameDto> {
     }
   }
   out
-}
-
-fn normalize_catalog_match_text(value: &str) -> String {
-  value
-    .to_lowercase()
-    .chars()
-    .map(|c| if c.is_ascii_alphanumeric() || c.is_whitespace() { c } else { ' ' })
-    .collect::<String>()
-    .split_whitespace()
-    .collect::<Vec<_>>()
-    .join(" ")
-}
-
-fn filter_catalog_games_by_available_options(
-  games: Vec<CatalogGameDto>,
-  options: &[DownloadOptionDto],
-) -> Vec<CatalogGameDto> {
-  if games.is_empty() || options.is_empty() {
-    return Vec::new();
-  }
-  let option_titles: Vec<String> = options
-    .iter()
-    .map(|opt| normalize_catalog_match_text(&opt.title))
-    .filter(|t| !t.is_empty())
-    .collect();
-  if option_titles.is_empty() {
-    return Vec::new();
-  }
-
-  games
-    .into_iter()
-    .filter(|game| {
-      let game_title = normalize_catalog_match_text(&game.title);
-      if game_title.is_empty() {
-        return false;
-      }
-      option_titles.iter().any(|opt_title| {
-        opt_title.contains(&game_title) || game_title.contains(opt_title)
-      })
-    })
-    .collect()
 }
 
 fn steam_cache_get(conn: &Connection, query_norm: &str) -> Option<Vec<CatalogGameDto>> {
@@ -2785,7 +3693,7 @@ fn steam_cache_put(conn: &Connection, query_norm: &str, games: &[CatalogGameDto]
 
 async fn fetch_steam_catalog_games(search_term: &str) -> Result<Vec<CatalogGameDto>, String> {
   let client = reqwest::Client::builder()
-    .timeout(Duration::from_secs(12))
+    .timeout(Duration::from_secs(4))
     .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Hydra-Tauri-Launcher/1.0")
     .build()
     .map_err(|e| format!("steam_client_build: {e}"))?;
@@ -2811,7 +3719,7 @@ async fn fetch_steam_catalog_games(search_term: &str) -> Result<Vec<CatalogGameD
     return Ok(out);
   };
 
-  for item in items.iter().take(32) {
+  for item in items.iter().take(24) {
     let Some(app_id) = item.get("id").and_then(|v| v.as_u64()).map(|v| v as u32) else {
       continue;
     };
@@ -2827,7 +3735,7 @@ async fn fetch_steam_catalog_games(search_term: &str) -> Result<Vec<CatalogGameD
     if is_likely_dlc_item(item, &title) {
       continue;
     }
-    let cover = Some(steam_capsule_cover(app_id));
+    let cover = Some(steam_grid_cover(app_id));
 
     out.push(CatalogGameDto {
       id: format!("steam_{app_id}"),
@@ -2841,26 +3749,209 @@ async fn fetch_steam_catalog_games(search_term: &str) -> Result<Vec<CatalogGameD
   Ok(out)
 }
 
+fn embedded_cover_for_title(title: &str) -> Option<String> {
+  let cleaned = clean_title_for_cover(title);
+  for candidate in [cleaned.as_str(), title] {
+    for entry in embedded_catalog_entries() {
+      if title_matches_query(&entry.title, candidate) {
+        if let Some(cover) = entry.steam_app_id.map(steam_grid_cover) {
+          return Some(cover);
+        }
+      }
+    }
+  }
+
+  let title_norm = normalize_match_text(&cleaned);
+  if title_norm.is_empty() {
+    return None;
+  }
+
+  let mut best: Option<(usize, u32)> = None;
+  for entry in embedded_catalog_entries() {
+    let Some(app_id) = entry.steam_app_id else {
+      continue;
+    };
+    let entry_norm = normalize_match_text(&entry.title);
+    if entry_norm.is_empty() {
+      continue;
+    }
+    let matches = title_norm.contains(&entry_norm) || entry_norm.contains(&title_norm);
+    if !matches {
+      continue;
+    }
+    let score = entry_norm.len();
+    if best.map(|(best_score, _)| score > best_score).unwrap_or(true) {
+      best = Some((score, app_id));
+    }
+  }
+
+  best.map(|(_, app_id)| steam_grid_cover(app_id))
+}
+
+fn cover_resolve_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
+  static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+  CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cover_cache_get(key: &str) -> Option<Option<String>> {
+  cover_resolve_cache()
+    .lock()
+    .ok()
+    .and_then(|cache| cache.get(key).cloned())
+}
+
+fn cover_cache_put(key: String, value: Option<String>) {
+  if let Ok(mut cache) = cover_resolve_cache().lock() {
+    cache.insert(key, value);
+  }
+}
+
+async fn fetch_steam_cover_url_for_title(title: &str) -> Option<String> {
+  let cleaned = clean_title_for_cover(title);
+  if cleaned.len() < 2 {
+    return None;
+  }
+  let games = fetch_steam_catalog_games(&cleaned).await.ok()?;
+  games
+    .into_iter()
+    .find(|game| title_matches_query(&game.title, &cleaned))
+    .and_then(|game| game.cover_url)
+}
+
+async fn resolve_repack_cover_url(title: &str, source_cover: Option<String>) -> Option<String> {
+  if let Some(url) = source_cover.filter(|value| !value.trim().is_empty()) {
+    return Some(url);
+  }
+
+  let cache_key = normalize_match_text(title);
+  if !cache_key.is_empty() {
+    if let Some(cached) = cover_cache_get(&cache_key) {
+      return cached;
+    }
+  }
+
+  let resolved = if let Some(url) = embedded_cover_for_title(title) {
+    Some(url)
+  } else {
+    fetch_steam_cover_url_for_title(title).await
+  };
+
+  if !cache_key.is_empty() {
+    cover_cache_put(cache_key, resolved.clone());
+  }
+
+  resolved
+}
+
+async fn search_catalog_from_sources(app: &AppHandle, query: &str) -> Result<Vec<CatalogGameDto>, String> {
+  let conn = open_database_connection(app)?;
+  let hydra_sources = list_hydra_sources(&conn)?;
+  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
+  drop(conn);
+
+  let active_sources: Vec<HydraSourceDto> = hydra_sources
+    .into_iter()
+    .filter(|source| !disabled.contains(&source.id))
+    .collect();
+
+  if active_sources.is_empty() {
+    return Ok(Vec::new());
+  }
+
+  let options = search_download_options_from_local_sources(query, &active_sources).await;
+  let mut seen = HashSet::new();
+  let mut games = Vec::new();
+  let mut pending_covers: Vec<(usize, String, Option<String>)> = Vec::new();
+
+  for option in options {
+    if option.download_type != "torrent" {
+      continue;
+    }
+    let key = normalize_match_text(&option.title);
+    if key.is_empty() || seen.contains(&key) {
+      continue;
+    }
+    seen.insert(key);
+
+    let title = option.title;
+    let source_cover = option.cover_url.clone();
+    games.push(CatalogGameDto {
+      id: format!("source:{}", stable_embedded_id(&title)),
+      title: title.clone(),
+      genre: option.source_name,
+      cover_url: None,
+      source: "source".to_string(),
+    });
+    pending_covers.push((games.len() - 1, title, source_cover));
+
+    if games.len() >= 56 {
+      break;
+    }
+  }
+
+  for chunk in pending_covers.chunks(4) {
+    let mut handles = Vec::new();
+    for (index, title, source_cover) in chunk {
+      let title = title.clone();
+      let source_cover = source_cover.clone();
+      handles.push((
+        *index,
+        tauri::async_runtime::spawn(async move {
+          resolve_repack_cover_url(&title, source_cover).await
+        }),
+      ));
+    }
+    for (index, handle) in handles {
+      if let Ok(url) = handle.await {
+        if let Some(game) = games.get_mut(index) {
+          game.cover_url = url;
+        }
+      }
+    }
+  }
+
+  Ok(games)
+}
+
+#[tauri::command]
+async fn resolve_game_cover_url(title: String) -> Result<Option<String>, String> {
+  Ok(resolve_repack_cover_url(title.trim(), None).await)
+}
+
 #[tauri::command]
 async fn search_game_catalog(app: AppHandle, payload: SearchCatalogPayload) -> Result<Vec<CatalogGameDto>, String> {
   let trimmed = payload.query.trim();
   let query_norm = trimmed.to_lowercase();
-  let conn = open_database_connection(&app)?;
+  let only_with_sources = payload.only_with_sources.unwrap_or(false);
 
-  // Sem lista “fixa” quando a pesquisa está vazia ou curta — só resultados após 2+ caracteres.
   if query_norm.len() < 2 {
-    return Ok(vec![]);
+    return Ok(Vec::new());
+  }
+
+  if only_with_sources {
+    return search_catalog_from_sources(&app, trimmed).await;
   }
 
   let mut merged = filter_embedded_catalog(&query_norm);
   let mut seen: HashSet<String> = merged.iter().map(|g| g.title.to_lowercase()).collect();
 
+  let include_steam = payload.include_steam.unwrap_or(true);
+  if !include_steam {
+    let mut out: Vec<CatalogGameDto> = merged.into_iter().take(56).collect();
+    return Ok(out);
+  }
+
+  let conn = open_database_connection(&app)?;
+
   let steam_chunk = if let Some(cached) = steam_cache_get(&conn, &query_norm) {
     cached
   } else {
+    drop(conn);
     let fetched = fetch_steam_catalog_games(trimmed).await.unwrap_or_default();
     if !fetched.is_empty() {
-      let _ = steam_cache_put(&conn, &query_norm, &fetched);
+      if let Ok(conn) = open_database_connection(&app) {
+        let _ = steam_cache_put(&conn, &query_norm, &fetched);
+      }
     }
     fetched
   };
@@ -2877,27 +3968,12 @@ async fn search_game_catalog(app: AppHandle, payload: SearchCatalogPayload) -> R
     }
   }
 
-  // Filtra para mostrar apenas jogos que realmente existem nas fontes instaladas/ativas.
-  let hydra_sources = list_hydra_sources(&conn)?;
-  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
-  let active_sources: Vec<HydraSourceDto> = hydra_sources
-    .into_iter()
-    .filter(|source| !disabled.contains(&source.id))
-    .collect();
-  drop(conn);
-
-  if active_sources.is_empty() {
-    return Ok(Vec::new());
+  let mut out: Vec<CatalogGameDto> = merged.into_iter().take(56).collect();
+  if only_with_sources {
+    out = apply_catalog_source_filter(&app, out).await;
   }
 
-  let available_options =
-    search_download_options_from_local_sources(trimmed, &active_sources).await;
-  if available_options.is_empty() {
-    return Ok(Vec::new());
-  }
-
-  let merged = filter_catalog_games_by_available_options(merged, &available_options);
-  Ok(merged)
+  Ok(out)
 }
 
 fn fetch_source_by_id(conn: &Connection, id: i64) -> Result<SourceDto, String> {
@@ -2964,7 +4040,7 @@ fn fetch_job_by_id(conn: &Connection, id: i64) -> Result<DownloadJobDto, String>
       "SELECT id, title, url, dest_path, status, priority, progress, bytes_downloaded, \
        total_bytes, error_msg, created_at, updated_at FROM download_jobs WHERE id = ?1",
       params![id],
-      |row| map_job_row(row),
+      map_job_row,
     )
     .map_err(|e| format!("could_not_fetch_job: {e}"))
 }
@@ -3116,6 +4192,813 @@ fn fetch_collection_by_id(conn: &Connection, id: i64) -> Result<CollectionDto, S
     .map_err(|e| format!("could_not_fetch_collection: {e}"))
 }
 
+// ── Extraction ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExtractStatusEvent {
+  job_id: String,
+  status: String,
+  message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SidecarJobWatcher {
+  id: String,
+  title: String,
+  #[serde(default, alias = "destPath")]
+  dest_path: String,
+  status: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct SidecarJobProgressRow {
+  id: String,
+  status: String,
+  #[serde(default)]
+  progress: f64,
+  #[serde(default, alias = "bytesDownloaded")]
+  bytes_downloaded: i64,
+  #[serde(default, alias = "totalBytes")]
+  total_bytes: i64,
+  #[serde(default, alias = "speedBps")]
+  speed_bps: i64,
+  #[serde(default, alias = "etaSeconds")]
+  eta_seconds: i64,
+}
+
+fn normalize_sidecar_progress(
+  progress: f64,
+  bytes_downloaded: i64,
+  total_bytes: i64,
+  status: &str,
+) -> f64 {
+  if total_bytes > 0 && bytes_downloaded >= 0 {
+    return ((bytes_downloaded as f64 / total_bytes as f64) * 100.0).clamp(0.0, 100.0);
+  }
+
+  let mut pct = if progress > 0.0 && progress <= 1.0 {
+    progress * 100.0
+  } else {
+    progress
+  };
+
+  let active = matches!(status, "downloading" | "pending" | "retrying" | "paused");
+
+  if bytes_downloaded <= 0 && total_bytes <= 0 && active && pct >= 99.0 {
+    return 0.0;
+  }
+
+  if bytes_downloaded <= 0 && total_bytes > 0 && active && pct >= 100.0 {
+    return 0.0;
+  }
+
+  pct.clamp(0.0, 100.0)
+}
+
+async fn fetch_sidecar_jobs_progress(app: &AppHandle) -> Result<Vec<SidecarJobProgressRow>, String> {
+  let port = ensure_sidecar_running(app.clone()).await?;
+  let client = reqwest::Client::new();
+  let value = client
+    .get(format!("http://127.0.0.1:{port}/jobs"))
+    .send()
+    .await
+    .map_err(|e| format!("sidecar_request_failed: {e}"))?
+    .json::<serde_json::Value>()
+    .await
+    .map_err(|e| format!("sidecar_parse_failed: {e}"))?;
+
+  let rows = match value {
+    serde_json::Value::Array(items) => items,
+    serde_json::Value::Object(map) => map
+      .get("jobs")
+      .or_else(|| map.get("data"))
+      .and_then(|v| v.as_array())
+      .cloned()
+      .unwrap_or_default(),
+    _ => Vec::new(),
+  };
+
+  Ok(rows
+    .into_iter()
+    .filter_map(|row| serde_json::from_value::<SidecarJobProgressRow>(row).ok())
+    .collect())
+}
+
+fn spawn_sidecar_progress_watcher(app: AppHandle) {
+  tauri::async_runtime::spawn(async move {
+    let mut last_snapshot: HashMap<String, SidecarJobProgressRow> = HashMap::new();
+    loop {
+      sleep(Duration::from_millis(750)).await;
+
+      let rows = match fetch_sidecar_jobs_progress(&app).await {
+        Ok(items) => items,
+        Err(_) => continue,
+      };
+
+      let active_ids: HashSet<String> = rows.iter().map(|row| row.id.clone()).collect();
+      last_snapshot.retain(|id, _| active_ids.contains(id));
+
+      for row in rows {
+        let changed = last_snapshot.get(&row.id).map_or(true, |prev| {
+          let prev_progress = normalize_sidecar_progress(
+            prev.progress,
+            prev.bytes_downloaded,
+            prev.total_bytes,
+            &prev.status,
+          );
+          let next_progress = normalize_sidecar_progress(
+            row.progress,
+            row.bytes_downloaded,
+            row.total_bytes,
+            &row.status,
+          );
+          prev.status != row.status
+            || (prev_progress - next_progress).abs() >= 0.05
+            || prev.bytes_downloaded != row.bytes_downloaded
+            || prev.total_bytes != row.total_bytes
+            || prev.speed_bps != row.speed_bps
+        });
+        if !changed {
+          continue;
+        }
+        last_snapshot.insert(row.id.clone(), row.clone());
+
+        let progress = normalize_sidecar_progress(
+          row.progress,
+          row.bytes_downloaded,
+          row.total_bytes,
+          &row.status,
+        );
+
+        let _ = app.emit(
+          QUEUE_EVENT_JOB_PROGRESS,
+          JobProgressEvent {
+            job_id: row.id.clone(),
+            progress,
+            status: row.status.clone(),
+            speed_bytes_per_sec: row.speed_bps.max(0) as u64,
+            eta_seconds: row.eta_seconds.max(0),
+            bytes_downloaded: Some(row.bytes_downloaded),
+            total_bytes: Some(row.total_bytes),
+          },
+        );
+
+        if let Ok(conn) = open_database_connection(&app) {
+          let _ = conn.execute(
+            "UPDATE download_jobs SET status = ?1, progress = ?2, bytes_downloaded = ?3, \
+             total_bytes = ?4, updated_at = CURRENT_TIMESTAMP WHERE id = ?5",
+            params![
+              row.status,
+              progress.round() as i64,
+              row.bytes_downloaded,
+              row.total_bytes,
+              row.id,
+            ],
+          );
+        }
+      }
+    }
+  });
+}
+
+fn emit_extract_status(app: &AppHandle, job_id: &str, status: &str, message: Option<String>) {
+  let _ = app.emit(
+    EXTRACT_EVENT_STATUS,
+    ExtractStatusEvent {
+      job_id: job_id.to_string(),
+      status: status.to_string(),
+      message,
+    },
+  );
+}
+
+// Extração automática desativada na UI; funções mantidas para extract_library_folder / reativação futura.
+#[allow(dead_code)]
+fn read_app_setting(conn: &Connection, key: &str) -> Option<String> {
+  conn
+    .query_row(
+      "SELECT value FROM app_settings WHERE key = ?1",
+      params![key],
+      |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+fn read_app_setting_bool(conn: &Connection, key: &str, default: bool) -> bool {
+  read_app_setting(conn, key)
+    .map(|value| !matches!(value.as_str(), "0" | "false" | "FALSE"))
+    .unwrap_or(default)
+}
+
+#[allow(dead_code)]
+fn resolve_7z_path(app: &AppHandle) -> Result<PathBuf, String> {
+  let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  let mut candidates: Vec<PathBuf> = vec![
+    manifest.join("binaries").join("7za.exe"),
+    manifest.join("binaries").join("7z.exe"),
+    PathBuf::from(r"C:\Program Files\7-Zip\7z.exe"),
+    PathBuf::from(r"C:\Program Files (x86)\7-Zip\7z.exe"),
+  ];
+
+  if let Ok(resource_dir) = app.path().resource_dir() {
+    candidates.push(resource_dir.join("binaries").join("7za.exe"));
+    candidates.push(resource_dir.join("binaries").join("7z.exe"));
+    candidates.push(resource_dir.join("7za.exe"));
+    candidates.push(resource_dir.join("7z.exe"));
+  }
+
+  if let Ok(cwd) = std::env::current_dir() {
+    candidates.push(cwd.join("binaries").join("7za.exe"));
+    candidates.push(cwd.join("binaries").join("7z.exe"));
+    candidates.push(cwd.join("src-tauri").join("binaries").join("7za.exe"));
+    candidates.push(cwd.join("src-tauri").join("binaries").join("7z.exe"));
+  }
+
+  if let Some(found) = candidates.into_iter().find(|p| p.exists()) {
+    return Ok(found);
+  }
+
+  if which_7z_on_path().is_some() {
+    return Ok(PathBuf::from("7z"));
+  }
+
+  Err(
+    "7z_not_found: execute npm run setup:binaries ou coloque 7za.exe em src-tauri/binaries/"
+      .to_string(),
+  )
+}
+
+#[cfg(target_os = "windows")]
+#[allow(dead_code)]
+fn which_7z_on_path() -> Option<PathBuf> {
+  StdCommand::new("where")
+    .arg("7z")
+    .output()
+    .ok()
+    .filter(|o| o.status.success())
+    .and_then(|o| {
+      String::from_utf8(o.stdout)
+        .ok()
+        .and_then(|s| s.lines().next().map(|l| PathBuf::from(l.trim())))
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
+fn which_7z_on_path() -> Option<PathBuf> {
+  StdCommand::new("which")
+    .arg("7z")
+    .output()
+    .ok()
+    .filter(|o| o.status.success())
+    .and_then(|o| {
+      String::from_utf8(o.stdout)
+        .ok()
+        .map(|s| PathBuf::from(s.trim()))
+    })
+}
+
+fn upsert_extraction_log(
+  conn: &Connection,
+  job_id: &str,
+  status: &str,
+  archive_path: Option<&str>,
+  extract_path: Option<&str>,
+  error: Option<&str>,
+) -> Result<(), String> {
+  conn
+    .execute(
+      "INSERT INTO extraction_log (job_id, status, archive_path, extract_path, error, updated_at) \
+       VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP) \
+       ON CONFLICT(job_id) DO UPDATE SET \
+         status = excluded.status, \
+         archive_path = excluded.archive_path, \
+         extract_path = excluded.extract_path, \
+         error = excluded.error, \
+         updated_at = CURRENT_TIMESTAMP",
+      params![job_id, status, archive_path, extract_path, error],
+    )
+    .map_err(|e| format!("could_not_upsert_extraction_log: {e}"))?;
+  Ok(())
+}
+
+fn get_extraction_status(conn: &Connection, job_id: &str) -> Option<String> {
+  conn
+    .query_row(
+      "SELECT status FROM extraction_log WHERE job_id = ?1",
+      params![job_id],
+      |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+fn get_extraction_extract_path(conn: &Connection, job_id: &str) -> Option<PathBuf> {
+  conn
+    .query_row(
+      "SELECT extract_path FROM extraction_log WHERE job_id = ?1",
+      params![job_id],
+      |row| row.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .flatten()
+    .map(PathBuf::from)
+    .filter(|path| path.exists())
+}
+
+fn library_entry_key(dest_path: &str, title: &str) -> String {
+  let mut hasher = DefaultHasher::new();
+  dest_path.trim().to_lowercase().hash(&mut hasher);
+  normalize_title_key(title).hash(&mut hasher);
+  format!("{:016x}", hasher.finish())
+}
+
+fn read_library_game_root(conn: &Connection, dest_path: &str, title: &str) -> Option<PathBuf> {
+  let key = library_entry_key(dest_path, title);
+  conn
+    .query_row(
+      "SELECT game_root FROM library_game_roots WHERE library_key = ?1",
+      params![key],
+      |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .map(PathBuf::from)
+    .filter(|path| path.is_dir())
+}
+
+fn upsert_library_game_root(
+  conn: &Connection,
+  dest_path: &str,
+  title: &str,
+  game_root: &Path,
+) -> Result<(), String> {
+  let key = library_entry_key(dest_path, title);
+  conn
+    .execute(
+      "INSERT INTO library_game_roots (library_key, title, dest_path, game_root, updated_at) \
+       VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP) \
+       ON CONFLICT(library_key) DO UPDATE SET \
+         title = excluded.title, \
+         dest_path = excluded.dest_path, \
+         game_root = excluded.game_root, \
+         updated_at = CURRENT_TIMESTAMP",
+      params![
+        key,
+        title,
+        dest_path.trim(),
+        game_root.to_string_lossy().to_string()
+      ],
+    )
+    .map_err(|error| format!("could_not_save_library_game_root: {error}"))?;
+  Ok(())
+}
+
+fn stored_game_roots_for(app: &AppHandle, title: &str, dest_path: &str) -> Vec<PathBuf> {
+  let Ok(conn) = open_database_connection(app) else {
+    return Vec::new();
+  };
+  read_library_game_root(&conn, dest_path, title)
+    .map(|path| vec![path])
+    .unwrap_or_default()
+}
+
+fn launch_extra_roots(
+  app: &AppHandle,
+  title: &str,
+  dest_path: &str,
+  job_id: Option<&str>,
+) -> Vec<PathBuf> {
+  let mut roots = job_id
+    .map(|id| extraction_roots_for_job(app, id))
+    .unwrap_or_default();
+  for root in stored_game_roots_for(app, title, dest_path) {
+    if !roots.iter().any(|existing| existing == &root) {
+      roots.push(root);
+    }
+  }
+  roots
+}
+
+fn extraction_roots_for_job(app: &AppHandle, job_id: &str) -> Vec<PathBuf> {
+  let Ok(conn) = open_database_connection(app) else {
+    return Vec::new();
+  };
+  get_extraction_extract_path(&conn, job_id)
+    .map(|path| vec![path])
+    .unwrap_or_default()
+}
+
+fn apply_extraction_overlay(job: &mut serde_json::Map<String, serde_json::Value>, conn: &Connection) {
+  let Some(id) = job
+    .get("id")
+    .and_then(|value| value.as_str().map(str::to_string))
+  else {
+    return;
+  };
+
+  let Ok(row) = conn.query_row(
+    "SELECT status, extract_path, error FROM extraction_log WHERE job_id = ?1",
+    params![id],
+    |row| {
+      Ok((
+        row.get::<_, String>(0)?,
+        row.get::<_, Option<String>>(1)?,
+        row.get::<_, Option<String>>(2)?,
+      ))
+    },
+  ) else {
+    return;
+  };
+
+  let (status, extract_path, error) = row;
+  if matches!(status.as_str(), "extracting" | "extracted" | "failed") {
+    job.insert("status".to_string(), serde_json::Value::String(status));
+  }
+  if let Some(path) = extract_path {
+    job.insert(
+      "extractPath".to_string(),
+      serde_json::Value::String(path),
+    );
+  }
+  if let Some(message) = error {
+    job.insert(
+      "errorMsg".to_string(),
+      serde_json::Value::String(message),
+    );
+  }
+}
+
+fn enrich_jobs_with_extraction(
+  value: &mut serde_json::Value,
+  conn: &Connection,
+) {
+  match value {
+    serde_json::Value::Array(items) => {
+      for item in items {
+        if let serde_json::Value::Object(map) = item {
+          apply_extraction_overlay(map, conn);
+        }
+      }
+    }
+    serde_json::Value::Object(map) => {
+      for key in ["jobs", "data", "items"] {
+        if let Some(serde_json::Value::Array(items)) = map.get_mut(key) {
+          for item in items {
+            if let serde_json::Value::Object(job) = item {
+              apply_extraction_overlay(job, conn);
+            }
+          }
+          return;
+        }
+      }
+    }
+    _ => {}
+  }
+}
+
+#[allow(dead_code)]
+fn run_7z_extract(seven_zip: &Path, archive: &Path, dest: &Path) -> Result<(), String> {
+  std::fs::create_dir_all(dest)
+    .map_err(|e| format!("could_not_create_extract_dir: {e}"))?;
+
+  let dest_arg = format!("-o{}", dest.display());
+  let mut command = StdCommand::new(seven_zip);
+  if let Some(parent) = seven_zip.parent() {
+    if !parent.as_os_str().is_empty() {
+      command.current_dir(parent);
+    }
+  }
+
+  let output = command
+    .arg("x")
+    .arg("-y")
+    .arg(&dest_arg)
+    .arg(archive)
+    .output()
+    .map_err(|e| format!("could_not_run_7z: {e}"))?;
+
+  if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    return Err(format!(
+      "7z_extract_failed: status={} stderr={} stdout={}",
+      output.status, stderr, stdout
+    ));
+  }
+  Ok(())
+}
+
+#[allow(dead_code)]
+fn run_after_install_action(
+  app: &AppHandle,
+  title: &str,
+  dest_path: &str,
+  extract_dest: &Path,
+) {
+  let conn = match open_database_connection(app) {
+    Ok(c) => c,
+    Err(_) => return,
+  };
+  let action = read_app_setting(&conn, "after_install_action")
+    .unwrap_or_else(|| "ask".to_string());
+  drop(conn);
+
+  match action.as_str() {
+    "open-folder" => {
+      if let Err(error) = open_path_in_shell(extract_dest) {
+        log::warn!("after_install_open_folder_failed: {error}");
+      }
+    }
+    "launch-game" => {
+      if let Err(error) = launch::resolve_and_launch_game(title, dest_path) {
+        log::warn!("after_install_launch_failed: {error}");
+      }
+    }
+    _ => {}
+  }
+}
+
+fn finalize_job_if_playable(
+  app: &AppHandle,
+  job_id: &str,
+  title: &str,
+  dest_path: &str,
+) -> Result<bool, String> {
+  let candidates = match launch::resolve_launch_candidates(title, dest_path) {
+    Ok(items) => items,
+    Err(_) => return Ok(false),
+  };
+  let extract_path = candidates
+    .first()
+    .and_then(|path| path.parent())
+    .map(|path| path.to_string_lossy().to_string());
+
+  let conn = open_database_connection(app)?;
+  upsert_extraction_log(
+    &conn,
+    job_id,
+    "extracted",
+    None,
+    extract_path.as_deref(),
+    None,
+  )?;
+  emit_extract_status(
+    app,
+    job_id,
+    "extracted",
+    Some("Executável encontrado na pasta — extração não necessária".to_string()),
+  );
+  Ok(true)
+}
+
+async fn process_job_post_download(
+  app: AppHandle,
+  job_id: String,
+  title: String,
+  dest_path: String,
+) -> Result<(), String> {
+  let conn = open_database_connection(&app)?;
+  let prior = get_extraction_status(&conn, &job_id);
+  if matches!(
+    prior.as_deref(),
+    Some("extracting") | Some("extracted") | Some("skipped") | Some("failed")
+  ) {
+    return Ok(());
+  }
+  drop(conn);
+
+  if finalize_job_if_playable(&app, &job_id, &title, &dest_path)? {
+    return Ok(());
+  }
+
+  let mark_skipped = |app: &AppHandle, message: &str| -> Result<(), String> {
+    let conn = open_database_connection(app)?;
+    upsert_extraction_log(&conn, &job_id, "skipped", None, None, None)?;
+    emit_extract_status(app, &job_id, "skipped", Some(message.to_string()));
+    Ok(())
+  };
+
+  if launch::find_setup_executable(&title, &dest_path).is_some() {
+    return mark_skipped(&app, "Download concluído — clique em INSTALAR para executar o setup.exe.");
+  }
+
+  mark_skipped(
+    &app,
+    "Download concluído. Clique em INSTALAR se houver setup.exe na pasta.",
+  )
+}
+
+#[allow(dead_code)]
+async fn process_job_extraction(
+  app: AppHandle,
+  job_id: String,
+  title: String,
+  dest_path: String,
+) -> Result<(), String> {
+  let conn = open_database_connection(&app)?;
+  let install_org = read_app_setting(&conn, "install_organization")
+    .unwrap_or_else(|| "separate-folder".to_string());
+  let remove_temp = read_app_setting_bool(&conn, "remove_temp_files", true);
+  drop(conn);
+
+  let archive = match archive::find_job_archive(&dest_path) {
+    Some(path) => path,
+    None => {
+      return Err(
+        "no_archive_found: nenhum arquivo compactado (.zip, .7z, .rar) encontrado na pasta do download"
+          .to_string(),
+      );
+    }
+  };
+
+  let base_dir = resolve_job_folder(&dest_path);
+  let extract_dest = archive::resolve_extract_destination(&title, &base_dir, &install_org);
+
+  upsert_extraction_log(
+    &open_database_connection(&app)?,
+    &job_id,
+    "extracting",
+    Some(&archive.to_string_lossy()),
+    Some(&extract_dest.to_string_lossy()),
+    None,
+  )?;
+  emit_extract_status(&app, &job_id, "extracting", None);
+
+  let seven_zip = resolve_7z_path(&app)?;
+  run_7z_extract(&seven_zip, &archive, &extract_dest)?;
+
+  if remove_temp && archive.exists() {
+    if let Err(error) = std::fs::remove_file(&archive) {
+      log::warn!("could_not_remove_archive_after_extract: {error}");
+    }
+  }
+
+  upsert_extraction_log(
+    &open_database_connection(&app)?,
+    &job_id,
+    "extracted",
+    Some(&archive.to_string_lossy()),
+    Some(&extract_dest.to_string_lossy()),
+    None,
+  )?;
+  emit_extract_status(&app, &job_id, "extracted", None);
+  run_after_install_action(&app, &title, &dest_path, &extract_dest);
+  Ok(())
+}
+
+#[tauri::command]
+async fn extract_job_archive(app: AppHandle, id: String) -> Result<(), String> {
+  let job = fetch_sidecar_job(&app, &id).await?;
+  let extraction = app.state::<ExtractionState>();
+  if !extraction.try_acquire() {
+    return Err("extraction_busy".to_string());
+  }
+
+  let app_clone = app.clone();
+  let job_id = job.id.clone();
+  let title = job.title.clone();
+  let dest_path = job.dest_path.clone();
+
+  let result = process_job_post_download(app_clone.clone(), job_id, title, dest_path).await;
+  extraction.release();
+
+  if let Err(ref error) = result {
+    let _ = upsert_extraction_log(
+      &open_database_connection(&app_clone)?,
+      &id,
+      "failed",
+      None,
+      None,
+      Some(error),
+    );
+    emit_extract_status(&app_clone, &id, "failed", Some(error.clone()));
+  }
+  result
+}
+
+async fn list_sidecar_jobs_for_watcher(app: &AppHandle) -> Result<Vec<SidecarJobWatcher>, String> {
+  let port = ensure_sidecar_running(app.clone()).await?;
+  let client = reqwest::Client::new();
+  let value = client
+    .get(format!("http://127.0.0.1:{port}/jobs"))
+    .send()
+    .await
+    .map_err(|e| format!("sidecar_request_failed: {e}"))?
+    .json::<serde_json::Value>()
+    .await
+    .map_err(|e| format!("sidecar_parse_failed: {e}"))?;
+
+  let rows = match value {
+    serde_json::Value::Array(items) => items,
+    serde_json::Value::Object(map) => map
+      .get("jobs")
+      .or_else(|| map.get("data"))
+      .and_then(|v| v.as_array())
+      .cloned()
+      .unwrap_or_default(),
+    _ => Vec::new(),
+  };
+
+  Ok(rows
+    .into_iter()
+    .filter_map(|row| serde_json::from_value::<SidecarJobWatcher>(row).ok())
+    .collect())
+}
+
+fn job_ready_for_post_download(job: &SidecarJobWatcher) -> bool {
+  if job.status == "completed" {
+    return true;
+  }
+  if job.status == "seeding" {
+    if archive::find_job_archive(&job.dest_path).is_some() {
+      return true;
+    }
+    return launch::job_has_playable_executable(&job.title, &job.dest_path);
+  }
+  false
+}
+
+fn spawn_extraction_watcher(app: AppHandle) {
+  tauri::async_runtime::spawn(async move {
+    loop {
+      sleep(Duration::from_secs(2)).await;
+
+      let jobs = match list_sidecar_jobs_for_watcher(&app).await {
+        Ok(items) => items,
+        Err(_) => continue,
+      };
+
+      let conn = match open_database_connection(&app) {
+        Ok(c) => c,
+        Err(_) => continue,
+      };
+
+      let extraction: tauri::State<'_, ExtractionState> = app.state();
+      if !extraction.try_acquire() {
+        continue;
+      }
+
+      let mut started = false;
+      for job in jobs {
+        if !job_ready_for_post_download(&job) {
+          continue;
+        }
+        let prior = get_extraction_status(&conn, &job.id);
+        if matches!(
+          prior.as_deref(),
+          Some("extracting") | Some("extracted") | Some("skipped") | Some("failed")
+        ) {
+          continue;
+        }
+
+        let app_clone = app.clone();
+        let job_id = job.id.clone();
+        let title = job.title.clone();
+        let dest_path = job.dest_path.clone();
+
+        tauri::async_runtime::spawn(async move {
+          if let Err(error) = process_job_post_download(
+            app_clone.clone(),
+            job_id.clone(),
+            title,
+            dest_path,
+          )
+          .await
+          {
+            if let Ok(conn) = open_database_connection(&app_clone) {
+              let _ = upsert_extraction_log(
+                &conn,
+                &job_id,
+                "failed",
+                None,
+                None,
+                Some(&error),
+              );
+            }
+            emit_extract_status(&app_clone, &job_id, "failed", Some(error));
+          }
+          let extraction: tauri::State<'_, ExtractionState> = app_clone.state();
+          extraction.release();
+        });
+        started = true;
+        break;
+      }
+
+      if !started {
+        extraction.release();
+      }
+    }
+  });
+}
+
 // ── App Entry Point ───────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -3123,6 +5006,7 @@ pub fn run() {
   tauri::Builder::default()
     .manage(QueueManager::new())
     .manage(SidecarState::default())
+    .manage(ExtractionState::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -3133,9 +5017,11 @@ pub fn run() {
       }
       app.handle().plugin(tauri_plugin_notification::init())?;
       app.handle().plugin(tauri_plugin_dialog::init())?;
-      let _ = open_database_connection(&app.handle());
-      startup_queue_recovery(&app.handle());
+      let _ = open_database_connection(app.handle());
+      startup_queue_recovery(app.handle());
       spawn_download_engine(app.handle().clone());
+      spawn_sidecar_progress_watcher(app.handle().clone());
+      spawn_extraction_watcher(app.handle().clone());
 
       let show_item = MenuItem::with_id(app, "tray_show", "Mostrar janela", true, None::<&str>)?;
       let hide_item = MenuItem::with_id(app, "tray_hide", "Ocultar janela", true, None::<&str>)?;
@@ -3236,11 +5122,164 @@ pub fn run() {
       sidecar_pause_job,
       sidecar_resume_job,
       sidecar_cancel_job,
+      remove_job_from_library,
       sidecar_open_job_folder,
       sidecar_launch_job,
       sidecar_status,
-      open_deep_link
+      launch_game_from_path,
+      extract_job_archive,
+      open_local_path,
+      open_deep_link,
+      list_game_covers,
+      ensure_game_cover_cached,
+      save_game_cover,
+      resolve_game_cover_url,
+      invalidate_game_cover_local,
+      check_path_playable,
+      inspect_library_path,
+      set_library_game_root,
+      launch_setup_from_path,
+      extract_library_folder
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod search_match_tests {
+  use super::{title_matches_query, title_word_matches_query_word};
+
+  #[test]
+  fn hades_does_not_match_shades_or_shadespire() {
+    assert!(!title_matches_query(
+      "OUTBREAK: SHADES OF HORROR - CHROMATIC SPLIT",
+      "HADES",
+    ));
+    assert!(!title_matches_query(
+      "WARHAMMER UNDERWORLDS: SHADESPIRE EDITION - V1.8.7 + ALL DLCS",
+      "HADES",
+    ));
+  }
+
+  #[test]
+  fn hades_matches_hades_titles() {
+    assert!(title_matches_query(
+      "HADES - V1.35966 (V1.0) + BONUS SOUNDTRACK",
+      "HADES",
+    ));
+    assert!(title_matches_query("HADES II - V1.137792 + BONUS OST", "HADES"));
+  }
+
+  #[test]
+  fn substring_hades_inside_shades_is_rejected() {
+    assert!(!title_word_matches_query_word("shades", "hades"));
+    assert!(!title_word_matches_query_word("shadespire", "hades"));
+    assert!(title_word_matches_query_word("hades", "hades"));
+  }
+}
+
+#[cfg(test)]
+mod cover_cache_tests {
+  use super::{cover_download_urls, is_valid_cover_bytes, normalize_title_key, upsert_game_cover};
+  use rusqlite::{params, Connection};
+
+  fn test_conn() -> Connection {
+    let conn = Connection::open_in_memory().unwrap();
+    conn
+      .execute_batch(
+        "CREATE TABLE game_covers (
+          title_key TEXT PRIMARY KEY,
+          cover_url TEXT NOT NULL,
+          local_path TEXT,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );",
+      )
+      .unwrap();
+    conn
+  }
+
+  #[test]
+  fn upsert_invalidates_local_path_when_cover_url_changes() {
+    let conn = test_conn();
+    let title = "Mega Man X Legacy Collection";
+    let key = normalize_title_key(title);
+
+    conn.execute(
+      "INSERT INTO game_covers (title_key, cover_url, local_path) VALUES (?1, ?2, ?3)",
+      params![key, "https://example.com/old.jpg", "C:\\covers\\old.jpg"],
+    )
+    .unwrap();
+
+    let stale = upsert_game_cover(&conn, title, "https://example.com/new.jpg").unwrap();
+    assert_eq!(stale.as_deref(), Some("C:\\covers\\old.jpg"));
+
+    let (url, local): (String, Option<String>) = conn
+      .query_row(
+        "SELECT cover_url, local_path FROM game_covers WHERE title_key = ?1",
+        params![key],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+      )
+      .unwrap();
+    assert_eq!(url, "https://example.com/new.jpg");
+    assert!(local.is_none());
+  }
+
+  #[test]
+  fn upsert_keeps_local_path_when_cover_url_unchanged() {
+    let conn = test_conn();
+    let title = "Stardew Valley";
+    let key = normalize_title_key(title);
+    let url = "https://cdn.example.com/stardew.jpg";
+
+    conn.execute(
+      "INSERT INTO game_covers (title_key, cover_url, local_path) VALUES (?1, ?2, ?3)",
+      params![key, url, "C:\\covers\\stardew.jpg"],
+    )
+    .unwrap();
+
+    let stale = upsert_game_cover(&conn, title, url).unwrap();
+    assert!(stale.is_none());
+
+    let local: Option<String> = conn
+      .query_row(
+        "SELECT local_path FROM game_covers WHERE title_key = ?1",
+        params![key],
+        |row| row.get(0),
+      )
+      .unwrap();
+    assert_eq!(local.as_deref(), Some("C:\\covers\\stardew.jpg"));
+  }
+
+  #[test]
+  fn rejects_html_and_tiny_payloads_as_covers() {
+    assert!(!is_valid_cover_bytes(b"<html>404 not found</html>"));
+    assert!(!is_valid_cover_bytes(&[0xFF; 128]));
+  }
+
+  #[test]
+  fn accepts_jpeg_png_and_webp_magic_bytes() {
+    let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    jpeg.resize(300, 0);
+    assert!(is_valid_cover_bytes(&jpeg));
+
+    let mut png = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    png.resize(300, 0);
+    assert!(is_valid_cover_bytes(&png));
+
+    let mut webp = b"RIFF".to_vec();
+    webp.extend_from_slice(&[0, 0, 0, 0]);
+    webp.extend_from_slice(b"WEBP");
+    webp.resize(300, 0);
+    assert!(is_valid_cover_bytes(&webp));
+  }
+
+  #[test]
+  fn cover_download_urls_includes_steam_variants() {
+    let urls = cover_download_urls(
+      "https://cdn.cloudflare.steamstatic.com/steam/apps/570/header.jpg",
+    );
+    assert!(urls.iter().any(|u| u.contains("library_600x900.jpg")));
+    assert!(urls.iter().any(|u| u.contains("header.jpg")));
+    assert!(urls.len() >= 3);
+  }
 }
