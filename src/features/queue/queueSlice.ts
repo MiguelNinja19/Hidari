@@ -1,71 +1,30 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { queueApi } from '../../shared/api/tauri/queueApi'
-import type { DownloadJob, EnqueueJobInput, JobProgressEvent } from '../../shared/types/contracts'
+import type {
+  DownloadJob,
+  EnqueueJobInput,
+  ExtractStatusEvent,
+  JobProgressEvent,
+} from '../../shared/types/contracts'
+import { resolveJobProgressPercentFromFields } from '../../shared/utils/jobProgress'
 
 type QueueState = {
   jobs: DownloadJob[]
+  dismissedJobIds: string[]
   loading: boolean
   error: string | null
   initialized: boolean
 }
 
-const clampProgress = (value: number) => {
-  if (Number.isNaN(value) || !Number.isFinite(value)) return 0
-  return Math.max(0, Math.min(100, value))
-}
-
-/** Alguns motores enviam fração 0–1 em vez de percentagem 0–100. */
-const coerceProgressToPercent = (value: number): number => {
-  if (!Number.isFinite(value) || value < 0) return 0
-  if (value > 0 && value <= 1) return value * 100
-  return value
-}
-
-const normalizeJobProgress = (job: DownloadJob) => {
-  const totalBytes = Number.isFinite(job.totalBytes) ? job.totalBytes : 0
-  const bytesDownloaded = Number.isFinite(job.bytesDownloaded) ? Math.max(0, job.bytesDownloaded) : 0
-  const hasKnownTotal = totalBytes > 0
-
-  const fromBytes = hasKnownTotal ? clampProgress((bytesDownloaded / totalBytes) * 100) : null
-  const server = clampProgress(coerceProgressToPercent(job.progress))
-
-  let blended = fromBytes != null ? fromBytes : server
-
-  if (hasKnownTotal && fromBytes != null) {
-    blended = fromBytes
-  }
-
-  const hasTransferSignal =
-    (Number.isFinite(job.speedBps) && (job.speedBps ?? 0) > 0) ||
-    (Number.isFinite(job.etaSeconds) && (job.etaSeconds ?? 0) > 0)
-
-  if (job.status === 'completed') return 100
-
-  if (job.status === 'seeding') {
-    if (hasKnownTotal && bytesDownloaded >= totalBytes) return 100
-    if (hasKnownTotal && bytesDownloaded < totalBytes) {
-      return clampProgress((bytesDownloaded / totalBytes) * 100)
-    }
-    return Math.min(99, blended >= 100 ? 99 : blended)
-  }
-
-  if (job.status === 'cancelled' || job.status === 'failed') return blended
-
-  if (hasKnownTotal && bytesDownloaded >= totalBytes) return 100
-
-  if (blended >= 100) return 99
-
-  if (blended > 0) return blended
-
-  if (
-    hasTransferSignal &&
-    (job.status === 'downloading' || job.status === 'retrying' || job.status === 'pending')
-  ) {
-    return Math.max(blended, 1)
-  }
-
-  return blended
-}
+const normalizeJobProgress = (job: DownloadJob) =>
+  resolveJobProgressPercentFromFields({
+    progress: job.progress,
+    bytesDownloaded: Number.isFinite(job.bytesDownloaded) ? Math.max(0, job.bytesDownloaded) : 0,
+    totalBytes: Number.isFinite(job.totalBytes) ? job.totalBytes : 0,
+    status: job.status,
+    url: job.url,
+    speedBps: job.speedBps,
+  })
 
 const normalizeJob = (job: DownloadJob): DownloadJob => ({
   ...job,
@@ -76,7 +35,12 @@ const normalizeJob = (job: DownloadJob): DownloadJob => ({
 const shouldPreserveProgress = (incoming: DownloadJob, previous?: DownloadJob) => {
   if (!previous) return false
   if (previous.progress <= 0) return false
-  if (incoming.progress > 0) return false
+  const incomingHasSignal =
+    incoming.progress > 0 ||
+    incoming.bytesDownloaded > 0 ||
+    incoming.totalBytes > 0 ||
+    (incoming.speedBps ?? 0) > 0
+  if (incomingHasSignal) return false
   return (
     incoming.status === 'paused' ||
     incoming.status === 'downloading' ||
@@ -86,8 +50,34 @@ const shouldPreserveProgress = (incoming: DownloadJob, previous?: DownloadJob) =
   )
 }
 
+const shouldPreserveExtractionStatus = (incoming: DownloadJob, previous?: DownloadJob) => {
+  const localStatuses = ['extracting', 'extracted', 'failed', 'skipped'] as const
+  if (localStatuses.includes(incoming.status as (typeof localStatuses)[number])) {
+    return {
+      ...incoming,
+      progress:
+        incoming.status === 'extracted' || incoming.status === 'skipped' ? 100 : incoming.progress,
+    }
+  }
+  if (!previous) return incoming
+  if (
+    localStatuses.includes(previous.status as (typeof localStatuses)[number]) &&
+    incoming.status === 'completed'
+  ) {
+    return {
+      ...incoming,
+      status: previous.status === 'skipped' ? 'completed' : previous.status,
+      progress:
+        previous.status === 'extracted' || previous.status === 'skipped' ? 100 : incoming.progress,
+      errorMsg: previous.errorMsg ?? incoming.errorMsg,
+    }
+  }
+  return incoming
+}
+
 const initialState: QueueState = {
   jobs: [],
+  dismissedJobIds: [],
   loading: false,
   error: null,
   initialized: false,
@@ -115,7 +105,7 @@ export const resumeJob = createAsyncThunk('queue/resumeJob', async (id: string) 
 })
 
 export const clearCompletedJobs = createAsyncThunk('queue/clearCompleted', async () => {
-  return true
+  return queueApi.clearCompletedJobs()
 })
 
 const queueSlice = createSlice({
@@ -123,15 +113,52 @@ const queueSlice = createSlice({
   initialState,
   reducers: {
     jobProgressReceived: (state, action: { payload: JobProgressEvent }) => {
-      const { jobId, progress, status } = action.payload
+      const {
+        jobId,
+        progress,
+        status,
+        speedBytesPerSec,
+        etaSeconds,
+        bytesDownloaded,
+        totalBytes,
+      } = action.payload
       const job = state.jobs.find((j) => j.id === jobId)
-      if (job) {
-        job.progress = normalizeJobProgress({ ...job, progress, status })
-        job.status = status
+      if (!job) return
+      const merged: DownloadJob = {
+        ...job,
+        status,
+        progress,
+        speedBps: speedBytesPerSec,
+        etaSeconds,
+        bytesDownloaded: bytesDownloaded ?? job.bytesDownloaded,
+        totalBytes: totalBytes ?? job.totalBytes,
       }
+      job.status = merged.status
+      job.speedBps = merged.speedBps
+      job.etaSeconds = merged.etaSeconds
+      job.bytesDownloaded = merged.bytesDownloaded
+      job.totalBytes = merged.totalBytes
+      job.progress = normalizeJobProgress(merged)
+    },
+    extractStatusReceived: (state, action: { payload: ExtractStatusEvent }) => {
+      const { jobId, status, message } = action.payload
+      const job = state.jobs.find((j) => j.id === jobId)
+      if (!job) return
+      if (status === 'skipped') {
+        job.status = 'completed'
+        job.progress = 100
+        return
+      }
+      job.status = status
+      if (status === 'extracted') job.progress = 100
+      if (status === 'failed' && message) job.errorMsg = message
     },
     removeJobLocally: (state, action: { payload: string }) => {
-      state.jobs = state.jobs.filter((job) => job.id !== action.payload)
+      const id = action.payload
+      state.jobs = state.jobs.filter((job) => job.id !== id)
+      if (!state.dismissedJobIds.includes(id)) {
+        state.dismissedJobIds.push(id)
+      }
     },
     clearHistoryLocally: (state) => {
       state.jobs = state.jobs.filter(
@@ -154,16 +181,28 @@ const queueSlice = createSlice({
         state.loading = false
         state.initialized = true
         const previousById = new Map(state.jobs.map((job) => [job.id, job]))
-        state.jobs = action.payload.map((incoming) => {
-          const previous = previousById.get(incoming.id)
-          const merged = shouldPreserveProgress(incoming, previous)
-            ? {
-                ...incoming,
-                progress: previous?.progress ?? incoming.progress,
-              }
-            : incoming
-          return normalizeJob(merged)
-        })
+        const dismissed = new Set(state.dismissedJobIds)
+        const incoming = action.payload
+          .filter((raw) => !dismissed.has(raw.id))
+          .map((raw) => {
+            const previous = previousById.get(raw.id)
+            const withExtraction = shouldPreserveExtractionStatus(raw, previous)
+            const merged = shouldPreserveProgress(withExtraction, previous)
+              ? {
+                  ...withExtraction,
+                  progress: previous?.progress ?? withExtraction.progress,
+                }
+              : withExtraction
+            return normalizeJob(merged)
+          })
+        const incomingIds = new Set(incoming.map((job) => job.id))
+        const localOnly = state.jobs.filter(
+          (job) =>
+            !incomingIds.has(job.id) &&
+            !dismissed.has(job.id) &&
+            ['extracting', 'extracted', 'failed'].includes(job.status),
+        )
+        state.jobs = [...incoming, ...localOnly.map((job) => normalizeJob(job))]
       })
       .addCase(fetchJobs.rejected, (state, action) => {
         state.loading = false
@@ -188,13 +227,18 @@ const queueSlice = createSlice({
         const job = state.jobs.find((j) => j.id === action.payload)
         if (job) job.status = 'pending'
       })
-      .addCase(clearCompletedJobs.fulfilled, (state) => {
-        state.jobs = state.jobs.filter(
-          (j) => j.status !== 'completed' && j.status !== 'cancelled',
-        )
+      .addCase(clearCompletedJobs.fulfilled, (state, action) => {
+        const removed = new Set(action.payload)
+        state.jobs = state.jobs.filter((j) => !removed.has(j.id))
+        for (const id of removed) {
+          if (!state.dismissedJobIds.includes(id)) {
+            state.dismissedJobIds.push(id)
+          }
+        }
       })
   },
 })
 
-export const { jobProgressReceived, removeJobLocally, clearHistoryLocally } = queueSlice.actions
+export const { jobProgressReceived, extractStatusReceived, removeJobLocally, clearHistoryLocally } =
+  queueSlice.actions
 export const queueReducer = queueSlice.reducer

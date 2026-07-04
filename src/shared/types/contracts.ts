@@ -66,6 +66,8 @@ export type DownloadJob = {
     | 'retrying'
     | 'paused'
     | 'completed'
+    | 'extracting'
+    | 'extracted'
     | 'failed'
     | 'cancelled'
     | string
@@ -86,6 +88,24 @@ export type EnqueueJobInput = {
   url: string
   destPath?: string
   priority?: number
+  coverUrl?: string | null
+}
+
+export type GameCover = {
+  titleKey: string
+  coverUrl: string
+  localPath?: string | null
+}
+
+export type LibraryPathState = {
+  /** @deprecated use hasGame — mantido para compatibilidade */
+  playable: boolean
+  hasGame: boolean
+  needsInstall: boolean
+  installPath?: string | null
+  needsExtraction: boolean
+  /** Pasta de instalação escolhida manualmente (fora da pasta de download). */
+  customGameRoot?: string | null
 }
 
 export type JobProgressEvent = {
@@ -94,6 +114,14 @@ export type JobProgressEvent = {
   status: string
   speedBytesPerSec: number
   etaSeconds: number
+  bytesDownloaded?: number
+  totalBytes?: number
+}
+
+export type ExtractStatusEvent = {
+  jobId: string
+  status: 'extracting' | 'extracted' | 'failed' | 'skipped' | string
+  message?: string | null
 }
 
 export type GameSourceChange = {
@@ -124,6 +152,8 @@ export type CatalogGame = {
 
 export type SearchCatalogInput = {
   query: string
+  includeSteam?: boolean
+  onlyWithSources?: boolean
 }
 
 export type LocalLibraryItem = {

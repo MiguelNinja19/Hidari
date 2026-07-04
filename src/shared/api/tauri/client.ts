@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { DownloadProgressEvent, JobProgressEvent } from '../../types/contracts'
+import type { DownloadProgressEvent, ExtractStatusEvent, JobProgressEvent } from '../../types/contracts'
 
 const isTauriRuntime = () =>
   typeof window !== 'undefined' &&
@@ -50,6 +50,13 @@ export const tauriClient = {
     return safeListen<{ url: string; gameId?: string; action?: string }>(
       'app://deep-link',
       (event) => handler(event.payload),
+    )
+  },
+  listenExtractStatus(
+    handler: (event: ExtractStatusEvent) => void,
+  ): Promise<() => void> {
+    return safeListen<ExtractStatusEvent>('extract://status', (event) =>
+      handler(event.payload),
     )
   },
 }

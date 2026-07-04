@@ -3,7 +3,9 @@ import type {
   AddSourceInput,
   CatalogGame,
   DownloadOption,
+  GameCover,
   GameSourceChange,
+  LibraryPathState,
   LocalLibraryItem,
   SearchCatalogInput,
   SearchDownloadOptionsInput,
@@ -48,4 +50,38 @@ export const sourcesApi = {
     tauriClient.invoke<LocalLibraryItem[]>('scan_default_download_path'),
   deleteLocalLibraryItem: (path: string) =>
     tauriClient.invoke<void>('delete_local_library_item', { payload: { path } }),
+  openLocalPath: (path: string) => tauriClient.invoke<void>('open_local_path', { path }),
+  launchGame: (title: string, path: string, jobId?: string) =>
+    tauriClient.invoke<string>('launch_game_from_path', {
+      payload: { title, path, jobId: jobId ?? null },
+    }),
+  listGameCovers: () => tauriClient.invoke<GameCover[]>('list_game_covers'),
+  ensureGameCoverCached: (title: string) =>
+    tauriClient.invoke<string | null>('ensure_game_cover_cached', { title }),
+  saveGameCover: (title: string, coverUrl: string) =>
+    tauriClient.invoke<void>('save_game_cover', { title, coverUrl }),
+  invalidateGameCoverLocal: (title: string) =>
+    tauriClient.invoke<void>('invalidate_game_cover_local', { title }),
+  resolveGameCoverUrl: (title: string) =>
+    tauriClient.invoke<string | null>('resolve_game_cover_url', { title }),
+  checkPathPlayable: (title: string, path: string, jobId?: string) =>
+    tauriClient.invoke<boolean>('check_path_playable', {
+      payload: { title, path, jobId: jobId ?? null },
+    }),
+  inspectLibraryPath: (title: string, path: string, jobId?: string) =>
+    tauriClient.invoke<LibraryPathState>('inspect_library_path', {
+      payload: { title, path, jobId: jobId ?? null },
+    }),
+  setLibraryGameRoot: (title: string, destPath: string, gameRoot: string, jobId?: string) =>
+    tauriClient.invoke<LibraryPathState>('set_library_game_root', {
+      payload: { title, destPath, gameRoot, jobId: jobId ?? null },
+    }),
+  launchSetup: (title: string, path: string, jobId?: string) =>
+    tauriClient.invoke<string>('launch_setup_from_path', {
+      payload: { title, path, jobId: jobId ?? null },
+    }),
+  extractLibraryFolder: (title: string, path: string) =>
+    tauriClient.invoke<void>('extract_library_folder', {
+      payload: { title, path, jobId: null },
+    }),
 }
