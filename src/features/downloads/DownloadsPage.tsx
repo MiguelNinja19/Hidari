@@ -1,5 +1,10 @@
 import { CatalogCover } from '../../shared/components/CatalogCover'
+import { DownloadsEmpty } from './DownloadsEmpty'
+import { PageNotice } from '../../shared/components/PageNotice'
+import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
 import { Button } from '../../shared/components/ui/Button'
+import { formatDownloadError } from '../../shared/utils/downloadErrors'
+import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { ResolvedCover } from '../covers/useGameCovers'
 
@@ -9,24 +14,21 @@ type DownloadsPageProps = {
   queueError: string | null
   downloadsBooting: boolean
   savePathError: string
-  actionMessage: string
   isTorrentMetadataPhase: (job: DownloadJob) => boolean
   resolveJobProgressPercent: (job: DownloadJob) => number
   formatProgressPercent: (job: DownloadJob) => string
-  formatSpeed: (speedBytesPerSec?: number) => string
-  formatEta: (seconds?: number) => string | null
-  jobStatusLabel: (job: DownloadJob) => string
-  showEtaForJob: (job: DownloadJob) => boolean
-  jobTransferDetail: (job: DownloadJob) => string
-  onOpenFolder: (jobId: string) => Promise<void>
+  downloadNow: number
   onPauseJob: (jobId: string) => Promise<void>
   onResumeJob: (jobId: string) => Promise<void>
   onCancelJob: (jobId: string) => Promise<void>
   onClearCompleted: () => Promise<void>
   onPauseAll: () => Promise<void>
+  onGoDiscover: () => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
   invalidateLocalCover: (title: string, coverUrl?: string | null) => void
 }
+
+const FINISHED_STATUSES = new Set(['completed', 'extracted', 'skipped'])
 
 function queuePrimaryAction(
   job: DownloadJob,
@@ -50,32 +52,63 @@ function queuePrimaryAction(
   return null
 }
 
+function buildJobSections(jobs: DownloadJob[]) {
+  const inProgress = jobs.filter((job) => !FINISHED_STATUSES.has(job.status))
+  const finished = jobs.filter((job) => FINISHED_STATUSES.has(job.status))
+  const sections: { key: string; title: string | null; jobs: DownloadJob[] }[] = []
+
+  if (inProgress.length > 0) {
+    sections.push({
+      key: 'active',
+      title: finished.length > 0 ? 'Em andamento' : null,
+      jobs: inProgress,
+    })
+  }
+
+  if (finished.length > 0) {
+    sections.push({
+      key: 'done',
+      title: inProgress.length > 0 ? 'Concluídos' : null,
+      jobs: finished,
+    })
+  }
+
+  return sections
+}
+
+function queueSummary(count: number): string {
+  if (count === 0) return 'Fila vazia'
+  if (count === 1) return '1 download na fila'
+  return `${count} downloads na fila`
+}
+
 export function DownloadsPage({
   jobs,
   queueLoading,
   queueError,
   downloadsBooting,
   savePathError,
-  actionMessage,
   isTorrentMetadataPhase,
   resolveJobProgressPercent,
   formatProgressPercent,
-  formatSpeed,
-  formatEta,
-  jobStatusLabel,
-  showEtaForJob,
-  jobTransferDetail,
-  onOpenFolder,
+  downloadNow,
   onPauseJob,
   onResumeJob,
   onCancelJob,
   onClearCompleted,
   onPauseAll,
+  onGoDiscover,
   resolveCover,
   invalidateLocalCover,
 }: DownloadsPageProps) {
   const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
-  const combinedSpeed = activeJobs.reduce((sum, job) => sum + (job.speedBps ?? 0), 0)
+  const sections = buildJobSections(activeJobs)
+  const canPauseAll = activeJobs.some((job) =>
+    ['downloading', 'pending', 'retrying', 'seeding'].includes(job.status),
+  )
+  const canClearCompleted = activeJobs.some((job) => FINISHED_STATUSES.has(job.status))
+  const isBootstrapping = (queueLoading || downloadsBooting) && activeJobs.length === 0
+  const showEmpty = activeJobs.length === 0 && !isBootstrapping
 
   const progressWidth = (job: DownloadJob) => {
     const value = resolveJobProgressPercent(job)
@@ -83,121 +116,126 @@ export function DownloadsPage({
     return Math.max(2, Math.min(100, value))
   }
 
+  const renderJobRow = (job: DownloadJob) => {
+    const metadataPhase = isTorrentMetadataPhase(job)
+    const cover = resolveCover(job.title)
+    const primary = queuePrimaryAction(job, onPauseJob, onResumeJob)
+    const canCancel =
+      job.status !== 'cancelled' && !['completed', 'extracted'].includes(job.status)
+
+    return (
+      <li key={job.id} className="download-row">
+        <div className="download-row__thumb">
+          <CatalogCover
+            title={job.title}
+            coverUrl={cover.coverUrl}
+            localPath={cover.localPath}
+            cached={cover.status === 'cached'}
+            status={cover.status}
+            onLocalCoverError={() => invalidateLocalCover(job.title, cover.coverUrl)}
+          />
+        </div>
+
+        <div className="download-row__main">
+          <div className="download-row__top">
+            <strong className="download-row__title" title={job.title}>
+              {cleanTitleForDisplay(job.title)}
+            </strong>
+            <span className="download-row__percent">{formatProgressPercent(job)}</span>
+          </div>
+
+          <div
+            className={`progress-bar progress-bar--compact${metadataPhase ? ' progress-bar--pulse' : ''}`}
+          >
+            <div
+              className={`progress-fill${metadataPhase ? ' progress-fill--indeterminate' : ''}`}
+              style={metadataPhase ? undefined : { width: `${progressWidth(job)}%` }}
+            />
+          </div>
+
+          <p className="download-row__meta">{downloadRowDetail(job, downloadNow)}</p>
+          {job.errorMsg ? (
+            <p className="download-row__error">{formatDownloadError(job.errorMsg)}</p>
+          ) : null}
+        </div>
+
+        <div className="download-row__actions">
+          {primary ? (
+            <Button
+              variant="outline"
+              size="compact"
+              className="download-row__btn"
+              type="button"
+              onClick={primary.onClick}
+            >
+              {primary.label}
+            </Button>
+          ) : null}
+          {canCancel ? (
+            <button
+              type="button"
+              className="btn btn-outline btn--compact download-row__btn download-row__btn--danger"
+              onClick={() => void onCancelJob(job.id)}
+            >
+              Cancelar
+            </button>
+          ) : null}
+        </div>
+      </li>
+    )
+  }
+
   return (
     <section className="downloads-page">
-      <header className="page-toolbar page-toolbar--end">
-        {combinedSpeed > 0 ? (
-          <span className="toolbar-meta">{formatSpeed(combinedSpeed)}</span>
+      <header className="downloads-page__header">
+        <div className="downloads-page__heading">
+          <p className="downloads-page__tag">Downloads</p>
+          <p className="downloads-page__summary">{queueSummary(activeJobs.length)}</p>
+        </div>
+        {canPauseAll || canClearCompleted ? (
+          <div className="downloads-page__actions">
+            {canPauseAll ? (
+              <button
+                className="btn btn-outline btn--compact downloads-toolbar__btn"
+                type="button"
+                onClick={() => void onPauseAll()}
+              >
+                Pausar todos
+              </button>
+            ) : null}
+            {canClearCompleted ? (
+              <button
+                className="btn btn-outline btn--compact downloads-toolbar__btn"
+                type="button"
+                onClick={() => void onClearCompleted()}
+              >
+                Limpar concluídos
+              </button>
+            ) : null}
+          </div>
         ) : null}
-        <button className="btn btn-outline btn--compact" type="button" onClick={() => void onPauseAll()}>
-          Pausar
-        </button>
-        <button
-          className="btn btn-outline btn--compact"
-          type="button"
-          onClick={() => void onClearCompleted()}
-        >
-          Limpar
-        </button>
       </header>
 
-      {queueError ? <p className="browse-note browse-note--error">{queueError}</p> : null}
-      {savePathError ? <p className="browse-note browse-note--error">{savePathError}</p> : null}
-      {actionMessage ? <p className="browse-note">{actionMessage}</p> : null}
-      {queueLoading || downloadsBooting ? (
-        <p className="browse-note">A carregar…</p>
+      {(queueError || savePathError) ? (
+        <PageNotice error={[queueError, savePathError].filter(Boolean).join(' · ')} />
+      ) : isBootstrapping ? (
+        <PageNotice loading />
       ) : null}
 
-      {activeJobs.length > 0 ? (
-        <ul className="download-list download-list--compact">
-          {activeJobs.map((job) => {
-            const metadataPhase = isTorrentMetadataPhase(job)
-            const cover = resolveCover(job.title)
-            const primary = queuePrimaryAction(job, onPauseJob, onResumeJob)
-            const canCancel =
-              job.status !== 'cancelled' && !['completed', 'extracted'].includes(job.status)
-
-            return (
-              <li key={job.id} className="download-row">
-                <div className="download-row__thumb">
-                  <CatalogCover
-                    title={job.title}
-                    coverUrl={cover.coverUrl}
-                    localPath={cover.localPath}
-                    cached={cover.status === 'cached'}
-                    status={cover.status}
-                    onLocalCoverError={() => invalidateLocalCover(job.title, cover.coverUrl)}
-                  />
-                </div>
-
-                <div className="download-row__main">
-                  <div className="download-row__top">
-                    <strong className="download-row__title">{job.title}</strong>
-                    <span className="download-row__percent">{formatProgressPercent(job)}</span>
-                  </div>
-
-                  <div
-                    className={`progress-bar progress-bar--compact${metadataPhase ? ' progress-bar--pulse' : ''}`}
-                  >
-                    <div
-                      className={`progress-fill${metadataPhase ? ' progress-fill--indeterminate' : ''}`}
-                      style={metadataPhase ? undefined : { width: `${progressWidth(job)}%` }}
-                    />
-                  </div>
-
-                  <p className="download-row__meta">
-                    {jobStatusLabel(job)}
-                    {' · '}
-                    {jobTransferDetail(job)}
-                    {!metadataPhase && (job.speedBps ?? 0) > 0
-                      ? ` · ${formatSpeed(job.speedBps)}`
-                      : ''}
-                    {showEtaForJob(job) && formatEta(job.etaSeconds)
-                      ? ` · ETA ${formatEta(job.etaSeconds)}`
-                      : ''}
-                  </p>
-                  {job.errorMsg ? <p className="download-row__error">{job.errorMsg}</p> : null}
-                </div>
-
-                <div className="download-row__actions">
-                  {primary ? (
-                    <Button
-                      variant="primary"
-                      size="compact"
-                      className="download-row__primary"
-                      type="button"
-                      onClick={primary.onClick}
-                    >
-                      {primary.label}
-                    </Button>
-                  ) : null}
-                  <div className="download-row__secondary">
-                    <button type="button" className="text-link" onClick={() => void onOpenFolder(job.id)}>
-                      Pasta
-                    </button>
-                    {canCancel ? (
-                      <button
-                        type="button"
-                        className="text-link text-link--danger"
-                        onClick={() => void onCancelJob(job.id)}
-                      >
-                        Cancelar
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      ) : (
-        !queueLoading &&
-        !downloadsBooting && (
-          <div className="browse-idle">
-            <p className="browse-idle__text">Vazio.</p>
-          </div>
-        )
-      )}
+      {sections.length > 0 ? (
+        <div className="downloads-page__sections">
+          {sections.map((section) => (
+            <section key={section.key} className="downloads-section">
+              {section.title ? (
+                <h2 className="downloads-section__title">{section.title}</h2>
+              ) : null}
+              <ul className="download-list download-list--compact">{section.jobs.map(renderJobRow)}</ul>
+            </section>
+          ))}
+        </div>
+      ) : showEmpty ? (
+        <DownloadsEmpty onGoDiscover={onGoDiscover} />
+      ) : null}
     </section>
   )
 }

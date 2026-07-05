@@ -19,8 +19,18 @@ export function cleanTitleForCover(title: string): string {
 }
 
 /** Título legível na UI — remove repack, builds, DLCs e ruído técnico. */
+export function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#0?38;/g, '&')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
 export function cleanTitleForDisplay(title: string): string {
-  let cleaned = title
+  let cleaned = decodeHtmlEntities(title)
     .replace(/\(.*?fitgirl.*?\)/gi, '')
     .replace(/\[.*?\]/g, '')
     .replace(/fitgirl[- ]?repack/gi, '')

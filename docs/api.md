@@ -36,39 +36,13 @@ Comandos registados em `src-tauri/src/lib.rs` e expostos ao frontend pelos módu
 | `get_default_download_path` | `sourcesApi` | Obtém pasta padrão |
 | `scan_default_download_path` | `sourcesApi` | Lista ficheiros na pasta |
 | `delete_local_library_item` | `sourcesApi` | Apaga item da pasta |
+| `remove_job_from_library` | `queueApi` | Remove job da fila e BD |
+| `inspect_library_path` | `sourcesApi` | Estado install/play da pasta |
+| `set_library_game_root` | `sourcesApi` | Pasta de instalação manual |
+| `launch_game_from_path` | `sourcesApi` | Inicia jogo |
+| `launch_setup_from_path` | `sourcesApi` | Abre instalador |
 | `set_seed_torrents_enabled` | `sourcesApi` | Ativa/desativa seed de torrents |
 | `get_seed_torrents_enabled` | `sourcesApi` | Estado do seed |
-
-### Legado (fontes simples)
-
-| Comando | Descrição |
-|---------|-----------|
-| `add_source` | Adiciona fonte com nome e URL base |
-| `list_sources` | Lista fontes legadas |
-| `remove_source` | Remove fonte legada |
-| `test_download_source` | Teste de fonte |
-| `get_download_sources_changes` | Alterações em fontes |
-
-## Biblioteca de jogos
-
-| Comando | Módulo TS | Descrição |
-|---------|-----------|-----------|
-| `list_games` | `gamesApi` | Lista jogos |
-| `add_game` | `gamesApi` | Adiciona jogo |
-| `update_game` | `gamesApi` | Atualiza título/caminho |
-| `remove_game` | `gamesApi` | Remove jogo |
-| `toggle_game_favorite` | `gamesApi` | Marca/desmarca favorito |
-
-## Coleções
-
-| Comando | Módulo TS | Descrição |
-|---------|-----------|-----------|
-| `list_collections` | `collectionsApi` | Lista coleções |
-| `create_collection` | `collectionsApi` | Cria coleção |
-| `delete_collection` | `collectionsApi` | Apaga coleção |
-| `add_game_to_collection` | `collectionsApi` | Associa jogo |
-| `remove_game_from_collection` | `collectionsApi` | Remove associação |
-| `list_collection_games` | `collectionsApi` | Jogos de uma coleção |
 
 ## Fila de downloads (sidecar)
 

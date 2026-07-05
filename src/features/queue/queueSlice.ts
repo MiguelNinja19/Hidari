@@ -28,19 +28,19 @@ const normalizeJobProgress = (job: DownloadJob) =>
 
 const normalizeJob = (job: DownloadJob): DownloadJob => ({
   ...job,
-  progress: normalizeJobProgress(job),
   updatedAt: job.updatedAt ?? job.createdAt,
 })
 
+const jobProgressSignal = (job: DownloadJob) =>
+  normalizeJobProgress(job) > 0 ||
+  job.bytesDownloaded > 0 ||
+  job.totalBytes > 0 ||
+  (job.speedBps ?? 0) > 0
+
 const shouldPreserveProgress = (incoming: DownloadJob, previous?: DownloadJob) => {
   if (!previous) return false
-  if (previous.progress <= 0) return false
-  const incomingHasSignal =
-    incoming.progress > 0 ||
-    incoming.bytesDownloaded > 0 ||
-    incoming.totalBytes > 0 ||
-    (incoming.speedBps ?? 0) > 0
-  if (incomingHasSignal) return false
+  if (!jobProgressSignal(previous)) return false
+  if (jobProgressSignal(incoming)) return false
   return (
     incoming.status === 'paused' ||
     incoming.status === 'downloading' ||
@@ -114,7 +114,7 @@ const queueSlice = createSlice({
   reducers: {
     jobProgressReceived: (state, action: { payload: JobProgressEvent }) => {
       const {
-        jobId,
+        jobId: rawJobId,
         progress,
         status,
         speedBytesPerSec,
@@ -122,7 +122,9 @@ const queueSlice = createSlice({
         bytesDownloaded,
         totalBytes,
       } = action.payload
-      const job = state.jobs.find((j) => j.id === jobId)
+      const jobId = String(rawJobId)
+      if (state.dismissedJobIds.includes(jobId)) return
+      const job = state.jobs.find((j) => String(j.id) === jobId)
       if (!job) return
       const merged: DownloadJob = {
         ...job,
@@ -138,11 +140,12 @@ const queueSlice = createSlice({
       job.etaSeconds = merged.etaSeconds
       job.bytesDownloaded = merged.bytesDownloaded
       job.totalBytes = merged.totalBytes
-      job.progress = normalizeJobProgress(merged)
+      job.progress = progress
     },
     extractStatusReceived: (state, action: { payload: ExtractStatusEvent }) => {
-      const { jobId, status, message } = action.payload
-      const job = state.jobs.find((j) => j.id === jobId)
+      const { jobId: rawJobId, status, message } = action.payload
+      const jobId = String(rawJobId)
+      const job = state.jobs.find((j) => String(j.id) === jobId)
       if (!job) return
       if (status === 'skipped') {
         job.status = 'completed'
@@ -216,8 +219,15 @@ const queueSlice = createSlice({
         state.error = action.error.message ?? 'Erro ao enfileirar download.'
       })
       .addCase(cancelJob.fulfilled, (state, action) => {
-        const job = state.jobs.find((j) => j.id === action.payload)
-        if (job) job.status = 'cancelled'
+        const id = String(action.payload)
+        state.jobs = state.jobs.filter((j) => String(j.id) !== id)
+        if (!state.dismissedJobIds.includes(id)) {
+          state.dismissedJobIds.push(id)
+        }
+        state.error = null
+      })
+      .addCase(cancelJob.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Erro ao cancelar download.'
       })
       .addCase(pauseJob.fulfilled, (state, action) => {
         const job = state.jobs.find((j) => j.id === action.payload)

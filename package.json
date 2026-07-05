@@ -12,6 +12,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:all": "npm test && npm run test:rust",
     "preview": "vite preview",
     "setup:binaries": "node scripts/setup-binaries.mjs",
     "postinstall": "node scripts/setup-binaries.mjs"

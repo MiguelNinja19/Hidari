@@ -36,7 +36,10 @@ type WarmQueueContext = {
   refresh: () => void
 }
 
-function drainCoverWarmQueue(ctx: WarmQueueContext) {
+function drainCoverWarmQueue(
+  ctx: WarmQueueContext,
+  onPatched?: (row: GameCover) => void,
+) {
   while (ctx.warmInFlightRef.current < MAX_WARM_CONCURRENT && ctx.warmQueueRef.current.length > 0) {
     const task = ctx.warmQueueRef.current.shift()
     if (!task) break
@@ -45,13 +48,21 @@ function drainCoverWarmQueue(ctx: WarmQueueContext) {
     void (async () => {
       try {
         await sourcesApi.saveGameCover(task.title, task.coverUrl)
-        await sourcesApi.ensureGameCoverCached(task.title)
-        ctx.refresh()
+        const localPath = await sourcesApi.ensureGameCoverCached(task.title)
+        if (localPath) {
+          onPatched?.({
+            titleKey: task.key,
+            coverUrl: task.coverUrl,
+            localPath,
+          })
+        } else {
+          ctx.refresh()
+        }
       } catch {
         // Mantém timestamp para respeitar WARM_RETRY_MS antes de nova tentativa.
       } finally {
         ctx.warmInFlightRef.current -= 1
-        drainCoverWarmQueue(ctx)
+        drainCoverWarmQueue(ctx, onPatched)
       }
     })()
   }
@@ -133,6 +144,18 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
     [savedCovers, coverByTitleKey],
   )
 
+  const patchSavedCover = useCallback((row: GameCover) => {
+    setSavedCovers((prev) => ({
+      ...prev,
+      [row.titleKey]: row,
+    }))
+  }, [])
+
+  const patchSavedCoverRef = useRef(patchSavedCover)
+  useEffect(() => {
+    patchSavedCoverRef.current = patchSavedCover
+  }, [patchSavedCover])
+
   const enqueueWarm = useCallback((title: string, coverUrl: string) => {
     const trimmed = coverUrl.trim()
     if (!trimmed) return
@@ -150,11 +173,14 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
 
     warmAttemptAtRef.current.set(key, Date.now())
     warmQueueRef.current.push({ title, coverUrl: trimmed, key })
-    drainCoverWarmQueue({
-      warmQueueRef,
-      warmInFlightRef,
-      refresh: () => refreshCoversRef.current(),
-    })
+    drainCoverWarmQueue(
+      {
+        warmQueueRef,
+        warmInFlightRef,
+        refresh: () => refreshCoversRef.current(),
+      },
+      (row) => patchSavedCoverRef.current(row),
+    )
   }, [])
 
   const warmCover = useCallback(

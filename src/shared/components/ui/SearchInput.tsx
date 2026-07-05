@@ -1,18 +1,24 @@
-import type { ChangeEvent } from 'react'
+import type { ChangeEvent, ReactNode } from 'react'
 
 type SearchInputProps = {
   value: string
   placeholder: string
   className?: string
   inputClassName?: string
+  disabled?: boolean
+  onClick?: () => void
+  trailing?: ReactNode
   onChange: (value: string) => void
 }
 
 export function SearchInput({
   value,
   placeholder,
-  className = 'browse-search',
+  className = 'browse-search browse-search--bar',
   inputClassName = 'browse-search__input',
+  disabled,
+  onClick,
+  trailing,
   onChange,
 }: SearchInputProps) {
   return (
@@ -25,11 +31,16 @@ export function SearchInput({
       </span>
       <input
         className={inputClassName}
+        type="search"
         placeholder={placeholder}
         value={value}
+        disabled={disabled}
+        onClick={onClick}
         onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
         autoComplete="off"
+        spellCheck={false}
       />
+      {trailing}
     </div>
   )
 }

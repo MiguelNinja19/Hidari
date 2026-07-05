@@ -1,9 +1,16 @@
+import { useMemo } from 'react'
+import { DiscoverNoSources } from './DiscoverNoSources'
 import { CatalogCover } from '../../shared/components/CatalogCover'
-import { Button } from '../../shared/components/ui/Button'
+import { EmptyState } from '../../shared/components/EmptyState'
+import { GameTile, GameTileSkeleton } from '../../shared/components/GameTile'
+import { Loader } from '../../shared/components/Loader'
+import { PageNotice } from '../../shared/components/PageNotice'
+import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { CoverWarmGridItem } from '../covers/CoverWarmGridItem'
-import type { CatalogGame, DownloadOption } from '../../shared/types/contracts'
+import type { CatalogGame, DownloadOption, Source } from '../../shared/types/contracts'
 import type { ResolvedCover } from '../covers/useGameCovers'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
+import { dedupeDownloadOptions, pickOptionLabel, pickOptionSubtitle } from '../../shared/utils/pickDownloadOptions'
 
 type DiscoverPageProps = {
   discoverSearch: string
@@ -17,6 +24,9 @@ type DiscoverPageProps = {
   discoverPickOptions: DownloadOption[]
   discoverBusy: string | null
   enabledSourcesCount: number
+  sources: Source[]
+  sourcesLoading: boolean
+  isSourceEnabled: (sourceId: string) => boolean
   setDiscoverSearch: (value: string) => void
   onGoSettings: () => void
   openDiscoverPicker: (game: CatalogGame) => void
@@ -26,12 +36,6 @@ type DiscoverPageProps = {
   warmCover: (title: string, coverUrl: string) => void
   lookupCoverForTitle: (title: string) => void
   invalidateLocalCover: (title: string, coverUrl?: string | null) => void
-}
-
-function sourceBadge(game: CatalogGame): string {
-  const label = game.genre?.trim()
-  if (!label) return 'Fonte'
-  return label.length > 14 ? `${label.slice(0, 12)}…` : label
 }
 
 export function DiscoverPage({
@@ -46,6 +50,9 @@ export function DiscoverPage({
   discoverPickOptions,
   discoverBusy,
   enabledSourcesCount,
+  sources,
+  sourcesLoading,
+  isSourceEnabled,
   setDiscoverSearch,
   onGoSettings,
   openDiscoverPicker,
@@ -67,62 +74,47 @@ export function DiscoverPage({
   const pickCoverUrl =
     discoverPickGame?.coverUrl?.trim() || pickCover?.coverUrl || null
 
+  const pickOptions = useMemo(
+    () => dedupeDownloadOptions(discoverPickOptions),
+    [discoverPickOptions],
+  )
+
+  const pageError = discoverPickGame ? null : discoverError || catalogError || null
+
   return (
     <section
       className={`browse-page${catalogLoading && resultCount > 0 ? ' browse-page--loading' : ''}`}
     >
       <header className="page-toolbar">
-        <div className="browse-search browse-search--bar">
-          <span className="browse-search__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="6" />
-              <path d="M20 20l-4.2-4.2" />
-            </svg>
-          </span>
-          <input
-            className="browse-search__input"
-            type="search"
-            placeholder="Pesquisar…"
-            value={discoverSearch}
-            onChange={(event) => setDiscoverSearch(event.target.value)}
-            autoComplete="off"
-            spellCheck={false}
-            disabled={!hasActiveSources}
-            onClick={!hasActiveSources ? onGoSettings : undefined}
-          />
-          {catalogLoading ? (
-            <span className="browse-search__spinner" aria-label="A pesquisar" />
-          ) : null}
-        </div>
+        <SearchInput
+          value={discoverSearch}
+          placeholder={hasActiveSources ? 'Pesquisar…' : 'Ative uma fonte para pesquisar…'}
+          disabled={!hasActiveSources}
+          onClick={!hasActiveSources ? onGoSettings : undefined}
+          onChange={setDiscoverSearch}
+          trailing={
+            catalogLoading ? (
+              <Loader size="sm" className="browse-search__loader" label="Pesquisando" />
+            ) : null
+          }
+        />
       </header>
 
-      {discoverError && !discoverPickGame ? (
-        <p className="browse-note browse-note--error">{discoverError}</p>
-      ) : null}
-
-      {catalogError && !discoverPickGame ? (
-        <p className="browse-note browse-note--error">{catalogError}</p>
-      ) : null}
+      {pageError?.trim() ? <PageNotice error={pageError} /> : null}
 
       {!hasActiveSources ? (
-        <div className="browse-idle">
-          <p className="browse-idle__text">Nenhuma fonte ativa.</p>
-          <button className="btn btn-outline btn--compact" type="button" onClick={onGoSettings}>
-            Config
-          </button>
-        </div>
+        <DiscoverNoSources
+          sources={sources}
+          sourcesLoading={sourcesLoading}
+          isSourceEnabled={isSourceEnabled}
+          onGoSettings={onGoSettings}
+        />
       ) : null}
 
       {hasActiveSources && isSearching && catalogLoading && resultCount === 0 ? (
         <ul className="library-grid library-grid--skeleton" aria-hidden="true">
           {Array.from({ length: 12 }, (_, index) => (
-            <li key={index} className="library-card library-card--skeleton">
-              <div className="library-card__cover library-card__cover--skeleton" />
-              <div className="library-card__foot">
-                <div className="library-card__title library-card__title--skeleton" />
-                <div className="library-card__cta library-card__cta--skeleton" />
-              </div>
-            </li>
+            <GameTileSkeleton key={index} />
           ))}
         </ul>
       ) : null}
@@ -141,41 +133,35 @@ export function DiscoverPage({
                 coverUrl={itemCoverUrl}
                 warmCover={warmCover}
                 onNeedsCover={itemCoverUrl ? undefined : lookupCoverForTitle}
-                className="library-card"
+                className="library-grid__item"
               >
-                <div className="library-card__cover">
-                  <CatalogCover
-                    title={game.title}
-                    coverUrl={itemCoverUrl}
-                    localPath={
-                      cover.coverUrl === itemCoverUrl || !game.coverUrl?.trim()
-                        ? cover.localPath
-                        : null
-                    }
-                    cached={cover.status === 'cached' && cover.coverUrl === itemCoverUrl}
-                    status={itemCoverUrl ? cover.status : 'idle'}
-                    priority={index < 16}
-                    onLocalCoverError={() =>
-                      invalidateLocalCover(game.title, itemCoverUrl ?? game.coverUrl)
-                    }
-                  />
-                  <span className="library-card__badge">{sourceBadge(game)}</span>
-                </div>
-
-                <div className="library-card__foot">
-                  <h3 className="library-card__title" title={game.title}>
-                    {displayTitle}
-                  </h3>
-                  <Button
-                    variant="primary"
-                    size="compact"
-                    className="library-card__cta btn-flat"
-                    type="button"
-                    onClick={() => openDiscoverPicker(game)}
-                  >
-                    Baixar
-                  </Button>
-                </div>
+                <GameTile
+                  title={displayTitle}
+                  titleAttr={game.title}
+                  cover={
+                    <CatalogCover
+                      title={game.title}
+                      coverUrl={itemCoverUrl}
+                      localPath={
+                        cover.coverUrl === itemCoverUrl || !game.coverUrl?.trim()
+                          ? cover.localPath
+                          : null
+                      }
+                      cached={cover.status === 'cached' && cover.coverUrl === itemCoverUrl}
+                      status={itemCoverUrl ? cover.status : 'idle'}
+                      priority={index < 16}
+                      onLocalCoverError={() =>
+                        invalidateLocalCover(game.title, itemCoverUrl ?? game.coverUrl)
+                      }
+                    />
+                  }
+                  primaryAction={{
+                    id: 'download',
+                    label: 'Baixar',
+                    variant: 'primary',
+                    onClick: () => openDiscoverPicker(game),
+                  }}
+                />
               </CoverWarmGridItem>
             )
           })}
@@ -183,26 +169,41 @@ export function DiscoverPage({
       ) : null}
 
       {hasActiveSources && isSearching && !catalogLoading && resultCount === 0 ? (
-        <div className="browse-idle">
-          <p className="browse-idle__text">Sem resultados.</p>
-        </div>
+        <EmptyState
+          title="Sem resultados"
+          description={`Não encontramos jogos para "${query}". Tente outro nome ou verifique as fontes ativas.`}
+        />
+      ) : null}
+
+      {hasActiveSources && !isSearching ? (
+        <EmptyState
+          title="Explorar jogos"
+          description="Digite o nome do jogo na barra de pesquisa (mínimo 2 letras)."
+        />
       ) : null}
 
       {discoverPickGame ? (
         <div
-          className="discover-modal-backdrop"
+          className="pick-modal-backdrop"
           role="presentation"
           onClick={() => closeDiscoverPicker()}
         >
           <div
-            className="pick-sheet"
+            className="pick-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="discover-modal-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="pick-sheet__head">
-              <div className="pick-sheet__cover">
+            <button
+              type="button"
+              className="pick-modal__close"
+              onClick={() => closeDiscoverPicker()}
+              aria-label="Fechar"
+            />
+
+            <div className="pick-modal__hero">
+              <div className="pick-modal__cover">
                 <CatalogCover
                   title={discoverPickGame.title}
                   coverUrl={pickCoverUrl}
@@ -223,65 +224,70 @@ export function DiscoverPage({
                   }
                 />
               </div>
-              <p
-                id="discover-modal-title"
-                className="pick-sheet__title"
-                title={discoverPickGame.title}
-              >
-                {cleanTitleForDisplay(discoverPickGame.title)}
-              </p>
-              <button
-                type="button"
-                className="pick-sheet__close"
-                onClick={() => closeDiscoverPicker()}
-                aria-label="Fechar"
-              >
-                ×
-              </button>
+              <div className="pick-modal__info">
+                <h2
+                  id="discover-modal-title"
+                  className="pick-modal__title"
+                  title={discoverPickGame.title}
+                >
+                  {cleanTitleForDisplay(discoverPickGame.title)}
+                </h2>
+                {!discoverPickLoading && pickOptions.length > 1 ? (
+                  <p className="pick-modal__hint">{pickOptions.length} fontes</p>
+                ) : null}
+              </div>
             </div>
 
-            {discoverPickLoading ? (
-              <div className="pick-sheet__loading">
-                <span className="browse-search__spinner" aria-hidden="true" />
-              </div>
-            ) : null}
+            <div className="pick-modal__body">
+              {discoverPickLoading ? (
+                <div className="pick-modal__empty">
+                  <Loader size="lg" label="Carregando opções" />
+                </div>
+              ) : null}
 
-            {!discoverPickLoading && discoverPickError ? (
-              <p className="browse-note browse-note--error pick-sheet__note">{discoverPickError}</p>
-            ) : null}
+              {!discoverPickLoading && discoverPickError ? (
+                <p className="pick-modal__empty pick-modal__empty--error">{discoverPickError}</p>
+              ) : null}
 
-            {discoverError && discoverPickGame ? (
-              <p className="browse-note browse-note--error pick-sheet__note">{discoverError}</p>
-            ) : null}
+              {!discoverPickLoading && !discoverPickError && pickOptions.length === 0 ? (
+                <p className="pick-modal__empty">Sem downloads disponíveis.</p>
+              ) : null}
 
-            {!discoverPickLoading && discoverPickOptions.length > 0 ? (
-              <ul className="pick-sheet__list">
-                {discoverPickOptions.map((opt, index) => (
-                  <li key={`${opt.url}-${index}`} className="pick-sheet__row">
-                    <span className="pick-sheet__source">
-                      {opt.sourceName}
-                      <span className="pick-sheet__type">
-                        {opt.downloadType === 'torrent' ? 'Torrent' : opt.downloadType}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      className="pick-sheet__action"
-                      disabled={discoverBusy === opt.url}
-                      onClick={() =>
-                        void handleEnqueueFromDiscover(
-                          opt.title,
-                          opt.url,
-                          discoverPickGame?.coverUrl,
-                        )
-                      }
-                    >
-                      {discoverBusy === opt.url ? '…' : 'Baixar'}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+              {!discoverPickLoading && pickOptions.length > 0 ? (
+                <ul className="pick-modal__options">
+                  {pickOptions.map((opt, index) => {
+                    const busy = discoverBusy === opt.url
+                    const subtitle = pickOptionSubtitle(opt)
+                    return (
+                      <li key={`${opt.url}-${index}`}>
+                        <button
+                          type="button"
+                          className="pick-modal__option"
+                          disabled={busy}
+                          onClick={() =>
+                            void handleEnqueueFromDiscover(
+                              opt.title,
+                              opt.url,
+                              discoverPickGame?.coverUrl,
+                            )
+                          }
+                        >
+                          <span className="pick-modal__option-text">
+                            <span className="pick-modal__option-label">{pickOptionLabel(opt)}</span>
+                            {subtitle ? (
+                              <span className="pick-modal__option-source">{subtitle}</span>
+                            ) : null}
+                          </span>
+                          <span className="pick-modal__option-action">
+                            {busy ? 'Baixando…' : 'Baixar'}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

@@ -77,7 +77,19 @@ describe('resolveJobProgressPercentFromFields', () => {
 describe('isTorrentMetadataPhase', () => {
   it('mostra fase de metadados no início do magnet', () => {
     expect(isTorrentMetadataPhase(magnetJob({ progress: 1, bytesDownloaded: 0 }))).toBe(true)
-    expect(formatProgressPercent(magnetJob({ progress: 1 }))).toBe('···')
+    expect(formatProgressPercent(magnetJob({ progress: 1 }))).toBe('0%')
+  })
+
+  it('usa progresso do sidecar quando total é conhecido mas bytes ainda são zero', () => {
+    expect(
+      resolveJobProgressPercentFromFields({
+        progress: 15,
+        bytesDownloaded: 0,
+        totalBytes: 1_000_000,
+        status: 'downloading',
+        url: 'magnet:?xt=',
+      }),
+    ).toBe(15)
   })
 
   it('sai da fase de metadados quando há bytes', () => {

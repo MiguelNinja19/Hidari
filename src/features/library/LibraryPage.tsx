@@ -1,82 +1,26 @@
 import { CatalogCover } from '../../shared/components/CatalogCover'
-import { Button } from '../../shared/components/ui/Button'
-import type { DownloadJob, LibraryPathState } from '../../shared/types/contracts'
-import type { ResolvedCover } from '../covers/useGameCovers'
+import { GameTile, type GameTileAction } from '../../shared/components/GameTile'
+import { PageNotice } from '../../shared/components/PageNotice'
+import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import { resolveDeletePath } from '../../shared/utils/archive'
 import type { LibraryEntry } from './types'
+import {
+  useLibraryController,
+  useLibraryItemHelpers,
+  useLibraryResumeItem,
+  useOpenLocalPath,
+} from './LibraryController'
+import type { LibraryControllerValue } from './LibraryController'
 
-type LibraryPageProps = {
-  libraryItems: LibraryEntry[]
-  jobs: DownloadJob[]
-  pathStateByKey: Record<string, LibraryPathState>
-  libraryFilter: string
-  libraryStatusFilter: 'all' | 'installed' | 'not_installed'
-  playBusyId: string | null
-  installBusyId: string | null
-  savePathError: string
-  actionMessage: string
-  setLibraryFilter: (value: string) => void
-  setLibraryStatusFilter: (value: 'all' | 'installed' | 'not_installed') => void
-  setActiveTabDownloads: () => void
-  onGoDiscover: () => void
-  resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
-  invalidateLocalCover: (title: string, coverUrl?: string | null) => void
-  libraryStatusMeta: (
-    item: LibraryEntry,
-    jobs: DownloadJob[],
-    pathStateByKey: Record<string, LibraryPathState>,
-  ) => { label: string; tone: string }
-  showPlayAction: (
-    item: LibraryEntry,
-    jobs: DownloadJob[],
-    pathStateByKey: Record<string, LibraryPathState>,
-  ) => boolean
-  showInstallAction: (
-    item: LibraryEntry,
-    jobs: DownloadJob[],
-    pathStateByKey: Record<string, LibraryPathState>,
-  ) => boolean
-  showLocateInstallAction: (
-    item: LibraryEntry,
-    jobs: DownloadJob[],
-    pathStateByKey: Record<string, LibraryPathState>,
-  ) => boolean
-  hasManualInstallRoot: (
-    item: LibraryEntry,
-    pathStateByKey: Record<string, LibraryPathState>,
-  ) => boolean
-  isLibraryInstalled: (item: LibraryEntry) => boolean
-  handlePlayLibraryItem: (item: LibraryEntry) => Promise<void>
-  handleInstallItem: (item: LibraryEntry) => Promise<void>
-  handlePickGameInstallFolder: (
-    title: string,
-    destPath: string,
-    busyKey: string,
-    jobId?: string,
-  ) => Promise<void>
-  handleDeleteLibraryItem: (item: LibraryEntry) => Promise<void>
-  onResumeItem: (id: string) => Promise<void>
-  onOpenLocalPath: (path: string) => Promise<void>
-}
-
-type LibraryAction = {
-  id: string
-  label: string
-  title?: string
-  variant?: 'primary' | 'outline' | 'danger'
-  disabled?: boolean
-  onClick: () => void
-}
-
-const STATUS_SHORT: Record<string, string> = {
-  ready: 'Jogar',
-  waiting: 'Instalar',
-  downloading: 'A baixar',
-  extracting: 'A extrair',
-  paused: 'Pausado',
-  idle: 'Na fila',
-  failed: 'Erro',
+type LibraryAction = GameTileAction
+function libraryStatusLine(
+  status: { label: string; tone: string },
+  primary: LibraryAction | null,
+): string | null {
+  if (status.tone === 'ready' || status.tone === 'waiting') return null
+  if (primary?.id === 'play' || primary?.id === 'install') return null
+  return status.label
 }
 
 function busyKey(item: LibraryEntry) {
@@ -102,7 +46,8 @@ function buildLibraryActions(
     installBusyId: string | null
     handlePlayLibraryItem: (item: LibraryEntry) => Promise<void>
     handleInstallItem: (item: LibraryEntry) => Promise<void>
-    handlePickGameInstallFolder: LibraryPageProps['handlePickGameInstallFolder']
+    handleExtractItem: (item: LibraryEntry) => Promise<void>
+    handlePickGameInstallFolder: LibraryControllerValue['handlePickGameInstallFolder']
     handleDeleteLibraryItem: (item: LibraryEntry) => Promise<void>
     onResumeItem: (id: string) => Promise<void>
     onOpenLocalPath: (path: string) => Promise<void>
@@ -124,8 +69,8 @@ function buildLibraryActions(
   const addLocate = () => {
     secondary.push({
       id: 'locate',
-      label: 'Indicar',
-      title: 'Indicar onde instalou o jogo',
+      label: 'Localizar',
+      title: 'Indicar onde o jogo foi instalado',
       variant: 'outline',
       disabled: ctx.installBusyId === ctx.key,
       onClick: () =>
@@ -141,8 +86,8 @@ function buildLibraryActions(
   const addDelete = () => {
     secondary.push({
       id: 'delete',
-      label: 'Apagar',
-      title: 'Apagar da biblioteca',
+      label: 'Excluir',
+      title: 'Excluir da biblioteca',
       variant: 'danger',
       onClick: () => void ctx.handleDeleteLibraryItem(item),
     })
@@ -157,16 +102,17 @@ function buildLibraryActions(
         id: 'install',
         label:
           ctx.installBusyId === ctx.key
-            ? 'A abrir…'
+            ? 'Abrindo…'
             : ctx.needsExtraction
               ? 'Preparar'
               : 'Instalar',
         title: ctx.needsExtraction
-          ? 'Extrair ficheiros antes de instalar'
+          ? 'Extrair arquivos antes de instalar'
           : 'Abrir o instalador do jogo',
         variant: 'primary',
         disabled: ctx.installBusyId === ctx.key,
-        onClick: () => void ctx.handleInstallItem(item),
+        onClick: () =>
+          void (ctx.needsExtraction ? ctx.handleExtractItem(item) : ctx.handleInstallItem(item)),
       },
       secondary,
     }
@@ -178,7 +124,7 @@ function buildLibraryActions(
     return {
       primary: {
         id: 'play',
-        label: ctx.playBusyId === ctx.key ? 'A iniciar…' : 'Jogar',
+        label: ctx.playBusyId === ctx.key ? 'Iniciando…' : 'Jogar',
         title: 'Iniciar o jogo',
         variant: 'primary',
         disabled: ctx.playBusyId === ctx.key,
@@ -225,8 +171,8 @@ function buildLibraryActions(
     return {
       primary: {
         id: 'locate-primary',
-        label: ctx.installBusyId === ctx.key ? 'A abrir…' : 'Indicar pasta',
-        title: 'Escolher a pasta onde o jogo foi instalado',
+        label: ctx.installBusyId === ctx.key ? 'Abrindo…' : 'Localizar pasta',
+        title: 'Selecionar a pasta onde o jogo foi instalado',
         variant: 'primary',
         disabled: ctx.installBusyId === ctx.key,
         onClick: () =>
@@ -247,7 +193,7 @@ function buildLibraryActions(
     primary: {
       id: 'open-primary',
       label: 'Abrir pasta',
-      title: 'Abrir pasta no explorador',
+      title: 'Abrir pasta no Explorer',
       variant: 'outline',
       onClick: () => void ctx.onOpenLocalPath(item.destPath),
     },
@@ -255,63 +201,52 @@ function buildLibraryActions(
   }
 }
 
-export function LibraryPage({
-  libraryItems,
-  jobs,
-  pathStateByKey,
-  libraryFilter,
-  libraryStatusFilter,
-  playBusyId,
-  installBusyId,
-  savePathError,
-  actionMessage,
-  setLibraryFilter,
-  setLibraryStatusFilter,
-  setActiveTabDownloads,
-  onGoDiscover,
-  resolveCover,
-  invalidateLocalCover,
-  libraryStatusMeta,
-  showPlayAction,
-  showInstallAction,
-  showLocateInstallAction,
-  hasManualInstallRoot,
-  isLibraryInstalled,
-  handlePlayLibraryItem,
-  handleInstallItem,
-  handlePickGameInstallFolder,
-  handleDeleteLibraryItem,
-  onResumeItem,
-  onOpenLocalPath,
-}: LibraryPageProps) {
-  const hasActiveFilter =
-    libraryFilter.trim().length > 0 || libraryStatusFilter !== 'all'
+export function LibraryPage() {
+  const {
+    libraryItems,
+    pathStateByKey,
+    libraryFilter,
+    libraryStatusFilter,
+    playBusyId,
+    installBusyId,
+    savePathError,
+    actionMessage,
+    setLibraryFilter,
+    setLibraryStatusFilter,
+    onGoDownloads,
+    resolveCover,
+    invalidateLocalCover,
+    handlePlayLibraryItem,
+    handleInstallItem,
+    handleExtractItem,
+    handlePickGameInstallFolder,
+    handleDeleteLibraryItem,
+  } = useLibraryController()
+  const {
+    libraryStatusMeta,
+    showPlayAction,
+    showInstallAction,
+    showLocateInstallAction,
+    hasManualInstallRoot,
+    isLibraryInstalled,
+  } = useLibraryItemHelpers()
+  const onResumeItem = useLibraryResumeItem()
+  const onOpenLocalPath = useOpenLocalPath()
 
   return (
     <section className="library-page">
-      <header className="page-toolbar">
-        <div className="browse-search browse-search--bar">
-          <span className="browse-search__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <circle cx="11" cy="11" r="6" />
-              <path d="M20 20l-4.2-4.2" />
-            </svg>
-          </span>
-          <input
-            className="browse-search__input"
-            type="search"
-            placeholder="Filtrar…"
-            value={libraryFilter}
-            onChange={(event) => setLibraryFilter(event.target.value)}
-            spellCheck={false}
-          />
-        </div>
-        <div className="page-toolbar__filters" role="tablist" aria-label="Filtrar">
+      <header className="library-toolbar">
+        <SearchInput
+          className="library-toolbar__search browse-search browse-search--bar"
+          value={libraryFilter}
+          placeholder="Filtrar biblioteca…"
+          onChange={setLibraryFilter}
+        />        <div className="library-toolbar__filters" role="tablist" aria-label="Filtrar biblioteca">
           {(
             [
               ['all', 'Todos'],
-              ['installed', 'Prontos'],
-              ['not_installed', 'Em curso'],
+              ['installed', 'Instalados'],
+              ['not_installed', 'Em andamento'],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -328,21 +263,24 @@ export function LibraryPage({
         </div>
       </header>
 
-      {savePathError ? <p className="browse-note browse-note--error">{savePathError}</p> : null}
-      {actionMessage ? <p className="browse-note">{actionMessage}</p> : null}
+      {(savePathError?.trim() || actionMessage?.trim()) ? (
+        <PageNotice
+          error={savePathError?.trim() || null}
+          message={actionMessage?.trim() || null}
+        />
+      ) : null}
 
       {libraryItems.length > 0 ? (
         <ul className="library-grid">
           {libraryItems.map((item) => {
-            const status = libraryStatusMeta(item, jobs, pathStateByKey)
+            const status = libraryStatusMeta(item)
             const cover = resolveCover(item.title)
             const key = busyKey(item)
-            const canPlay = showPlayAction(item, jobs, pathStateByKey)
-            const canInstall = showInstallAction(item, jobs, pathStateByKey)
-            const canLocate = showLocateInstallAction(item, jobs, pathStateByKey)
+            const canPlay = showPlayAction(item)
+            const canInstall = showInstallAction(item)
+            const canLocate = showLocateInstallAction(item)
             const canDelete = isLibraryInstalled(item) || item.kind === 'folder'
-            const manualRoot = hasManualInstallRoot(item, pathStateByKey)
-            const statusShort = STATUS_SHORT[status.tone] ?? status.label
+            const manualRoot = hasManualInstallRoot(item)
             const pathState = pathStateByKey[itemPathStateKey(item)]
             const needsExtraction = pathState?.needsExtraction === true
 
@@ -357,100 +295,41 @@ export function LibraryPage({
               installBusyId,
               handlePlayLibraryItem,
               handleInstallItem,
+              handleExtractItem,
               handlePickGameInstallFolder,
               handleDeleteLibraryItem,
               onResumeItem,
               onOpenLocalPath,
-              setActiveTabDownloads,
+              setActiveTabDownloads: onGoDownloads,
             })
 
+            const statusLine = libraryStatusLine(status, primary)
+
             return (
-              <li
-                key={item.id}
-                className="library-card"
-                title={[status.label, manualRoot ? 'Pasta apontada manualmente' : '']
-                  .filter(Boolean)
-                  .join(' · ')}
-              >
-                <div className="library-card__cover">
-                  <CatalogCover
-                    title={item.title}
-                    coverUrl={cover.coverUrl}
-                    localPath={cover.localPath}
-                    cached={cover.status === 'cached'}
-                    status={cover.status}
-                    onLocalCoverError={() => invalidateLocalCover(item.title, cover.coverUrl)}
-                  />
-                  <span className={`library-card__badge library-card__badge--${status.tone}`}>
-                    {statusShort}
-                  </span>
-                </div>
-
-                <div className="library-card__foot">
-                  <h3 className="library-card__title" title={item.title}>
-                    {cleanTitleForDisplay(item.title)}
-                  </h3>
-
-                  <div className="library-card__actions">
-                    {primary ? (
-                      <Button
-                        variant={primary.variant ?? 'primary'}
-                        size="compact"
-                        className={`library-card__cta${
-                          primary.id === 'install' ? ' library-card__cta--install' : ''
-                        }`}
-                        type="button"
-                        title={primary.title}
-                        disabled={primary.disabled}
-                        onClick={primary.onClick}
-                      >
-                        {primary.label}
-                      </Button>
-                    ) : null}
-
-                    {secondary.length > 0 ? (
-                      <div className="library-card__toolbar" role="group" aria-label="Mais ações">
-                        {secondary.map((action) => (
-                          <Button
-                            key={action.id}
-                            variant={action.variant ?? 'outline'}
-                            size="compact"
-                            className="library-card__tool"
-                            type="button"
-                            title={action.title ?? action.label}
-                            disabled={action.disabled}
-                            onClick={action.onClick}
-                          >
-                            {action.label}
-                          </Button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
+              <li key={item.id}>
+                <GameTile
+                  title={cleanTitleForDisplay(item.title)}
+                  titleAttr={[status.label, manualRoot ? 'Pasta indicada manualmente' : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                  cover={
+                    <CatalogCover
+                      title={item.title}
+                      coverUrl={cover.coverUrl}
+                      localPath={cover.localPath}
+                      cached={cover.status === 'cached'}
+                      status={cover.status}
+                      onLocalCoverError={() => invalidateLocalCover(item.title, cover.coverUrl)}
+                    />
+                  }
+                  primaryAction={primary}
+                  secondaryActions={secondary}
+                  statusLine={statusLine}
+                />
               </li>
-            )
-          })}
+            )          })}
         </ul>
-      ) : (
-        <div className="browse-idle">
-          <p className="browse-idle__text">{hasActiveFilter ? 'Sem resultados.' : 'Vazio.'}</p>
-          <button
-            className="btn btn-outline btn--compact"
-            type="button"
-            onClick={() => {
-              if (hasActiveFilter) {
-                setLibraryFilter('')
-                setLibraryStatusFilter('all')
-                return
-              }
-              onGoDiscover()
-            }}
-          >
-            {hasActiveFilter ? 'Limpar' : 'Explorar'}
-          </button>
-        </div>
-      )}
+      ) : null}
     </section>
   )
 }

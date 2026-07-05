@@ -1,0 +1,16 @@
+mod engine;
+mod extraction;
+mod commands;
+
+pub use commands::{
+  open_deep_link, open_local_path, remove_job_from_library,
+  sidecar_cancel_job, sidecar_enqueue_job, sidecar_launch_job, sidecar_list_jobs,
+  sidecar_open_job_folder, sidecar_pause_job, sidecar_resume_job, sidecar_status,
+};
+pub use engine::{
+  ensure_sidecar_running, pause_all_active_sidecar_jobs,
+  spawn_download_engine, spawn_sidecar_progress_watcher,
+};
+pub use extraction::{
+  emit_extract_status, extract_job_archive, process_job_post_download, spawn_extraction_watcher,
+};

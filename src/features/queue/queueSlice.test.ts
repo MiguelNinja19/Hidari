@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   extractStatusReceived,
+  cancelJob,
   fetchJobs,
   jobProgressReceived,
   queueReducer,
@@ -59,7 +60,7 @@ describe('queueSlice', () => {
     expect(state.jobs[0]?.progress).toBe(100)
   })
 
-  it('derives progress percent from downloaded bytes', () => {
+  it('guarda bytes e progresso bruto do sidecar', () => {
     const state = queueReducer(
       {
         jobs: [{ ...baseJob, status: 'downloading', progress: 0, bytesDownloaded: 0, totalBytes: 0 }],
@@ -77,7 +78,8 @@ describe('queueSlice', () => {
     )
 
     expect(state.jobs[0]?.bytesDownloaded).toBe(250)
-    expect(state.jobs[0]?.progress).toBe(25)
+    expect(state.jobs[0]?.totalBytes).toBe(1000)
+    expect(state.jobs[0]?.progress).toBe(0)
   })
 
   it('ignora progress inflado sem bytes no magnet', () => {
@@ -106,7 +108,7 @@ describe('queueSlice', () => {
       }),
     )
 
-    expect(state.jobs[0]?.progress).toBe(0)
+    expect(state.jobs[0]?.progress).toBe(100)
   })
 
   it('uses sidecar progress percent when bytes are not yet available', () => {
@@ -136,6 +138,47 @@ describe('queueSlice', () => {
     )
 
     expect(state.jobs[0]?.progress).toBe(5)
+  })
+
+  it('remove job e ignora progresso apos cancelar', () => {
+    const downloading = { ...baseJob, status: 'downloading' as const, progress: 40 }
+    const afterCancel = queueReducer(
+      { jobs: [downloading], ...baseState },
+      { type: cancelJob.fulfilled.type, payload: 'job-1' },
+    )
+
+    expect(afterCancel.jobs).toHaveLength(0)
+    expect(afterCancel.dismissedJobIds).toContain('job-1')
+
+    const afterProgress = queueReducer(
+      afterCancel,
+      jobProgressReceived({
+        jobId: 'job-1',
+        progress: 50,
+        status: 'downloading',
+        speedBytesPerSec: 1024,
+        etaSeconds: 60,
+        bytesDownloaded: 500,
+        totalBytes: 1000,
+      }),
+    )
+
+    expect(afterProgress.jobs).toHaveLength(0)
+  })
+
+  it('nao repoe jobs cancelados apos fetchJobs', () => {
+    const downloading = { ...baseJob, status: 'downloading' as const, progress: 40 }
+    const afterCancel = queueReducer(
+      { jobs: [downloading], ...baseState },
+      { type: cancelJob.fulfilled.type, payload: 'job-1' },
+    )
+
+    const afterFetch = queueReducer(afterCancel, {
+      type: fetchJobs.fulfilled.type,
+      payload: [{ ...downloading, progress: 55 }],
+    })
+
+    expect(afterFetch.jobs).toHaveLength(0)
   })
 
   it('nao repoe jobs removidos da biblioteca apos fetchJobs', () => {

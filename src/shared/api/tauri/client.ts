@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import type { DownloadProgressEvent, ExtractStatusEvent, JobProgressEvent } from '../../types/contracts'
+import type { ExtractStatusEvent, JobProgressEvent } from '../../types/contracts'
 
 const isTauriRuntime = () =>
   typeof window !== 'undefined' &&
@@ -32,13 +32,6 @@ const safeListen = async <T>(
 
 export const tauriClient = {
   invoke: safeInvoke,
-  listenDownloadProgress(
-    handler: (event: DownloadProgressEvent) => void,
-  ): Promise<() => void> {
-    return safeListen<DownloadProgressEvent>('download://progress', (event) =>
-      handler(event.payload),
-    )
-  },
   listenJobProgress(handler: (event: JobProgressEvent) => void): Promise<() => void> {
     return safeListen<JobProgressEvent>('queue://job-progress', (event) =>
       handler(event.payload),

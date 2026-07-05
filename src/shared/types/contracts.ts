@@ -14,14 +14,6 @@ export type Source = {
   createdAt: string
 }
 
-export type DownloadProgressEvent = {
-  downloadId: string
-  progress: number
-  speedBytesPerSec: number
-  etaSeconds: number
-  status: 'downloading' | 'completed' | string
-}
-
 export type AddSourceInput = {
   url: string
 }
@@ -32,26 +24,6 @@ export type SourceTestResult = {
   statusCode?: number
   latencyMs: number
   message: string
-}
-
-export type Game = {
-  id: number
-  title: string
-  installPath: string
-  isFavorite: boolean
-  newDownloadOptionsCount: number
-  createdAt: string
-}
-
-export type AddGameInput = {
-  title: string
-  installPath: string
-}
-
-export type UpdateGameInput = {
-  id: number
-  title: string
-  installPath: string
 }
 
 export type DownloadJob = {
@@ -162,11 +134,4 @@ export type LocalLibraryItem = {
   isDir: boolean
   sizeBytes: number
   modifiedAt: number
-}
-
-export type Collection = {
-  id: number
-  name: string
-  gameCount: number
-  createdAt: string
 }

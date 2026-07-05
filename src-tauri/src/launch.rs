@@ -1,9 +1,14 @@
+//! Deteção genérica de executáveis a partir do **título do job** (download).
+//! Não existe lista fixa de jogos: o motor tokeniza o título, procura pastas/setup.exe
+//! e pontua candidatos .exe com heurísticas (tamanho, shipping, tokens, redist, etc.).
+
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 
 use crate::archive;
+use crate::title;
 
 /// True when the file begins with a valid Windows PE executable header.
 pub fn is_valid_pe_executable(path: &Path) -> bool {
@@ -139,14 +144,6 @@ pub fn is_likely_game_exe(file_name: &str) -> bool {
     "dedicated_server",
   ];
   !blocked_contains.iter().any(|token| lower.contains(token))
-}
-
-fn tokenize_title(title: &str) -> Vec<String> {
-  title
-    .split(|ch: char| !ch.is_alphanumeric())
-    .filter(|token| token.len() >= 3)
-    .map(|token| token.to_lowercase())
-    .collect()
 }
 
 fn score_executable_candidate(path: &Path, depth: usize, title_tokens: &[String]) -> i64 {
@@ -292,7 +289,7 @@ fn folder_has_install_or_game(title: &str, folder: &Path) -> bool {
     return true;
   }
 
-  let title_tokens = tokenize_title(title);
+  let title_tokens = title::tokenize_title(title);
   let Ok(entries) = fs::read_dir(folder) else {
     return false;
   };
@@ -334,7 +331,7 @@ pub fn folder_has_playable_game_exe(title: &str, folder: &Path) -> bool {
     return false;
   }
 
-  let title_tokens = tokenize_title(title);
+  let title_tokens = title::tokenize_title(title);
   let mut local: Vec<(usize, PathBuf)> = Vec::new();
   collect_executable_candidates(folder, 0, &mut local);
 
@@ -361,7 +358,7 @@ pub fn folder_has_playable_game_exe(title: &str, folder: &Path) -> bool {
 }
 
 fn find_title_matched_install_folder(title: &str, parent: &Path, skip: Option<&Path>) -> Option<PathBuf> {
-  let tokens = tokenize_title(title);
+  let tokens = title::tokenize_title(title);
   if tokens.is_empty() {
     return None;
   }
@@ -418,7 +415,7 @@ pub fn resolve_game_content_root(title: &str, dest_path: &str) -> PathBuf {
     return base;
   }
 
-  let tokens = tokenize_title(title);
+  let tokens = title::tokenize_title(title);
   let Ok(entries) = fs::read_dir(&base) else {
     return base;
   };
@@ -574,7 +571,7 @@ fn resolve_launch_candidates_in_roots(
   title: &str,
   roots: &[PathBuf],
 ) -> Result<Vec<PathBuf>, String> {
-  let title_tokens = tokenize_title(title);
+  let title_tokens = title::tokenize_title(title);
   let mut scored: Vec<(i64, PathBuf)> = Vec::new();
   let mut seen_paths = std::collections::HashSet::new();
   let mut any_root_exists = false;
@@ -694,7 +691,7 @@ pub fn spawn_setup_executable_in(launch_target: &Path, install_dir: Option<&Path
 
   #[cfg(target_os = "windows")]
   {
-    // Nunca cmd/start com /DIR= — partia em "Mega Man..." e o Windows procurava \J:\frangos\Mega
+    // Nunca cmd/start com /DIR= — paths com espaços ou & partem o comando do Windows.
     if spawn_via_create_process(launch_target, &work_dir, &extra_args).is_ok() {
       return Ok(());
     }
@@ -1020,6 +1017,19 @@ mod tests {
   use super::*;
   use std::io::Write;
 
+  const GAME_A: &str = "Galaxy Rangers";
+  const GAME_B: &str = "Pixel Harvest";
+  const GAME_LEGACY: &str = "Crystal Quest Legacy";
+
+  fn pe_stub() -> Vec<u8> {
+    let mut stub = vec![0u8; 0x100];
+    stub[0] = b'M';
+    stub[1] = b'Z';
+    stub[0x3c] = 0x40;
+    stub[0x40..0x44].copy_from_slice(b"PE\0\0");
+    stub
+  }
+
   #[test]
   fn rejects_non_pe_files() {
     let dir = std::env::temp_dir().join(format!("launcher_pe_test_{}", std::process::id()));
@@ -1043,12 +1053,12 @@ mod tests {
     fs::create_dir_all(&dir).unwrap();
 
     let blocked = dir.join("setup.exe");
-    let preferred = dir.join("Cyberpunk2077.exe");
+    let preferred = dir.join("GalaxyRangers.exe");
     fs::write(&blocked, b"MZ").unwrap();
     fs::write(&preferred, b"MZ").unwrap();
 
     assert!(!is_likely_game_exe("setup.exe"));
-    assert!(is_likely_game_exe("Cyberpunk2077.exe"));
+    assert!(is_likely_game_exe("GalaxyRangers.exe"));
 
     let _ = fs::remove_dir_all(&dir);
   }
@@ -1059,16 +1069,10 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    let game_exe = dir.join("MyGame.exe");
-    let mut pe_stub = vec![0u8; 0x100];
-    pe_stub[0] = b'M';
-    pe_stub[1] = b'Z';
-    pe_stub[0x3c] = 0x40;
-    pe_stub[0x40..0x44].copy_from_slice(b"PE\0\0");
-    fs::write(&game_exe, pe_stub).unwrap();
+    fs::write(dir.join("TargetGame.exe"), pe_stub()).unwrap();
 
-    assert!(job_has_playable_executable("My Game", &dir.to_string_lossy()));
-    assert!(!job_has_playable_executable("My Game", "/nonexistent/path"));
+    assert!(job_has_playable_executable(GAME_A, &dir.to_string_lossy()));
+    assert!(!job_has_playable_executable(GAME_A, "/nonexistent/path"));
 
     let _ = fs::remove_dir_all(&dir);
   }
@@ -1079,12 +1083,11 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    let setup = dir.join("setup.exe");
-    fs::write(&setup, vec![0u8; 60_000]).unwrap();
+    fs::write(dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
 
-    assert!(find_setup_executable("Devil May Cry", &dir.to_string_lossy()).is_some());
-    assert!(job_has_playable_executable("Devil May Cry", &dir.to_string_lossy()));
-    assert!(!job_has_game_executable("Devil May Cry", &dir.to_string_lossy()));
+    assert!(find_setup_executable(GAME_A, &dir.to_string_lossy()).is_some());
+    assert!(job_has_playable_executable(GAME_A, &dir.to_string_lossy()));
+    assert!(!job_has_game_executable(GAME_A, &dir.to_string_lossy()));
 
     let _ = fs::remove_dir_all(&dir);
   }
@@ -1093,32 +1096,21 @@ mod tests {
   fn resolves_title_subfolder_when_dest_is_parent_download_dir() {
     let parent = std::env::temp_dir().join(format!("launcher_parent_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&parent);
-    let game_dir = parent.join("Dragon Ball FighterZ [FitGirl Repack]");
-    let other_dir = parent.join("Stardew Valley [FitGirl Repack]");
+    let game_dir = parent.join(format!("{GAME_A} [FitGirl Repack]"));
+    let other_dir = parent.join(format!("{GAME_B} [FitGirl Repack]"));
     let md5_dir = other_dir.join("MD5");
     fs::create_dir_all(&md5_dir).unwrap();
     fs::create_dir_all(&game_dir).unwrap();
 
-    let setup = game_dir.join("setup.exe");
-    fs::write(&setup, vec![0u8; 60_000]).unwrap();
-    let sfv = md5_dir.join("QuickSFV.EXE");
-    fs::write(&sfv, vec![0u8; 0x100]).unwrap();
+    fs::write(game_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
+    fs::write(md5_dir.join("QuickSFV.EXE"), vec![0u8; 0x100]).unwrap();
 
-    let resolved = resolve_game_content_root(
-      "Dragon Ball FighterZ",
-      &parent.to_string_lossy(),
-    );
+    let resolved = resolve_game_content_root(GAME_A, &parent.to_string_lossy());
     assert_eq!(resolved, game_dir);
-    assert!(!job_has_game_executable(
-      "Dragon Ball FighterZ",
-      &parent.to_string_lossy(),
-    ));
-    assert!(find_setup_executable(
-      "Dragon Ball FighterZ",
-      &parent.to_string_lossy(),
-    )
-    .unwrap()
-    .ends_with("setup.exe"));
+    assert!(!job_has_game_executable(GAME_A, &parent.to_string_lossy()));
+    assert!(find_setup_executable(GAME_A, &parent.to_string_lossy())
+      .unwrap()
+      .ends_with("setup.exe"));
 
     let _ = fs::remove_dir_all(&parent);
   }
@@ -1127,17 +1119,17 @@ mod tests {
   fn does_not_pick_other_game_setup_folder() {
     let parent = std::env::temp_dir().join(format!("launcher_multi_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&parent);
-    let dragon_dir = parent.join("Dragon Ball FighterZ [FitGirl Repack]");
-    let stardew_dir = parent.join("Stardew Valley [FitGirl Repack]");
-    fs::create_dir_all(&dragon_dir).unwrap();
-    fs::create_dir_all(&stardew_dir).unwrap();
-    fs::write(dragon_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
-    fs::write(stardew_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
+    let game_a_dir = parent.join(format!("{GAME_A} [FitGirl Repack]"));
+    let game_b_dir = parent.join(format!("{GAME_B} [FitGirl Repack]"));
+    fs::create_dir_all(&game_a_dir).unwrap();
+    fs::create_dir_all(&game_b_dir).unwrap();
+    fs::write(game_a_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
+    fs::write(game_b_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
 
-    let stardew = resolve_game_content_root("Stardew Valley", &parent.to_string_lossy());
-    let dragon = resolve_game_content_root("Dragon Ball FighterZ", &parent.to_string_lossy());
-    assert!(stardew.to_string_lossy().to_lowercase().contains("stardew"));
-    assert!(dragon.to_string_lossy().to_lowercase().contains("dragon"));
+    let resolved_b = resolve_game_content_root(GAME_B, &parent.to_string_lossy());
+    let resolved_a = resolve_game_content_root(GAME_A, &parent.to_string_lossy());
+    assert!(resolved_b.to_string_lossy().to_lowercase().contains("pixel"));
+    assert!(resolved_a.to_string_lossy().to_lowercase().contains("galaxy"));
 
     let _ = fs::remove_dir_all(&parent);
   }
@@ -1148,19 +1140,11 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    let setup = dir.join("setup.exe");
-    fs::write(&setup, vec![0u8; 60_000]).unwrap();
+    fs::write(dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
+    fs::write(dir.join("Pixel Harvest.exe"), pe_stub()).unwrap();
 
-    let game_exe = dir.join("Stardew Valley.exe");
-    let mut pe_stub = vec![0u8; 0x100];
-    pe_stub[0] = b'M';
-    pe_stub[1] = b'Z';
-    pe_stub[0x3c] = 0x40;
-    pe_stub[0x40..0x44].copy_from_slice(b"PE\0\0");
-    fs::write(&game_exe, pe_stub).unwrap();
-
-    assert!(job_has_game_executable("Stardew Valley", &dir.to_string_lossy()));
-    assert!(resolve_launch_candidates("Stardew Valley", &dir.to_string_lossy()).is_ok());
+    assert!(job_has_game_executable(GAME_B, &dir.to_string_lossy()));
+    assert!(resolve_launch_candidates(GAME_B, &dir.to_string_lossy()).is_ok());
 
     let _ = fs::remove_dir_all(&dir);
   }
@@ -1171,27 +1155,18 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    let mut pe_stub = vec![0u8; 0x100];
-    pe_stub[0] = b'M';
-    pe_stub[1] = b'Z';
-    pe_stub[0x3c] = 0x40;
-    pe_stub[0x40..0x44].copy_from_slice(b"PE\0\0");
-
-    fs::write(dir.join("Steam.exe"), &pe_stub).unwrap();
-    fs::write(dir.join("Launcher.exe"), &pe_stub).unwrap();
-    fs::write(dir.join("Mega Man X Legacy Collection.exe"), &pe_stub).unwrap();
+    let stub = pe_stub();
+    fs::write(dir.join("Steam.exe"), &stub).unwrap();
+    fs::write(dir.join("Launcher.exe"), &stub).unwrap();
+    fs::write(dir.join("Crystal Quest Legacy.exe"), &stub).unwrap();
 
     assert!(!is_likely_game_exe("Steam.exe"));
     assert!(!is_likely_game_exe("Launcher.exe"));
     assert!(is_store_or_platform_launcher_exe("Steam.exe", &dir.join("Steam.exe")));
     assert!(is_store_or_platform_launcher_exe("Launcher.exe", &dir.join("Launcher.exe")));
 
-    let candidates =
-      resolve_launch_candidates("Mega Man X Legacy Collection", &dir.to_string_lossy()).unwrap();
-    assert_eq!(
-      candidates[0],
-      dir.join("Mega Man X Legacy Collection.exe")
-    );
+    let candidates = resolve_launch_candidates(GAME_LEGACY, &dir.to_string_lossy()).unwrap();
+    assert_eq!(candidates[0], dir.join("Crystal Quest Legacy.exe"));
 
     let _ = fs::remove_dir_all(&dir);
   }
@@ -1200,43 +1175,23 @@ mod tests {
   fn resolves_installed_sibling_folder_instead_of_parent_scan() {
     let parent = std::env::temp_dir().join(format!("launcher_sibling_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&parent);
-    let repack_dir = parent.join("Mega Man X Legacy Collection [FitGirl Repack]");
-    let install_dir = parent.join("Mega Man X Legacy Collection");
+    let repack_dir = parent.join(format!("{GAME_LEGACY} [FitGirl Repack]"));
+    let install_dir = parent.join(GAME_LEGACY);
     fs::create_dir_all(&repack_dir).unwrap();
     fs::create_dir_all(&install_dir).unwrap();
 
     fs::write(repack_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
-
-    let mut pe_stub = vec![0u8; 0x100];
-    pe_stub[0] = b'M';
-    pe_stub[1] = b'Z';
-    pe_stub[0x3c] = 0x40;
-    pe_stub[0x40..0x44].copy_from_slice(b"PE\0\0");
-    fs::write(
-      install_dir.join("Mega Man X Legacy Collection.exe"),
-      &pe_stub,
-    )
-    .unwrap();
+    fs::write(install_dir.join("Crystal Quest Legacy.exe"), pe_stub()).unwrap();
 
     let other_game = parent.join("Other Game [FitGirl Repack]");
     fs::create_dir_all(&other_game).unwrap();
-    fs::write(other_game.join("Launcher.exe"), &pe_stub).unwrap();
+    fs::write(other_game.join("Launcher.exe"), pe_stub()).unwrap();
 
-    let resolved = resolve_game_content_root(
-      "Mega Man X Legacy Collection",
-      &repack_dir.to_string_lossy(),
-    );
+    let resolved = resolve_game_content_root(GAME_LEGACY, &repack_dir.to_string_lossy());
     assert_eq!(resolved, install_dir);
 
-    let candidates = resolve_launch_candidates(
-      "Mega Man X Legacy Collection",
-      &repack_dir.to_string_lossy(),
-    )
-    .unwrap();
-    assert_eq!(
-      candidates[0],
-      install_dir.join("Mega Man X Legacy Collection.exe")
-    );
+    let candidates = resolve_launch_candidates(GAME_LEGACY, &repack_dir.to_string_lossy()).unwrap();
+    assert_eq!(candidates[0], install_dir.join("Crystal Quest Legacy.exe"));
 
     let _ = fs::remove_dir_all(&parent);
   }

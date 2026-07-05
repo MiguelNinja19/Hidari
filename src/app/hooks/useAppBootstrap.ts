@@ -1,0 +1,99 @@
+import { useEffect } from 'react'
+import { useAppDispatch } from '../hooks'
+import { fetchSources } from '../../features/sources/sourcesSlice'
+import { fetchJobs, jobProgressReceived } from '../../features/queue/queueSlice'
+import { tauriClient } from '../../shared/api/tauri/client'
+import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
+import {
+  bpsToSpeedKey,
+  SETTING_KEY,
+} from '../../shared/config/appSettings'
+
+type BootstrapSettings = {
+  setDefaultDownloadPath: (path: string) => void
+  setSeedTorrentsEnabled: (v: boolean) => void
+  setInstallOrganization: (v: string) => void
+  setAfterInstallAction: (v: string) => void
+  setVerifyAfterDownload: (v: boolean) => void
+  setRemoveTemporaryFiles: (v: boolean) => void
+  setDownloadSpeedLimit: (v: string) => void
+  setDisabledSourceIds: (v: string[]) => void
+}
+
+/** Carrega fontes, settings e listeners Tauri no arranque. */
+export function useAppBootstrap(settings: BootstrapSettings) {
+  const dispatch = useAppDispatch()
+  const {
+    setDefaultDownloadPath,
+    setSeedTorrentsEnabled,
+    setInstallOrganization,
+    setAfterInstallAction,
+    setVerifyAfterDownload,
+    setRemoveTemporaryFiles,
+    setDownloadSpeedLimit,
+    setDisabledSourceIds,
+  } = settings
+
+  useEffect(() => {
+    void dispatch(fetchSources())
+    void sourcesApi.syncSources().then(() => dispatch(fetchSources()))
+    void dispatch(fetchJobs())
+
+    void (async () => {
+      try {
+        const path = await sourcesApi.getDefaultDownloadPath()
+        if (path) {
+          setDefaultDownloadPath(path)
+        }
+        const enabled = await sourcesApi.getSeedTorrentsEnabled()
+        setSeedTorrentsEnabled(enabled)
+        const [org, after, ver, rem, speed, dis] = await Promise.all([
+          sourcesApi.getAppSetting(SETTING_KEY.installOrganization),
+          sourcesApi.getAppSetting(SETTING_KEY.afterInstallAction),
+          sourcesApi.getAppSetting(SETTING_KEY.verifyAfterDownload),
+          sourcesApi.getAppSetting(SETTING_KEY.removeTempFiles),
+          sourcesApi.getAppSetting(SETTING_KEY.downloadSpeedLimitBps),
+          sourcesApi.getAppSetting(SETTING_KEY.disabledHydraSourceIds),
+        ])
+        if (org) setInstallOrganization(org)
+        if (after) setAfterInstallAction(after)
+        if (ver !== null) setVerifyAfterDownload(ver === '1' || ver === 'true')
+        if (rem !== null) setRemoveTemporaryFiles(rem === '1' || rem === 'true')
+        if (speed !== null) setDownloadSpeedLimit(bpsToSpeedKey(speed))
+        if (dis) {
+          try {
+            const arr = JSON.parse(dis) as unknown
+            if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
+              setDisabledSourceIds(arr)
+            }
+          } catch {
+            // ignora JSON inválido
+          }
+        }
+      } catch {
+        // Tauri indisponível (ex.: dev no browser)
+      }
+    })()
+
+    let unlistenJob: (() => void) | undefined
+    void tauriClient.listenJobProgress((event) => {
+      dispatch(jobProgressReceived(event))
+    }).then((fn) => {
+      unlistenJob = fn
+    })
+
+    return () => {
+      unlistenJob?.()
+    }
+  }, [
+    dispatch,
+    setAfterInstallAction,
+    setDefaultDownloadPath,
+    setDisabledSourceIds,
+    setDownloadSpeedLimit,
+    setInstallOrganization,
+    setRemoveTemporaryFiles,
+    setSeedTorrentsEnabled,
+    setVerifyAfterDownload,
+  ])
+}

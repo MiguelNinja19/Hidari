@@ -32,6 +32,16 @@ export function parseJobsPayload(payload: unknown): LooseJob[] {
 
 /** Normaliza resposta do sidecar (camelCase ou snake_case). */
 export function normalizeDownloadJob(raw: LooseJob): DownloadJob {
+  const bytesDownloaded = asNum(
+    raw.bytesDownloaded,
+    raw.bytes_downloaded ?? raw.downloadedBytes ?? raw.downloaded,
+  )
+  const totalBytes = asNum(raw.totalBytes, raw.total_bytes ?? raw.totalSize ?? raw.size)
+  const progress = asNum(
+    raw.progress,
+    raw.progressPercent ?? raw.percent ?? raw.percentage ?? raw.completion,
+  )
+
   return {
     id: String(raw.id ?? ''),
     title: String(raw.title ?? ''),
@@ -39,9 +49,9 @@ export function normalizeDownloadJob(raw: LooseJob): DownloadJob {
     destPath: String(raw.destPath ?? raw.dest_path ?? ''),
     status: String(raw.status ?? 'pending'),
     priority: asNum(raw.priority),
-    progress: asNum(raw.progress),
-    bytesDownloaded: asNum(raw.bytesDownloaded, raw.bytes_downloaded),
-    totalBytes: asNum(raw.totalBytes, raw.total_bytes),
+    progress,
+    bytesDownloaded,
+    totalBytes,
     speedBps: optFinite(raw.speedBps, raw.speed_bps),
     etaSeconds: optFinite(raw.etaSeconds, raw.eta_seconds),
     seedEnabled:

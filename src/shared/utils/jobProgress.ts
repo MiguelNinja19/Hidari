@@ -31,7 +31,7 @@ export function resolveJobProgressPercentFromFields(input: ProgressFields): numb
   if (TERMINAL_STATUSES.has(status)) return 100
   if (status === 'extracting') return 100
 
-  if (hasReliableByteProgress(bytesDownloaded, totalBytes)) {
+  if (totalBytes > 0 && bytesDownloaded > 0) {
     if (bytesDownloaded >= totalBytes && (status === 'seeding' || status === 'completed')) {
       return 100
     }
@@ -108,11 +108,13 @@ export const resolveJobProgressPercent = (job: DownloadJob): number =>
   })
 
 export const formatProgressPercent = (job: DownloadJob): string => {
-  if (isTorrentMetadataPhase(job)) return '···'
+  if (isTorrentMetadataPhase(job)) return '0%'
   const value = resolveJobProgressPercent(job)
   if (value <= 0) return '0%'
   if (value >= 100) return '100%'
-  return `${value.toFixed(1).replace('.', ',')}%`
+  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
+  const text = rounded % 1 === 0 ? String(rounded) : rounded.toFixed(1)
+  return `${text.replace('.', ',')}%`
 }
 
 const formatElapsedSince = (iso: string, nowMs: number): string => {

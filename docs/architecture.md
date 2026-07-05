@@ -4,23 +4,25 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  React UI (src/App.tsx)                                 │
-│  Redux slices (features/*)                              │
+│  React UI (features/* pages + hooks)                    │
+│  Redux: sources, queue                                  │
 └────────────────────┬────────────────────────────────────┘
                      │ invoke / listen
 ┌────────────────────▼────────────────────────────────────┐
 │  API TypeScript (src/shared/api/tauri/*)                │
 │  Contratos (src/shared/types/contracts.ts)              │
+│  Config (src/shared/config/*)                           │
 └────────────────────┬────────────────────────────────────┘
                      │ Tauri IPC
 ┌────────────────────▼────────────────────────────────────┐
-│  Rust backend (src-tauri/src/lib.rs)                    │
-│  SQLite (rusqlite) · HTTP (reqwest) · tray · notificações│
+│  Rust backend (src-tauri/src/)                          │
+│  lib.rs · launch · archive · config · title · db …      │
+│  SQLite (rusqlite) · HTTP (reqwest) · tray               │
 └────────────┬───────────────────────┬────────────────────┘
              │                       │
     ┌────────▼────────┐     ┌────────▼────────────┐
-    │  Hydra API      │     │  download-engine    │
-    │  (fontes HTTP)  │     │  (sidecar, fila)    │
+    │  Hydra / FitGirl  │     │  download-engine    │
+    │  (fontes HTTP)    │     │  (sidecar, fila)    │
     └─────────────────┘     └─────────────────────┘
 ```
 
@@ -28,78 +30,82 @@
 
 ```
 launcher-app/
-├── docs/                    # Documentação do projeto
-├── public/                  # Assets estáticos do Vite
-├── scripts/                 # Utilitários Node (ex.: leitura Hydra DB)
+├── docs/
 ├── src/
-│   ├── app/                 # Store Redux e hooks tipados
-│   ├── features/            # Slices por domínio
-│   │   ├── collections/
-│   │   ├── downloads/
-│   │   ├── library/
+│   ├── app/                 # Store Redux (sources + queue)
+│   ├── features/
+│   │   ├── covers/
+│   │   ├── discover/
+│   │   ├── downloads/       # DownloadsPage (UI)
+│   │   ├── library/         # LibraryPage + types + hooks
 │   │   ├── queue/
+│   │   ├── settings/
 │   │   └── sources/
+│   ├── layout/              # AppShell, Sidebar
 │   ├── shared/
-│   │   ├── api/tauri/       # Wrappers dos comandos Tauri
-│   │   └── types/           # Tipos partilhados frontend/backend
-│   ├── App.tsx              # UI principal e navegação
-│   └── main.tsx             # Entry point React
-└── src-tauri/
-    ├── binaries/            # aria2c.exe e README de runtime
-    ├── resources/           # Catálogo embutido (embedded_catalog.json)
-    ├── src/
-    │   ├── lib.rs           # Lógica principal e comandos Tauri
-    │   └── main.rs          # Entry point Rust
-    ├── download-engine.exe  # Sidecar de downloads (dev/build)
-    └── tauri.conf.json      # Configuração Tauri
+│   │   ├── api/tauri/
+│   │   ├── config/          # Constantes (settings, polling, Steam)
+│   │   ├── types/
+│   │   └── utils/
+│   └── App.tsx              # Composição de tabs (a reduzir)
+└── src-tauri/src/
+    ├── archive.rs
+    ├── launch.rs
+    ├── config.rs
+    ├── title.rs
+    ├── db/
+    ├── sidecar/
+    ├── sources/
+    ├── catalog/
+    ├── covers/
+    ├── library/
+    ├── queue/
+    └── lib.rs               # Bootstrap + invoke_handler
 ```
 
-## Frontend
+## Modelo da biblioteca (actual)
 
-### Estado (Redux)
+A biblioteca **não** usa a tabela `games` nem o slice Redux `library` removido.
 
-| Slice         | Responsabilidade                                 |
-| ------------- | ------------------------------------------------ |
-| `sources`     | Fontes de download Hydra, sincronização e testes |
-| `queue`       | Fila de jobs do sidecar (enqueue, pause, resume) |
-| `downloads`   | Progresso de downloads (eventos)                 |
-| `library`     | Jogos instalados na biblioteca local             |
-| `collections` | Coleções de jogos                                |
+| Fonte | Papel |
+|-------|--------|
+| `queue.jobs` | Downloads e estados (pending → extracted) |
+| `scan_default_download_path` | Pastas na pasta de downloads |
+| `inspect_library_path` | `hasGame`, `needsInstall`, `customGameRoot` |
+| `pathStateByKey` (React) | Cache de inspeção por job/pasta |
+| `libraryDedupe` | Um cartão por jogo (job + pasta) |
 
-### Abas da UI
+Fluxo: **Explorar** → enqueue → **Downloads** → concluído → **Biblioteca** (Instalar/Jogar).
 
-Definidas em `App.tsx`: **Discover**, **Library**, **Downloads**, **Settings**.
+## Frontend — Redux
 
-### Cliente Tauri
+| Slice | Responsabilidade |
+|-------|------------------|
+| `sources` | Fontes Hydra, sync, testes |
+| `queue` | Fila sidecar, progresso, jobs dismissed |
 
-`src/shared/api/tauri/client.ts` centraliza `invoke` e `listen`, com deteção de runtime Tauri. Fora do Tauri, as chamadas falham com erro explícito.
+## Backend — módulos Rust
 
-## Backend (Rust)
-
-Toda a lógica nativa vive em `src-tauri/src/lib.rs`:
-
-- **Persistência:** SQLite na pasta de dados da app (`app_data_dir`).
-- **Fontes:** integração com API Hydra + scraping local (ex.: FitGirl).
-- **Fila:** jobs geridos pelo sidecar `download-engine` via HTTP local.
-- **Sistema:** bandeja do sistema (tray), notificações, deep links (`app://deep-link`).
-
-### Sidecar `download-engine`
-
-Processo separado que expõe uma API HTTP numa porta dinâmica. O Rust:
-
-1. Arranca o binário e lê a porta no stdout.
-2. Encaminha comandos da UI (`sidecar_*`) para esse serviço.
-3. Emite eventos `queue://job-progress` para o frontend.
+| Módulo | Responsabilidade |
+|--------|------------------|
+| `config` | URLs, trackers, nomes de binários |
+| `title` | Normalização de títulos (paridade com TS) |
+| `db` | SQLite, migrations |
+| `sidecar` | download-engine HTTP |
+| `sources` | FitGirl, Hydra |
+| `catalog` | Pesquisa discover |
+| `covers` | Cache Steam/local |
+| `library` | scan, inspect, delete, launch roots |
+| `launch` | Deteção e spawn de .exe |
 
 ## Eventos em tempo real
 
-| Evento                 | Payload                     | Uso                                |
-| ---------------------- | --------------------------- | ---------------------------------- |
-| `download://progress`  | `DownloadProgressEvent`     | Progresso de download mock/legado  |
-| `queue://job-progress` | `JobProgressEvent`          | Progresso da fila do sidecar       |
-| `extract://status`     | `ExtractStatusEvent`        | Estado da extração automática      |
-| `app://deep-link`      | `{ url, gameId?, action? }` | Links profundos / protocolo custom |
+| Evento | Uso |
+|--------|-----|
+| `queue://job-progress` | Progresso da fila |
+| `extract://status` | Extração automática |
+| `app://deep-link` | Protocolo custom |
 
-## Configuração da app
+## Configuração
 
-Chaves de definições guardadas via `get_app_setting` / `set_app_setting` (ex.: pasta de instalação, limites de velocidade, fontes Hydra desativadas). Ver constantes `SETTING_KEY` em `App.tsx`.
+Chaves em `src/shared/config/appSettings.ts`; persistência via `get_app_setting` / `set_app_setting`.

@@ -1,0 +1,20 @@
+[
+  {
+    "input": "Galaxy Rangers [FitGirl Repack, Build 1234]",
+    "cleanForMatching": "Galaxy Rangers",
+    "normalizeKey": "galaxy rangers",
+    "tokens": ["galaxy", "rangers"]
+  },
+  {
+    "input": "Pixel Harvest (FitGirl Repack)",
+    "cleanForMatching": "Pixel Harvest",
+    "normalizeKey": "pixel harvest",
+    "tokens": ["pixel", "harvest"]
+  },
+  {
+    "input": "Example Game™",
+    "cleanForMatching": "Example Game",
+    "normalizeKey": "example game",
+    "tokens": ["example", "game"]
+  }
+]
