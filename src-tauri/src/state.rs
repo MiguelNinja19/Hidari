@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 #[derive(Default)]
 pub struct SidecarState {
@@ -45,21 +45,5 @@ impl SidecarState {
 
   pub fn set_booting(&self, booting: bool) {
     *self.booting.lock().unwrap() = booting;
-  }
-}
-
-pub struct QueueManager {
-  pub active_job_id: Arc<Mutex<Option<i64>>>,
-  pub should_cancel: Arc<Mutex<bool>>,
-  pub should_pause: Arc<Mutex<bool>>,
-}
-
-impl QueueManager {
-  pub fn new() -> Self {
-    Self {
-      active_job_id: Arc::new(Mutex::new(None)),
-      should_cancel: Arc::new(Mutex::new(false)),
-      should_pause: Arc::new(Mutex::new(false)),
-    }
   }
 }

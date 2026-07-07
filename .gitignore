@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
 
 # Editor directories and files
 .vscode/*
@@ -27,3 +28,6 @@ dist-ssr
 scripts/.tmp-hydra-db-snapshot
 src-tauri/binaries/*.exe
 src-tauri/binaries/*.dll
+src-tauri/target/
+scripts/__pycache__/
+**/__pycache__/

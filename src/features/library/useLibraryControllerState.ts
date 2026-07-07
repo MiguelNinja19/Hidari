@@ -20,6 +20,7 @@ import {
   INSTALL_WATCH_MAX_TICKS,
   LIBRARY_COVER_LOOKUP_DEBOUNCE_MS,
   PATH_INSPECT_FOCUS_DEBOUNCE_MS,
+  PATH_INSPECT_DEBOUNCE_MS,
   PENDING_INSTALL_POLL_MS,
 } from '../../shared/config/polling'
 import type { DownloadJob, LocalLibraryItem } from '../../shared/types/contracts'
@@ -35,6 +36,16 @@ import {
 } from './libraryItemState'
 import type { LibraryEntry } from './types'
 
+const LIBRARY_INSPECT_BATCH_SIZE = 10
+
+const emptyPathState = (): LibraryControllerValue['pathStateByKey'][string] => ({
+  playable: false,
+  hasGame: false,
+  needsInstall: false,
+  needsExtraction: false,
+  installPath: null,
+})
+
 type UseLibraryControllerStateArgs = {
   activeTab: NavTab
   jobs: DownloadJob[]
@@ -43,7 +54,7 @@ type UseLibraryControllerStateArgs = {
   onGoDiscover: () => void
   onGoDownloads: () => void
   resolveCover: LibraryControllerValue['resolveCover']
-  lookupMissingLibraryCover: (title: string) => void
+  resolveCoversBatch: (titles: string[]) => void
   invalidateLocalCover: (title: string, coverUrl?: string | null) => void
 }
 
@@ -55,20 +66,18 @@ export function useLibraryControllerState({
   onGoDiscover,
   onGoDownloads,
   resolveCover,
-  lookupMissingLibraryCover,
+  resolveCoversBatch,
   invalidateLocalCover,
 }: UseLibraryControllerStateArgs): LibraryControllerValue {
   const [libraryFilter, setLibraryFilter] = useState('')
-  const [libraryStatusFilter, setLibraryStatusFilter] = useState<
-    'all' | 'installed' | 'not_installed'
-  >('all')
   const [localLibraryItems, setLocalLibraryItems] = useState<LocalLibraryItem[]>([])
   const [pathStateByKey, setPathStateByKey] = useState<LibraryControllerValue['pathStateByKey']>({})
-  const [hiddenLibraryKeys, setHiddenLibraryKeys] = useState<Set<string>>(() => new Set())
+  const [libraryLoading, setLibraryLoading] = useState(false)
   const [savePathError, setSavePathError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [playBusyId, setPlayBusyId] = useState<string | null>(null)
   const [installBusyId, setInstallBusyId] = useState<string | null>(null)
+  const [hiddenLibraryKeys, setHiddenLibraryKeys] = useState<Set<string>>(() => new Set())
 
   const installWatchRef = useRef<Map<string, number>>(new Map())
   const pathStateByKeyRef = useRef(pathStateByKey)
@@ -191,20 +200,31 @@ export function useLibraryControllerState({
     return () => window.clearInterval(timer)
   }, [activeTab, pendingInstallSignature, refreshInstallablePaths])
 
-  const refreshLibraryScan = useCallback(() => {
-    void sourcesApi
+  const refreshLibraryScan = useCallback((options?: { background?: boolean }) => {
+    const background = options?.background === true
+    if (!background) setLibraryLoading(true)
+    return sourcesApi
       .scanDefaultDownloadPath()
-      .then((items) => setLocalLibraryItems(items))
-      .catch(() => {
-        /* mantém lista anterior */
+      .then((items) => {
+        setLocalLibraryItems(items)
+        if (!background) setSavePathError('')
+      })
+      .catch((error) => {
+        if (!background) {
+          setSavePathError(
+            error instanceof Error ? error.message : 'Falha ao ler a pasta de downloads.',
+          )
+        }
+      })
+      .finally(() => {
+        if (!background) setLibraryLoading(false)
       })
   }, [])
 
   useEffect(() => {
     if (activeTab !== 'library') return
     refreshLibraryScan()
-    void dispatch(fetchJobs())
-  }, [activeTab, dispatch, refreshLibraryScan])
+  }, [activeTab, refreshLibraryScan])
 
   useEffect(() => {
     if (!defaultDownloadPath.trim()) return
@@ -224,56 +244,57 @@ export function useLibraryControllerState({
     if (activeTab !== 'library') return
 
     let cancelled = false
-    const candidates = new Map<string, { title: string; path: string; jobId?: string }>()
-    for (const job of jobs) {
-      const pathKey = pathStateKey(job.destPath, jobPathCtx(job))
-      if (job.destPath.trim()) {
-        candidates.set(pathKey, { title: job.title, path: job.destPath, jobId: job.id })
-      }
-    }
-    for (const item of localLibraryItems) {
-      if (!item.isDir) continue
-      const pathKey = pathStateKey(item.path, { title: item.name })
-      if (!candidates.has(pathKey)) {
-        candidates.set(pathKey, { title: item.name, path: item.path })
-      }
-    }
-    if (candidates.size === 0) {
-      return () => {
-        cancelled = true
-      }
-    }
-
-    void Promise.all(
-      [...candidates.entries()].map(async ([pathKey, entry]) => {
-        try {
-          const state = await sourcesApi.inspectLibraryPath(
-            entry.title,
-            entry.path,
-            entry.jobId,
-          )
-          return [pathKey, state] as const
-        } catch {
-          return [
-            pathKey,
-            {
-              playable: false,
-              hasGame: false,
-              needsInstall: false,
-              needsExtraction: false,
-              installPath: null,
-            },
-          ] as const
+    const timer = window.setTimeout(() => {
+      const candidates = new Map<string, { title: string; path: string; jobId?: string }>()
+      for (const job of jobs) {
+        const pathKey = pathStateKey(job.destPath, jobPathCtx(job))
+        if (job.destPath.trim()) {
+          candidates.set(pathKey, { title: job.title, path: job.destPath, jobId: job.id })
         }
-      }),
-    ).then((results) => {
-      if (!cancelled) {
-        setPathStateByKey((prev) => ({ ...prev, ...Object.fromEntries(results) }))
       }
-    })
+      for (const item of localLibraryItems) {
+        if (!item.isDir) continue
+        const pathKey = pathStateKey(item.path, { title: item.name })
+        if (!candidates.has(pathKey)) {
+          candidates.set(pathKey, { title: item.name, path: item.path })
+        }
+      }
+      if (candidates.size === 0 || cancelled) return
+
+      void (async () => {
+        const entries = [...candidates.entries()].map(([pathKey, entry]) => ({
+          key: pathKey,
+          title: entry.title,
+          path: entry.path,
+          jobId: entry.jobId,
+        }))
+
+        const merged: LibraryControllerValue['pathStateByKey'] = {}
+
+        for (let index = 0; index < entries.length; index += LIBRARY_INSPECT_BATCH_SIZE) {
+          if (cancelled) return
+          const chunk = entries.slice(index, index + LIBRARY_INSPECT_BATCH_SIZE)
+          try {
+            const results = await sourcesApi.inspectLibraryPaths(chunk)
+            for (const item of results) {
+              merged[item.key] = item.state
+            }
+          } catch {
+            for (const item of chunk) {
+              merged[item.key] = emptyPathState()
+            }
+          }
+        }
+
+        if (!cancelled) {
+          setPathStateByKey((prev) => ({ ...prev, ...merged }))
+        }
+      })()
+    }, PATH_INSPECT_DEBOUNCE_MS)
 
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- stable path signatures
   }, [activeTab, jobPathSignature, libraryPathSignature])
@@ -336,29 +357,17 @@ export function useLibraryControllerState({
       b.title.localeCompare(a.title, 'pt', { sensitivity: 'base' }),
     )
 
-    const byStatus = sorted.filter((item) => {
-      if (libraryStatusFilter === 'installed') {
-        return isPlayableLibraryItem(item, jobs, pathStateByKey)
-      }
-      if (libraryStatusFilter === 'not_installed') {
-        return item.kind === 'job' && !isPlayableLibraryItem(item, jobs, pathStateByKey)
-      }
-      return true
-    })
-
-    if (!normalizedFilter) return byStatus
-    return byStatus.filter((item) => item.title.toLowerCase().includes(normalizedFilter))
-  }, [jobs, localLibraryItems, libraryFilter, libraryStatusFilter, pathStateByKey, hiddenLibraryKeys])
+    if (!normalizedFilter) return sorted
+    return sorted.filter((item) => item.title.toLowerCase().includes(normalizedFilter))
+  }, [jobs, localLibraryItems, libraryFilter, pathStateByKey, hiddenLibraryKeys])
 
   useEffect(() => {
     if (activeTab !== 'library') return
     const timer = window.setTimeout(() => {
-      for (const item of libraryItems) {
-        lookupMissingLibraryCover(item.title)
-      }
+      resolveCoversBatch(libraryItems.map((item) => item.title))
     }, LIBRARY_COVER_LOOKUP_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
-  }, [activeTab, libraryItems, lookupMissingLibraryCover])
+  }, [activeTab, libraryItems, resolveCoversBatch])
 
   useEffect(() => {
     let unlistenExtract: (() => void) | undefined
@@ -396,7 +405,7 @@ export function useLibraryControllerState({
           [pathStateKey(destPath, { jobId, title })]: state,
         }))
         if (state.hasGame) {
-          setActionMessage('Pasta de instalação guardada — pode jogar.')
+          setActionMessage('Pasta de instalação salva — pode jogar.')
         } else {
           setSavePathError(
             'Pasta salva, mas ainda não encontramos o executável. Verifique se selecionou a pasta correta.',
@@ -559,16 +568,16 @@ export function useLibraryControllerState({
 
   return {
     libraryItems,
+    libraryLoading,
+    refreshLibraryScan,
     jobs,
     pathStateByKey,
     libraryFilter,
-    libraryStatusFilter,
     playBusyId,
     installBusyId,
     savePathError,
     actionMessage,
     setLibraryFilter,
-    setLibraryStatusFilter,
     onGoDownloads,
     onGoDiscover,
     resolveCover,

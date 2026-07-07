@@ -281,6 +281,11 @@ pub async fn fetch_sidecar_jobs_progress(app: &AppHandle) -> Result<Vec<SidecarJ
 pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
   tauri::async_runtime::spawn(async move {
     let mut last_snapshot: HashMap<String, SidecarJobProgressRow> = HashMap::new();
+    let conn = match open_database_connection(&app) {
+      Ok(conn) => conn,
+      Err(_) => return,
+    };
+
     loop {
       sleep(Duration::from_millis(750)).await;
 
@@ -291,6 +296,8 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
 
       let active_ids: HashSet<String> = rows.iter().map(|row| row.id.clone()).collect();
       last_snapshot.retain(|id, _| active_ids.contains(id));
+
+      let mut batch_updates: Vec<(String, i64, i64, i64, i64)> = Vec::new();
 
       for row in rows {
         let changed = last_snapshot.get(&row.id).map_or(true, |prev| {
@@ -337,19 +344,25 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
           },
         );
 
-        if let Ok(conn) = open_database_connection(&app) {
+        batch_updates.push((
+          row.status.clone(),
+          progress.round() as i64,
+          row.bytes_downloaded,
+          row.total_bytes,
+          row.id.parse::<i64>().unwrap_or(0),
+        ));
+      }
+
+      if !batch_updates.is_empty() {
+        let _ = conn.execute("BEGIN IMMEDIATE", []);
+        for (status, progress, bytes, total, id) in batch_updates {
           let _ = conn.execute(
             "UPDATE download_jobs SET status = ?1, progress = ?2, bytes_downloaded = ?3, \
              total_bytes = ?4, updated_at = CURRENT_TIMESTAMP WHERE id = ?5",
-            params![
-              row.status,
-              progress.round() as i64,
-              row.bytes_downloaded,
-              row.total_bytes,
-              row.id,
-            ],
+            params![status, progress, bytes, total, id],
           );
         }
+        let _ = conn.execute("COMMIT", []);
       }
     }
   });

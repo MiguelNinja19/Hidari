@@ -1,7 +1,6 @@
 export const SETTING_KEY = {
   installOrganization: 'install_organization',
   afterInstallAction: 'after_install_action',
-  verifyAfterDownload: 'verify_after_download',
   removeTempFiles: 'remove_temp_files',
   downloadSpeedLimitBps: 'download_speed_limit_bps',
   disabledHydraSourceIds: 'disabled_hydra_source_ids',

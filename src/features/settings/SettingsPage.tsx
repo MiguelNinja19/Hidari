@@ -1,5 +1,7 @@
+import { useMemo } from 'react'
 import type { FormEvent } from 'react'
-import type { Source } from '../../shared/types/contracts'
+import { APP_LOCALE } from '../../shared/config/locale'
+import type { Source, SteamAppIndexStatus } from '../../shared/types/contracts'
 
 type SettingsPageProps = {
   sourceUrl: string
@@ -11,11 +13,12 @@ type SettingsPageProps = {
   sources: Source[]
   sourcesLoading: boolean
   sourcesError: string | null
-  verifyAfterDownload: boolean
+  sourcesNotice: string | null
   removeTemporaryFiles: boolean
   seedTorrentsEnabled: boolean
   downloadSpeedLimit: string
   canSubmitSource: boolean
+  addingSource: boolean
   isSourceEnabled: (sourceId: string) => boolean
   setSourceUrl: (value: string) => void
   setDefaultDownloadPath: (value: string) => void
@@ -24,12 +27,51 @@ type SettingsPageProps = {
   handleSelectDefaultPath: () => Promise<void>
   handleSaveInstallSettings: () => Promise<void>
   handleAddSource: (event: FormEvent<HTMLFormElement>) => void
+  onSelectSourceFile: () => Promise<void>
+  onDeleteSource: (sourceId: string, sourceName: string) => Promise<void>
+  onSyncSource: (sourceId: string) => Promise<void>
+  onSyncAllSources: () => Promise<void>
+  deletingSourceId: string | null
+  syncingSourceId: string | null
+  syncingAllSources: boolean
   handleToggleSource: (sourceId: string) => void
-  handleToggleVerify: (next: boolean) => Promise<void>
   handleToggleRemoveTemp: (next: boolean) => Promise<void>
   handleToggleSeed: (enabled: boolean) => Promise<void>
   handleSpeedLimitChange: (value: string) => Promise<void>
   formatSize: (bytes?: number) => string
+  coverCatalogTotal: number
+  coverCachedTotal: number
+  coverProgressPct: number
+  coverPrecacheRunning: boolean
+  coverPrecacheProcessed: number
+  coverPrecacheTotal: number
+  coverUnresolvedTotal: number
+  onStartCoverPrecache: () => Promise<void>
+  onStopCoverPrecache: () => Promise<void>
+  onRetryUnresolvedCovers: () => Promise<void>
+  steamAppIndexStatus: SteamAppIndexStatus | null
+  steamAppIndexRefreshing: boolean
+  onRefreshSteamAppIndex: () => Promise<void>
+}
+
+function formatGameCount(count: number): string {
+  return count.toLocaleString(APP_LOCALE)
+}
+
+function fileLabelFromPath(path: string): string {
+  return path.split(/[/\\]/).pop() ?? path
+}
+
+function formatSteamIndexUpdatedAt(unixSecs: number | null): string {
+  if (!unixSecs) return 'nunca'
+  const diffMs = Date.now() - unixSecs * 1000
+  const diffMinutes = Math.floor(diffMs / 60_000)
+  if (diffMinutes < 1) return 'agora'
+  if (diffMinutes < 60) return `há ${diffMinutes} min`
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `há ${diffHours}h`
+  const diffDays = Math.floor(diffHours / 24)
+  return `há ${diffDays}d`
 }
 
 export function SettingsPage({
@@ -42,53 +84,253 @@ export function SettingsPage({
   sources,
   sourcesLoading,
   sourcesError,
-  verifyAfterDownload,
+  sourcesNotice,
   removeTemporaryFiles,
   seedTorrentsEnabled,
   downloadSpeedLimit,
   canSubmitSource,
+  addingSource,
   isSourceEnabled,
-  setSourceUrl,
-  setDefaultDownloadPath,
-  setInstallOrganization,
-  setAfterInstallAction,
   handleSelectDefaultPath,
   handleSaveInstallSettings,
   handleAddSource,
+  onSelectSourceFile,
+  onDeleteSource,
+  onSyncSource,
+  onSyncAllSources,
+  deletingSourceId,
+  syncingSourceId,
+  syncingAllSources,
   handleToggleSource,
-  handleToggleVerify,
   handleToggleRemoveTemp,
   handleToggleSeed,
   handleSpeedLimitChange,
   formatSize,
+  coverCatalogTotal,
+  coverCachedTotal,
+  coverProgressPct,
+  coverPrecacheRunning,
+  coverPrecacheProcessed,
+  coverPrecacheTotal,
+  coverUnresolvedTotal,
+  onStartCoverPrecache,
+  onStopCoverPrecache,
+  onRetryUnresolvedCovers,
+  steamAppIndexStatus,
+  steamAppIndexRefreshing,
+  onRefreshSteamAppIndex,
+  setDefaultDownloadPath,
+  setInstallOrganization,
+  setAfterInstallAction,
 }: SettingsPageProps) {
+  const isManagingSources =
+    deletingSourceId !== null || syncingSourceId !== null || syncingAllSources
+
+  const { activeCount, totalGames } = useMemo(() => {
+    let games = 0
+    let active = 0
+    for (const source of sources) {
+      if (isSourceEnabled(source.id)) {
+        active += 1
+        games += source.downloadCount
+      }
+    }
+    return { activeCount: active, totalGames: games }
+  }, [sources, isSourceEnabled])
+
+  const selectedFileName = sourceUrl.trim() ? fileLabelFromPath(sourceUrl) : null
+
   return (
     <section className="settings-page">
       <div className="settings-stack">
-        <section className="settings-block">
+        <section
+          id="settings-catalog"
+          className="settings-block settings-block--wide settings-block--highlight"
+        >
+          <header className="settings-block__head settings-block__head--stack">
+            <div className="settings-block__head-row">
+              <div className="settings-block__head-copy">
+                <h2 className="settings-block__title">Catálogo</h2>
+                <p className="settings-block__desc">
+                  Importe um .json local para pesquisar jogos em Explorar.
+                </p>
+              </div>
+              {sources.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn--compact"
+                  disabled={isManagingSources || sourcesLoading}
+                  onClick={() => void onSyncAllSources()}
+                >
+                  {syncingAllSources ? 'Atualizando…' : 'Atualizar todas'}
+                </button>
+              ) : null}
+            </div>
+            {sources.length > 0 || sourcesLoading ? (
+              <div className="settings-summary" aria-label="Resumo do catálogo">
+                <span className="settings-summary__item">
+                  <strong>{sources.length}</strong>
+                  {sources.length === 1 ? ' fonte' : ' fontes'}
+                </span>
+                <span className="settings-summary__sep" aria-hidden="true">
+                  ·
+                </span>
+                <span className="settings-summary__item">
+                  <strong>{formatGameCount(totalGames)}</strong> jogos
+                </span>
+                <span className="settings-summary__sep" aria-hidden="true">
+                  ·
+                </span>
+                <span className="settings-summary__item">
+                  <strong>{activeCount}</strong> ativas
+                </span>
+                {sourcesLoading ? (
+                  <span className="settings-summary__loading">Carregando…</span>
+                ) : null}
+              </div>
+            ) : null}
+          </header>
+
+          <div className="settings-block__body">
+            <div className="settings-import-panel settings-import-panel--primary">
+              {sourcesError ? (
+                <p className="settings-alert settings-alert--error" role="alert">
+                  {sourcesError}
+                </p>
+              ) : null}
+              {sourcesNotice ? (
+                <p className="settings-alert settings-alert--success" role="status">
+                  {sourcesNotice}
+                </p>
+              ) : null}
+
+              <form onSubmit={handleAddSource} className="settings-import-form settings-import-form--inline">
+                <button
+                  className="btn btn-outline settings-import-form__pick"
+                  type="button"
+                  disabled={addingSource}
+                  onClick={() => void onSelectSourceFile()}
+                >
+                  {selectedFileName ? selectedFileName : 'Escolher arquivo .json'}
+                </button>
+                <button
+                  className="btn btn-primary btn--compact"
+                  type="submit"
+                  disabled={!canSubmitSource || addingSource}
+                >
+                  {addingSource ? 'Importando…' : 'Importar'}
+                </button>
+              </form>
+            </div>
+
+            {sources.length === 0 && !sourcesLoading ? (
+              <p className="settings-block__hint settings-block__hint--center">
+                Ainda sem catálogo — escolha um arquivo acima para começar.
+              </p>
+            ) : (
+              <div className="settings-source-table-wrap">
+                <ul className="settings-source-table" role="list">
+                  <li className="settings-source-table__head" aria-hidden="true">
+                    <span className="settings-source-table__col settings-source-table__col--name">
+                      Fonte
+                    </span>
+                    <span className="settings-source-table__col settings-source-table__col--count">
+                      Jogos
+                    </span>
+                    <span className="settings-source-table__col settings-source-table__col--on">
+                      Ativa
+                    </span>
+                    <span className="settings-source-table__col settings-source-table__col--actions">
+                      Ações
+                    </span>
+                  </li>
+                  {sources.map((source) => {
+                    const enabled = isSourceEnabled(source.id)
+                    const fileName = fileLabelFromPath(source.url)
+                    return (
+                      <li
+                        key={source.id}
+                        className={`settings-source-row${enabled ? '' : ' settings-source-row--off'}`}
+                      >
+                        <div className="settings-source-table__col settings-source-table__col--name">
+                          <strong className="settings-source-row__name">{source.name}</strong>
+                          <span className="settings-source-row__file" title={source.url}>
+                            {fileName}
+                          </span>
+                        </div>
+                        <span className="settings-source-table__col settings-source-table__col--count">
+                          {source.downloadCount > 0
+                            ? formatGameCount(source.downloadCount)
+                            : '—'}
+                        </span>
+                        <span className="settings-source-table__col settings-source-table__col--on">
+                          <button
+                            type="button"
+                            className={enabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
+                            disabled={isManagingSources}
+                            aria-pressed={enabled}
+                            aria-label={enabled ? `Desativar ${source.name}` : `Ativar ${source.name}`}
+                            onClick={() => handleToggleSource(source.id)}
+                          />
+                        </span>
+                        <span className="settings-source-table__col settings-source-table__col--actions">
+                          <button
+                            type="button"
+                            className="btn btn-outline btn--compact"
+                            disabled={isManagingSources}
+                            onClick={() => void onSyncSource(source.id)}
+                          >
+                            {syncingSourceId === source.id ? '…' : 'Atualizar'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-danger btn--compact"
+                            disabled={isManagingSources}
+                            aria-label={`Excluir ${source.name}`}
+                            onClick={() => void onDeleteSource(source.id, source.name)}
+                          >
+                            {deletingSourceId === source.id ? '…' : 'Excluir'}
+                          </button>
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section id="settings-folder" className="settings-block">
           <header className="settings-block__head">
-            <h2 className="settings-block__title">Pasta</h2>
+            <div className="settings-block__head-copy">
+              <h2 className="settings-block__title">Pasta de instalação</h2>
+              <p className="settings-block__desc">Onde os jogos são guardados.</p>
+            </div>
             <span className="settings-block__meta">
-              Livre: {diskFreeBytes != null ? formatSize(diskFreeBytes) : '—'}
+              {diskFreeBytes != null ? `${formatSize(diskFreeBytes)} livres` : '—'}
             </span>
           </header>
 
           <div className="settings-block__body">
-            <div className="settings-inline">
-              <input
-                className="settings-input"
-                placeholder="C:\\Games"
-                value={defaultDownloadPath}
-                onChange={(event) => setDefaultDownloadPath(event.target.value)}
-              />
-              <button
-                className="btn btn-outline btn--compact"
-                type="button"
-                onClick={() => void handleSelectDefaultPath()}
-              >
-                Selecionar
-              </button>
-            </div>
+            <label className="settings-field settings-field--stack">
+              <span>Caminho</span>
+              <div className="settings-inline">
+                <input
+                  className="settings-input"
+                  placeholder="C:\\Games"
+                  value={defaultDownloadPath}
+                  onChange={(event) => setDefaultDownloadPath(event.target.value)}
+                />
+                <button
+                  className="btn btn-outline btn--compact"
+                  type="button"
+                  onClick={() => void handleSelectDefaultPath()}
+                >
+                  Procurar
+                </button>
+              </div>
+            </label>
 
             <div className="settings-field-grid">
               <label className="settings-field">
@@ -129,27 +371,20 @@ export function SettingsPage({
               type="button"
               onClick={() => void handleSaveInstallSettings()}
             >
-              Salvar
+              Guardar pasta
             </button>
           </footer>
         </section>
 
-        <section className="settings-block">
+        <section id="settings-downloads" className="settings-block">
           <header className="settings-block__head">
-            <h2 className="settings-block__title">Opções</h2>
+            <div className="settings-block__head-copy">
+              <h2 className="settings-block__title">Downloads</h2>
+              <p className="settings-block__desc">Velocidade e comportamento dos torrents.</p>
+            </div>
           </header>
 
           <div className="settings-block__body settings-block__body--tight">
-            <div className="settings-toggle">
-              <span>Verificar arquivos após download</span>
-              <button
-                type="button"
-                className={verifyAfterDownload ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                aria-label="Verificar arquivos"
-                onClick={() => void handleToggleVerify(!verifyAfterDownload)}
-              />
-            </div>
-
             <label className="settings-toggle settings-toggle--select">
               <span>Limite de velocidade</span>
               <select
@@ -165,17 +400,23 @@ export function SettingsPage({
             </label>
 
             <div className="settings-toggle">
-              <span>Excluir arquivos temporários</span>
+              <div className="settings-toggle__copy">
+                <span>Apagar ficheiros temporários</span>
+                <span className="settings-toggle__hint">Liberta espaço após a instalação</span>
+              </div>
               <button
                 type="button"
                 className={removeTemporaryFiles ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                aria-label="Excluir temporários"
+                aria-label="Apagar ficheiros temporários"
                 onClick={() => void handleToggleRemoveTemp(!removeTemporaryFiles)}
               />
             </div>
 
             <div className="settings-toggle">
-              <span>Fazer seed após concluir</span>
+              <div className="settings-toggle__copy">
+                <span>Seed após concluir</span>
+                <span className="settings-toggle__hint">Continua a partilhar o torrent</span>
+              </div>
               <button
                 type="button"
                 className={seedTorrentsEnabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
@@ -186,41 +427,122 @@ export function SettingsPage({
           </div>
         </section>
 
-        <section className="settings-block settings-block--wide">
-          <header className="settings-block__head">
-            <h2 className="settings-block__title">Fontes</h2>
-            {sourcesLoading ? <span className="settings-block__meta">Carregando…</span> : null}
+        <section id="settings-covers" className="settings-block settings-block--wide">
+          <header className="settings-block__head settings-block__head--stack">
+            <div className="settings-block__head-row">
+              <div className="settings-block__head-copy">
+                <h2 className="settings-block__title">Capas</h2>
+                <p className="settings-block__desc">
+                  Imagens via Steam — pré-baixadas em segundo plano.
+                </p>
+              </div>
+              <div className="settings-block__head-actions">
+                {coverCatalogTotal > 0 && coverUnresolvedTotal > 0 && !coverPrecacheRunning ? (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn--compact"
+                    onClick={() => void onRetryUnresolvedCovers()}
+                  >
+                    Tentar ({formatGameCount(coverUnresolvedTotal)})
+                  </button>
+                ) : null}
+                {coverCatalogTotal > 0 ? (
+                  coverPrecacheRunning ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn--compact"
+                      onClick={() => void onStopCoverPrecache()}
+                    >
+                      Parar
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn--compact"
+                      onClick={() => void onStartCoverPrecache()}
+                    >
+                      Pré-baixar
+                    </button>
+                  )
+                ) : null}
+              </div>
+            </div>
           </header>
 
           <div className="settings-block__body">
-            <ul className="settings-sources">
-              {sources.map((source) => (
-                <li key={source.id} className="settings-source">
-                  <div className="settings-source__copy">
-                    <strong>{source.name}</strong>
-                    <span>{source.url.replace(/^https?:\/\//, '')}</span>
-                  </div>
+            {coverCatalogTotal > 0 ? (
+              <>
+                <div
+                  className="settings-cover-progress"
+                  role="progressbar"
+                  aria-valuenow={coverProgressPct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Progresso das capas em cache"
+                >
+                  <div
+                    className="settings-cover-progress__bar"
+                    style={{ width: `${coverProgressPct}%` }}
+                  />
+                </div>
+                <p className="settings-cover-progress__label">
+                  {coverPrecacheRunning ? (
+                    <>
+                      <strong>{formatGameCount(coverPrecacheProcessed)}</strong> /{' '}
+                      <strong>{formatGameCount(coverPrecacheTotal)}</strong>
+                      {' · '}
+                      {coverProgressPct}%
+                    </>
+                  ) : (
+                    <>
+                      <strong>{formatGameCount(coverCachedTotal)}</strong> de{' '}
+                      <strong>{formatGameCount(coverCatalogTotal)}</strong> em disco
+                      {coverUnresolvedTotal > 0 ? (
+                        <>
+                          {' · '}
+                          <strong>{formatGameCount(coverUnresolvedTotal)}</strong> sem capa
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                </p>
+              </>
+            ) : (
+              <p className="settings-block__hint">Importe um catálogo para gerir capas.</p>
+            )}
+
+            <details className="settings-details">
+              <summary>Índice Steam e opções avançadas</summary>
+              <div className="settings-details__body">
+                <div className="settings-toggle settings-toggle--select">
+                  <span>
+                    Índice local
+                    {steamAppIndexStatus ? (
+                      <>
+                        {' — '}
+                        <strong>{formatGameCount(steamAppIndexStatus.totalApps)}</strong> jogos ·{' '}
+                        {formatSteamIndexUpdatedAt(steamAppIndexStatus.lastUpdatedAt)}
+                      </>
+                    ) : (
+                      ' — carregando…'
+                    )}
+                  </span>
                   <button
                     type="button"
-                    className={isSourceEnabled(source.id) ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                    aria-label={`Ativar ${source.name}`}
-                    onClick={() => handleToggleSource(source.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-            {sourcesError ? <p className="settings-block__error">{sourcesError}</p> : null}
-            <form onSubmit={handleAddSource} className="settings-inline">
-              <input
-                className="settings-input"
-                placeholder="URL da fonte (.json)"
-                value={sourceUrl}
-                onChange={(event) => setSourceUrl(event.target.value)}
-              />
-              <button className="btn btn-outline btn--compact" type="submit" disabled={!canSubmitSource}>
-                Adicionar
-              </button>
-            </form>
+                    className="btn btn-outline btn--compact"
+                    disabled={steamAppIndexRefreshing}
+                    onClick={() => void onRefreshSteamAppIndex()}
+                  >
+                    {steamAppIndexRefreshing ? 'Atualizando…' : 'Atualizar'}
+                  </button>
+                </div>
+                <p className="settings-block__hint">
+                  Lista completa de jogos Steam para resolver capas mais rápido. Atualiza
+                  automaticamente a cada 7 dias. Opcional: <code>STEAM_WEB_API_KEY</code> no{' '}
+                  <code>.env</code>.
+                </p>
+              </div>
+            </details>
           </div>
         </section>
       </div>

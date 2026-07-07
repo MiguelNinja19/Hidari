@@ -7,22 +7,26 @@ import { formatDownloadError } from '../../shared/utils/downloadErrors'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { ResolvedCover } from '../covers/useGameCovers'
+import { useDownloadClock } from './useDownloadClock'
 
 type DownloadsPageProps = {
   jobs: DownloadJob[]
   queueLoading: boolean
   queueError: string | null
   downloadsBooting: boolean
-  savePathError: string
+  actionBusyId: string | null
   isTorrentMetadataPhase: (job: DownloadJob) => boolean
-  resolveJobProgressPercent: (job: DownloadJob) => number
-  formatProgressPercent: (job: DownloadJob) => string
-  downloadNow: number
+  resolveJobProgressPercent: (job: DownloadJob, now?: number) => number
+  formatProgressPercent: (job: DownloadJob, now?: number) => string
+  jobNeedsExtraction: (job: DownloadJob) => boolean
   onPauseJob: (jobId: string) => Promise<void>
   onResumeJob: (jobId: string) => Promise<void>
   onCancelJob: (jobId: string) => Promise<void>
   onClearCompleted: () => Promise<void>
   onPauseAll: () => Promise<void>
+  onOpenJobFolder: (jobId: string) => void
+  onExtractJob: (jobId: string) => void
+  onPlayJob: (jobId: string) => void
   onGoDiscover: () => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
   invalidateLocalCover: (title: string, coverUrl?: string | null) => void
@@ -32,9 +36,29 @@ const FINISHED_STATUSES = new Set(['completed', 'extracted', 'skipped'])
 
 function queuePrimaryAction(
   job: DownloadJob,
+  busyId: string | null,
+  jobNeedsExtraction: (job: DownloadJob) => boolean,
   onPauseJob: (jobId: string) => Promise<void>,
   onResumeJob: (jobId: string) => Promise<void>,
+  onPlayJob: (jobId: string) => void,
+  onExtractJob: (jobId: string) => void,
 ) {
+  if (job.status === 'extracted') {
+    return {
+      label: busyId === job.id ? 'Iniciando…' : 'Jogar',
+      onClick: () => onPlayJob(job.id),
+      disabled: busyId === job.id,
+    }
+  }
+
+  if (job.status === 'completed' && jobNeedsExtraction(job)) {
+    return {
+      label: busyId === job.id ? 'Extraindo…' : 'Extrair',
+      onClick: () => onExtractJob(job.id),
+      disabled: busyId === job.id,
+    }
+  }
+
   if (job.status === 'paused' || job.status === 'failed') {
     return {
       label: 'Retomar',
@@ -87,20 +111,24 @@ export function DownloadsPage({
   queueLoading,
   queueError,
   downloadsBooting,
-  savePathError,
+  actionBusyId,
   isTorrentMetadataPhase,
   resolveJobProgressPercent,
   formatProgressPercent,
-  downloadNow,
+  jobNeedsExtraction,
   onPauseJob,
   onResumeJob,
   onCancelJob,
   onClearCompleted,
   onPauseAll,
+  onOpenJobFolder,
+  onExtractJob,
+  onPlayJob,
   onGoDiscover,
   resolveCover,
   invalidateLocalCover,
 }: DownloadsPageProps) {
+  const downloadNow = useDownloadClock(jobs)
   const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
   const sections = buildJobSections(activeJobs)
   const canPauseAll = activeJobs.some((job) =>
@@ -119,9 +147,18 @@ export function DownloadsPage({
   const renderJobRow = (job: DownloadJob) => {
     const metadataPhase = isTorrentMetadataPhase(job)
     const cover = resolveCover(job.title)
-    const primary = queuePrimaryAction(job, onPauseJob, onResumeJob)
+    const primary = queuePrimaryAction(
+      job,
+      actionBusyId,
+      jobNeedsExtraction,
+      onPauseJob,
+      onResumeJob,
+      onPlayJob,
+      onExtractJob,
+    )
     const canCancel =
       job.status !== 'cancelled' && !['completed', 'extracted'].includes(job.status)
+    const showFolder = job.destPath.trim().length > 0
 
     return (
       <li key={job.id} className="download-row">
@@ -162,14 +199,25 @@ export function DownloadsPage({
         <div className="download-row__actions">
           {primary ? (
             <Button
-              variant="outline"
+              variant={job.status === 'extracted' ? 'primary' : 'outline'}
               size="compact"
               className="download-row__btn"
               type="button"
+              disabled={primary.disabled}
               onClick={primary.onClick}
             >
               {primary.label}
             </Button>
+          ) : null}
+          {showFolder ? (
+            <button
+              type="button"
+              className="btn btn-outline btn--compact download-row__btn"
+              disabled={actionBusyId === job.id}
+              onClick={() => onOpenJobFolder(job.id)}
+            >
+              Pasta
+            </button>
           ) : null}
           {canCancel ? (
             <button
@@ -216,11 +264,7 @@ export function DownloadsPage({
         ) : null}
       </header>
 
-      {(queueError || savePathError) ? (
-        <PageNotice error={[queueError, savePathError].filter(Boolean).join(' · ')} />
-      ) : isBootstrapping ? (
-        <PageNotice loading />
-      ) : null}
+      {queueError ? <PageNotice error={queueError} /> : null}
 
       {sections.length > 0 ? (
         <div className="downloads-page__sections">

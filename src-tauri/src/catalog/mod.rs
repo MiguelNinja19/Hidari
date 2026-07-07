@@ -1,14 +1,12 @@
-use crate::dto::{CatalogGameDto, EmbeddedCatalogEntry, HydraSourceDto, SearchCatalogPayload};
+use crate::dto::{CatalogGameDto, EmbeddedCatalogEntry, SearchCatalogPayload};
 use crate::db::{get_disabled_hydra_source_ids_from_conn, open_database_connection};
-use crate::sources::fitgirl::filter_catalog_with_sources;
-use crate::sources::{list_hydra_sources, search_download_options_from_local_sources};
+use crate::sources::list_hydra_sources;
 use crate::title;
 use rusqlite::{params, Connection};
 use rusqlite::OptionalExtension;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
@@ -55,28 +53,6 @@ pub fn title_matches_query(title: &str, query: &str) -> bool {
       .iter()
       .any(|title_word| title_word_matches_query_word(title_word, query_word))
   })
-}
-async fn apply_catalog_source_filter(
-  app: &AppHandle,
-  games: Vec<CatalogGameDto>,
-) -> Vec<CatalogGameDto> {
-  let conn = match open_database_connection(app) {
-    Ok(conn) => conn,
-    Err(_) => return games,
-  };
-  let hydra_sources = list_hydra_sources(&conn).unwrap_or_default();
-  let disabled = get_disabled_hydra_source_ids_from_conn(&conn).unwrap_or_default();
-  drop(conn);
-
-  let active_sources: Vec<HydraSourceDto> = hydra_sources
-    .into_iter()
-    .filter(|source| !disabled.contains(&source.id))
-    .collect();
-  if active_sources.is_empty() {
-    return Vec::new();
-  }
-
-  filter_catalog_with_sources(games, &active_sources).await
 }
 
 pub fn embedded_catalog_entries() -> Vec<EmbeddedCatalogEntry> {
@@ -139,7 +115,9 @@ pub fn embedded_entry_to_dto(entry: &EmbeddedCatalogEntry) -> CatalogGameDto {
     title: entry.title.clone(),
     genre: entry.genre.clone(),
     cover_url: entry.steam_app_id.map(steam_grid_cover),
+    local_cover_path: None,
     source: "embedded".to_string(),
+    option_count: None,
   }
 }
 
@@ -256,7 +234,9 @@ pub async fn fetch_steam_catalog_games(search_term: &str) -> Result<Vec<CatalogG
       title,
       genre: "Steam".to_string(),
       cover_url: cover,
+      local_cover_path: None,
       source: "steam".to_string(),
+      option_count: None,
     });
   }
 
@@ -302,134 +282,158 @@ pub fn embedded_cover_for_title(title: &str) -> Option<String> {
   best.map(|(_, app_id)| steam_grid_cover(app_id))
 }
 
-pub fn cover_resolve_cache() -> &'static Mutex<HashMap<String, Option<String>>> {
-  static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
-  CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-pub fn cover_cache_get(key: &str) -> Option<Option<String>> {
-  cover_resolve_cache()
-    .lock()
-    .ok()
-    .and_then(|cache| cache.get(key).cloned())
-}
-
-pub fn cover_cache_put(key: String, value: Option<String>) {
-  if let Ok(mut cache) = cover_resolve_cache().lock() {
-    cache.insert(key, value);
-  }
-}
-
 pub async fn fetch_steam_cover_url_for_title(title: &str) -> Option<String> {
-  let cleaned = title::clean_title_for_matching(title);
-  if cleaned.len() < 2 {
+  let queries = steam_search_queries_for_title(title);
+  if queries.is_empty() {
     return None;
   }
-  let games = fetch_steam_catalog_games(&cleaned).await.ok()?;
-  games
-    .into_iter()
-    .find(|game| title_matches_query(&game.title, &cleaned))
-    .and_then(|game| game.cover_url)
-}
 
-pub async fn resolve_repack_cover_url(title: &str, source_cover: Option<String>) -> Option<String> {
-  if let Some(url) = source_cover.filter(|value| !value.trim().is_empty()) {
-    return Some(url);
-  }
+  let reference_norm = normalize_match_text(&title::clean_title_for_matching(title));
+  let mut best_fuzzy: Option<(u32, String)> = None;
 
-  let cache_key = normalize_match_text(title);
-  if !cache_key.is_empty() {
-    if let Some(cached) = cover_cache_get(&cache_key) {
-      return cached;
+  for search_term in queries {
+    let games = match fetch_steam_catalog_games(&search_term).await {
+      Ok(rows) => rows,
+      Err(_) => continue,
+    };
+
+    if let Some(game) = games
+      .iter()
+      .find(|game| title_matches_query(&game.title, &search_term))
+    {
+      return game.cover_url.clone();
     }
-  }
 
-  let resolved = if let Some(url) = embedded_cover_for_title(title) {
-    Some(url)
-  } else {
-    fetch_steam_cover_url_for_title(title).await
-  };
-
-  if !cache_key.is_empty() {
-    cover_cache_put(cache_key, resolved.clone());
-  }
-
-  resolved
-}
-
-pub async fn search_catalog_from_sources(app: &AppHandle, query: &str) -> Result<Vec<CatalogGameDto>, String> {
-  let conn = open_database_connection(app)?;
-  let hydra_sources = list_hydra_sources(&conn)?;
-  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
-  drop(conn);
-
-  let active_sources: Vec<HydraSourceDto> = hydra_sources
-    .into_iter()
-    .filter(|source| !disabled.contains(&source.id))
-    .collect();
-
-  if active_sources.is_empty() {
-    return Ok(Vec::new());
-  }
-
-  let options = search_download_options_from_local_sources(query, &active_sources).await;
-  let mut seen = HashSet::new();
-  let mut games = Vec::new();
-  let mut pending_covers: Vec<(usize, String, Option<String>)> = Vec::new();
-
-  for option in options {
-    if option.download_type != "torrent" {
-      continue;
-    }
-    let key = normalize_match_text(&option.title);
-    if key.is_empty() || seen.contains(&key) {
-      continue;
-    }
-    seen.insert(key);
-
-    let title = option.title;
-    let source_cover = option.cover_url.clone();
-    games.push(CatalogGameDto {
-      id: format!("source:{}", stable_embedded_id(&title)),
-      title: title.clone(),
-      genre: option.source_name,
-      cover_url: None,
-      source: "source".to_string(),
-    });
-    pending_covers.push((games.len() - 1, title, source_cover));
-
-    if games.len() >= 56 {
-      break;
-    }
-  }
-
-  for chunk in pending_covers.chunks(4) {
-    let mut handles = Vec::new();
-    for (index, title, source_cover) in chunk {
-      let title = title.clone();
-      let source_cover = source_cover.clone();
-      handles.push((
-        *index,
-        tauri::async_runtime::spawn(async move {
-          resolve_repack_cover_url(&title, source_cover).await
-        }),
-      ));
-    }
-    for (index, handle) in handles {
-      if let Ok(url) = handle.await {
-        if let Some(game) = games.get_mut(index) {
-          game.cover_url = url;
-        }
+    for game in games {
+      let Some(cover_url) = game.cover_url.as_ref().filter(|u| !u.trim().is_empty()) else {
+        continue;
+      };
+      let score = score_steam_title_match(&game.title, &reference_norm);
+      if score < 2 {
+        continue;
+      }
+      if best_fuzzy.as_ref().map(|(best, _)| score > *best).unwrap_or(true) {
+        best_fuzzy = Some((score, cover_url.clone()));
       }
     }
   }
 
-  Ok(games)
+  best_fuzzy.map(|(_, url)| url)
 }
 
-#[tauri::command]
-pub async fn resolve_game_cover_url(title: String) -> Result<Option<String>, String> {
-  Ok(resolve_repack_cover_url(title.trim(), None).await)
+/// Várias tentativas de busca — repacks costumam ter ruído no título.
+pub fn steam_search_queries_for_title(title: &str) -> Vec<String> {
+  let mut out = Vec::new();
+  let cleaned = title::clean_title_for_matching(title);
+  if cleaned.len() >= 2 {
+    out.push(cleaned.clone());
+  }
+  let simple = title::simplify_source_search_query(title);
+  if simple.len() >= 2 {
+    out.push(simple);
+  }
+  let words: Vec<&str> = cleaned.split_whitespace().collect();
+  if words.len() > 4 {
+    out.push(words.iter().take(4).copied().collect::<Vec<_>>().join(" "));
+  }
+  if words.len() > 2 {
+    out.push(words.iter().take(2).copied().collect::<Vec<_>>().join(" "));
+  }
+
+  let mut seen = HashSet::new();
+  out.retain(|query| {
+    let key = normalize_match_text(query);
+    !key.is_empty() && seen.insert(key)
+  });
+  out
+}
+
+pub fn score_steam_title_match(steam_title: &str, reference_norm: &str) -> u32 {
+  if reference_norm.is_empty() {
+    return 0;
+  }
+  let steam_norm = normalize_match_text(steam_title);
+  if steam_norm.is_empty() {
+    return 0;
+  }
+  if steam_norm == reference_norm {
+    return 100;
+  }
+  if steam_norm.contains(reference_norm) || reference_norm.contains(&steam_norm) {
+    return 50;
+  }
+  let ref_words: Vec<&str> = reference_norm.split_whitespace().collect();
+  let steam_words: Vec<&str> = steam_norm.split_whitespace().collect();
+  ref_words
+    .iter()
+    .filter(|word| word.len() > 2)
+    .filter(|word| {
+      steam_words
+        .iter()
+        .any(|sw| title_word_matches_query_word(word, sw))
+    })
+    .count() as u32
+}
+
+pub async fn search_catalog_from_sources(
+  app: &AppHandle,
+  query: &str,
+  offset: usize,
+  limit: usize,
+  attach_covers: bool,
+) -> Result<Vec<CatalogGameDto>, String> {
+  let app = app.clone();
+  let query = query.to_string();
+  tokio::task::spawn_blocking(move || {
+    search_catalog_from_sources_sync(&app, &query, offset, limit, attach_covers)
+  })
+  .await
+  .map_err(|error| format!("search_catalog_task: {error}"))?
+}
+
+fn search_catalog_from_sources_sync(
+  app: &AppHandle,
+  query: &str,
+  offset: usize,
+  limit: usize,
+  attach_covers: bool,
+) -> Result<Vec<CatalogGameDto>, String> {
+  let conn = open_database_connection(app)?;
+  let hydra_sources = list_hydra_sources(&conn)?;
+  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
+
+  let source_ids: Vec<String> = hydra_sources
+    .into_iter()
+    .filter(|source| !disabled.contains(&source.id))
+    .map(|source| source.id)
+    .collect();
+
+  if source_ids.is_empty() {
+    return Ok(Vec::new());
+  }
+
+  let hits = crate::sources::hydralinks::search_distinct_catalog_titles(
+    &conn, &source_ids, query, offset, limit,
+  );
+
+  let mut games = hits
+    .into_iter()
+    .map(|hit| CatalogGameDto {
+      id: format!("source:{}", stable_embedded_id(&hit.group_key)),
+      title: hit.title,
+      genre: hit.source_name,
+      cover_url: None,
+      local_cover_path: None,
+      source: "source".to_string(),
+      option_count: (hit.option_count > 1).then_some(hit.option_count as u32),
+    })
+    .collect::<Vec<_>>();
+
+  if attach_covers {
+    crate::covers::attach_cover_urls_to_games(app, &mut games);
+  }
+
+  Ok(games)
 }
 
 #[tauri::command]
@@ -437,13 +441,16 @@ pub async fn search_game_catalog(app: AppHandle, payload: SearchCatalogPayload) 
   let trimmed = payload.query.trim();
   let query_norm = trimmed.to_lowercase();
   let only_with_sources = payload.only_with_sources.unwrap_or(false);
+  let offset = payload.offset.unwrap_or(0);
+  let limit = payload.limit.unwrap_or(24).max(1).min(56);
 
   if query_norm.len() < 2 {
     return Ok(Vec::new());
   }
 
   if only_with_sources {
-    return search_catalog_from_sources(&app, trimmed).await;
+    let attach_covers = payload.attach_covers.unwrap_or(false);
+    return search_catalog_from_sources(&app, trimmed, offset, limit, attach_covers).await;
   }
 
   let mut merged = filter_embedded_catalog(&query_norm);
@@ -482,10 +489,7 @@ pub async fn search_game_catalog(app: AppHandle, payload: SearchCatalogPayload) 
     }
   }
 
-  let mut out: Vec<CatalogGameDto> = merged.into_iter().take(56).collect();
-  if only_with_sources {
-    out = apply_catalog_source_filter(&app, out).await;
-  }
+  let out: Vec<CatalogGameDto> = merged.into_iter().skip(offset).take(limit).collect();
 
   Ok(out)
 }

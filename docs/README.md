@@ -20,4 +20,4 @@ npm run tauri:build  # build de produção
 npm run lint         # ESLint
 ```
 
-> **Importante:** funcionalidades nativas (ficheiros, downloads, diálogos) só funcionam com `npm run tauri:dev` ou o executável compilado — **não** com `npm run dev` sozinho.
+> **Importante:** funcionalidades nativas (arquivos, downloads, diálogos) só funcionam com `npm run tauri:dev` ou o executável compilado — **não** com `npm run dev` sozinho.

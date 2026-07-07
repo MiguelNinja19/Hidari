@@ -2,8 +2,8 @@ pub mod roots;
 
 use crate::db::{get_default_download_path, open_database_connection};
 use crate::dto::{
-  DeleteLocalLibraryItemPayload, LaunchGamePayload, LibraryPathStateDto,
-  LocalLibraryItemDto, SetLibraryGameRootPayload,
+  DeleteLocalLibraryItemPayload, InspectLibraryPathsPayload, InspectLibraryPathResultItem,
+  LaunchGamePayload, LibraryPathStateDto, LocalLibraryItemDto, SetLibraryGameRootPayload,
 };
 use crate::launch;
 use crate::launch_errors;
@@ -123,7 +123,7 @@ pub fn set_library_game_root(app: AppHandle, payload: SetLibraryGameRootPayload)
   }
   if !launch::folder_has_playable_game_exe(&payload.title, &game_root) {
     return Err(
-      "Não encontrámos um executável jogável nessa pasta. Escolha a pasta onde o jogo foi instalado (com o .exe do jogo)."
+      "Não encontramos um executável jogável nessa pasta. Escolha a pasta onde o jogo foi instalado (com o .exe do jogo)."
         .to_string(),
     );
   }
@@ -180,6 +180,30 @@ pub fn inspect_library_path_internal(
 #[tauri::command]
 pub fn inspect_library_path(app: AppHandle, payload: LaunchGamePayload) -> LibraryPathStateDto {
   inspect_library_path_internal(&app, &payload.title, &payload.path, payload.job_id.as_deref())
+}
+
+#[tauri::command]
+pub async fn inspect_library_paths(
+  app: AppHandle,
+  payload: InspectLibraryPathsPayload,
+) -> Result<Vec<InspectLibraryPathResultItem>, String> {
+  tauri::async_runtime::spawn_blocking(move || {
+    payload
+      .entries
+      .into_iter()
+      .map(|entry| InspectLibraryPathResultItem {
+        key: entry.key,
+        state: inspect_library_path_internal(
+          &app,
+          &entry.title,
+          &entry.path,
+          entry.job_id.as_deref(),
+        ),
+      })
+      .collect()
+  })
+  .await
+  .map_err(|error| format!("inspect_library_paths_failed: {error}"))
 }
 
 #[tauri::command]
@@ -258,15 +282,4 @@ pub async fn extract_library_folder(app: AppHandle, payload: LaunchGamePayload) 
     emit_extract_status(&app_clone, &job_id, "failed", Some(error.clone()));
   }
   result
-}
-
-#[tauri::command]
-pub fn check_path_playable(app: AppHandle, payload: LaunchGamePayload) -> bool {
-  let extra_roots = launch_extra_roots(
-    &app,
-    &payload.title,
-    &payload.path,
-    payload.job_id.as_deref(),
-  );
-  launch::resolve_launch_candidates_with_extra_roots(&payload.title, &payload.path, &extra_roots).is_ok()
 }

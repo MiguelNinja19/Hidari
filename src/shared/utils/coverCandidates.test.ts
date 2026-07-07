@@ -17,13 +17,13 @@ describe('extractSteamAppId', () => {
 })
 
 describe('buildCoverCandidates', () => {
-  it('inclui variantes Steam e mirror akamai', () => {
+  it('inclui variantes Steam CDN', () => {
     const url =
       'https://cdn.cloudflare.steamstatic.com/steam/apps/42/header.jpg'
     const candidates = buildCoverCandidates(url)
     expect(candidates.length).toBeGreaterThan(1)
     expect(candidates.some((c) => c.includes('library_600x900.jpg'))).toBe(true)
-    expect(candidates.some((c) => c.includes('steamcdn-a.akamaihd.net'))).toBe(true)
+    expect(candidates.some((c) => c.includes('library_600x900_2x.jpg'))).toBe(true)
   })
 
   it('deduplica URLs iguais', () => {

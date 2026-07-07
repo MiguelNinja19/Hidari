@@ -21,8 +21,8 @@
 └────────────┬───────────────────────┬────────────────────┘
              │                       │
     ┌────────▼────────┐     ┌────────▼────────────┐
-    │  Hydra / FitGirl  │     │  download-engine    │
-    │  (fontes HTTP)    │     │  (sidecar, fila)    │
+    │  Hydra / JSON   │     │  download-engine    │
+    │  (fontes locais)│     │  (sidecar, fila)    │
     └─────────────────┘     └─────────────────────┘
 ```
 
@@ -81,7 +81,7 @@ Fluxo: **Explorar** → enqueue → **Downloads** → concluído → **Bibliotec
 
 | Slice | Responsabilidade |
 |-------|------------------|
-| `sources` | Fontes Hydra, sync, testes |
+| `sources` | Fontes Hydra, sync |
 | `queue` | Fila sidecar, progresso, jobs dismissed |
 
 ## Backend — módulos Rust
@@ -92,9 +92,9 @@ Fluxo: **Explorar** → enqueue → **Downloads** → concluído → **Bibliotec
 | `title` | Normalização de títulos (paridade com TS) |
 | `db` | SQLite, migrations |
 | `sidecar` | download-engine HTTP |
-| `sources` | FitGirl, Hydra |
+| `sources` | Hydra + hydralinks (JSON local) |
 | `catalog` | Pesquisa discover |
-| `covers` | Cache Steam/local |
+| `covers` | Cache Steam (índice local + loja) |
 | `library` | scan, inspect, delete, launch roots |
 | `launch` | Deteção e spawn de .exe |
 

@@ -13,15 +13,25 @@ type CatalogCoverProps = {
   onLocalCoverError?: (title: string) => void
 }
 
+/// Prioriza a URL remota (CDN) para exibição instantânea, igual ao Hydra Launcher —
+/// o cache local só assume a frente quando já está confirmado em disco (`cached`),
+/// virando uma otimização em segundo plano em vez de bloquear a exibição da capa.
 function buildSourceList(
   localSrc: string | null,
   localSkipped: boolean,
   remoteCandidates: string[],
+  cached: boolean,
 ): string[] {
   const sources: string[] = []
-  if (localSrc && !localSkipped) sources.push(localSrc)
+  const hasUsableLocal = Boolean(localSrc) && !localSkipped
+  if (cached && hasUsableLocal) {
+    sources.push(localSrc as string)
+  }
   for (const url of remoteCandidates) {
     if (!sources.includes(url)) sources.push(url)
+  }
+  if (hasUsableLocal && !sources.includes(localSrc as string)) {
+    sources.push(localSrc as string)
   }
   return sources
 }
@@ -49,12 +59,13 @@ function CatalogCoverInner({
   const titleKeyRef = useRef(title)
 
   const sources = useMemo(
-    () => buildSourceList(localSrc, localSkipped, remoteCandidates),
-    [localSrc, localSkipped, remoteCandidates],
+    () => buildSourceList(localSrc, localSkipped, remoteCandidates, cached),
+    [localSrc, localSkipped, remoteCandidates, cached],
   )
 
   const activeSrc = sources[sourceIndex] ?? null
   const isCachedLocal = Boolean(cached && localSrc && activeSrc === localSrc)
+  const isRemote = Boolean(activeSrc?.startsWith('http://') || activeSrc?.startsWith('https://'))
 
   useEffect(() => {
     if (titleKeyRef.current === title) return
@@ -72,7 +83,7 @@ function CatalogCoverInner({
   }, [localPath])
 
   useEffect(() => {
-    if (!localSrc || localSkipped) return
+    if (!localSrc || localSkipped || !cached) return
     if (sources[0] !== localSrc) return
     if (sourceIndex === 0 && activeSrc === localSrc && (loaded || isCachedLocal)) return
 
@@ -143,23 +154,28 @@ function CatalogCoverInner({
     (loaded ||
       isCachedLocal ||
       (committedSrcRef.current != null && activeSrc === committedSrcRef.current))
+  const showSkeleton = showImage && !showLoaded && !isRemote
 
   if (!showImage) {
+    const showError = status === 'error' || failed
     return (
       <div className="game-card__media">
-        <div
-          className={`game-card__placeholder${status === 'error' || failed ? ' game-card__placeholder--error' : ''}`}
-          aria-hidden="true"
-        >
-          <span>{status === 'error' || failed ? '?' : title.slice(0, 2).toUpperCase()}</span>
-        </div>
+        {showError ? (
+          <div className="game-card__placeholder game-card__placeholder--error" aria-hidden="true">
+            <span>?</span>
+          </div>
+        ) : (
+          <div className="game-card__cover-skeleton" aria-hidden="true" />
+        )}
       </div>
     )
   }
 
   return (
     <div className="game-card__media">
-      {!showLoaded ? <div className="game-card__cover-skeleton" aria-hidden="true" /> : null}
+      {!showSkeleton ? null : (
+        <div className="game-card__cover-skeleton" aria-hidden="true" />
+      )}
       <img
         className={`game-card__cover${showLoaded ? ' game-card__cover--loaded' : ''}${isCachedLocal ? ' game-card__cover--cached' : ''}`}
         src={activeSrc!}

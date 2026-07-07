@@ -16,16 +16,16 @@ import type { LibraryEntry } from './types'
 
 export type LibraryControllerValue = {
   libraryItems: LibraryEntry[]
+  libraryLoading: boolean
+  refreshLibraryScan: (options?: { background?: boolean }) => Promise<void>
   jobs: DownloadJob[]
   pathStateByKey: Record<string, LibraryPathState>
   libraryFilter: string
-  libraryStatusFilter: 'all' | 'installed' | 'not_installed'
   playBusyId: string | null
   installBusyId: string | null
   savePathError: string
   actionMessage: string
   setLibraryFilter: (value: string) => void
-  setLibraryStatusFilter: (value: 'all' | 'installed' | 'not_installed') => void
   onGoDownloads: () => void
   onGoDiscover: () => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover

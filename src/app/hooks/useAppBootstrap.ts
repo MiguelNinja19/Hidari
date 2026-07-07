@@ -14,7 +14,6 @@ type BootstrapSettings = {
   setSeedTorrentsEnabled: (v: boolean) => void
   setInstallOrganization: (v: string) => void
   setAfterInstallAction: (v: string) => void
-  setVerifyAfterDownload: (v: boolean) => void
   setRemoveTemporaryFiles: (v: boolean) => void
   setDownloadSpeedLimit: (v: string) => void
   setDisabledSourceIds: (v: string[]) => void
@@ -28,7 +27,6 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     setSeedTorrentsEnabled,
     setInstallOrganization,
     setAfterInstallAction,
-    setVerifyAfterDownload,
     setRemoveTemporaryFiles,
     setDownloadSpeedLimit,
     setDisabledSourceIds,
@@ -36,7 +34,6 @@ export function useAppBootstrap(settings: BootstrapSettings) {
 
   useEffect(() => {
     void dispatch(fetchSources())
-    void sourcesApi.syncSources().then(() => dispatch(fetchSources()))
     void dispatch(fetchJobs())
 
     void (async () => {
@@ -47,17 +44,15 @@ export function useAppBootstrap(settings: BootstrapSettings) {
         }
         const enabled = await sourcesApi.getSeedTorrentsEnabled()
         setSeedTorrentsEnabled(enabled)
-        const [org, after, ver, rem, speed, dis] = await Promise.all([
+        const [org, after, rem, speed, dis] = await Promise.all([
           sourcesApi.getAppSetting(SETTING_KEY.installOrganization),
           sourcesApi.getAppSetting(SETTING_KEY.afterInstallAction),
-          sourcesApi.getAppSetting(SETTING_KEY.verifyAfterDownload),
           sourcesApi.getAppSetting(SETTING_KEY.removeTempFiles),
           sourcesApi.getAppSetting(SETTING_KEY.downloadSpeedLimitBps),
           sourcesApi.getAppSetting(SETTING_KEY.disabledHydraSourceIds),
         ])
         if (org) setInstallOrganization(org)
         if (after) setAfterInstallAction(after)
-        if (ver !== null) setVerifyAfterDownload(ver === '1' || ver === 'true')
         if (rem !== null) setRemoveTemporaryFiles(rem === '1' || rem === 'true')
         if (speed !== null) setDownloadSpeedLimit(bpsToSpeedKey(speed))
         if (dis) {
@@ -94,6 +89,5 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     setInstallOrganization,
     setRemoveTemporaryFiles,
     setSeedTorrentsEnabled,
-    setVerifyAfterDownload,
   ])
 }

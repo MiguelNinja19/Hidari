@@ -1,8 +1,8 @@
-pub mod fitgirl;
 pub mod hydra;
+pub mod hydralinks;
 
-pub use fitgirl::*;
 pub use hydra::*;
+pub use hydralinks::*;
 
 use crate::config;
 use crate::db::open_database_connection;
@@ -15,6 +15,9 @@ use tokio::time::Duration;
 use url::Url;
 
 pub fn validate_source_url(value: &str) -> Result<(), String> {
+  if is_local_catalog_path(value) {
+    return Ok(());
+  }
   let parsed = Url::parse(value).map_err(|_| "invalid_source_url".to_string())?;
   let scheme = parsed.scheme();
   if scheme != "http" && scheme != "https" {
@@ -200,23 +203,38 @@ pub async fn fetch_options_from_sources(
 }
 
 pub async fn search_download_options_from_local_sources(
+  app: &AppHandle,
   query: &str,
   sources: &[HydraSourceDto],
 ) -> Vec<DownloadOptionDto> {
-  let client = reqwest::Client::builder()
-    .timeout(Duration::from_secs(15))
-    .cookie_store(true)
-    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Hydra-Tauri-Launcher")
-    .build()
-    .unwrap_or_else(|_| reqwest::Client::new());
+  let app = app.clone();
+  let query = query.to_string();
+  let active: Vec<HydraSourceDto> = sources
+    .iter()
+    .filter(|source| is_json_catalog_source(&source.url) || has_local_catalog(&app, &source.id))
+    .cloned()
+    .collect();
 
-  let mut all: Vec<DownloadOptionDto> = Vec::new();
-  for source in sources {
-    if !is_fitgirl_source(source) {
-      continue;
+  if active.is_empty() {
+    return Vec::new();
+  }
+
+  if active.len() == 1 {
+    return search_json_catalog_source(&app, &active[0], &query);
+  }
+
+  let mut join_set = tokio::task::JoinSet::new();
+  for source in active {
+    let app_bg = app.clone();
+    let query_bg = query.clone();
+    join_set.spawn_blocking(move || search_json_catalog_source(&app_bg, &source, &query_bg));
+  }
+
+  let mut all = Vec::new();
+  while let Some(result) = join_set.join_next().await {
+    if let Ok(mut chunk) = result {
+      all.append(&mut chunk);
     }
-    let source_options = search_fitgirl_options(&client, source, query).await;
-    all.extend(source_options);
   }
   all
 }

@@ -10,28 +10,30 @@ import type {
   SearchCatalogInput,
   SearchDownloadOptionsInput,
   Source,
-  SourceTestResult,
+  SyncAllLocalSourcesResult,
+  SyncLocalSourceResult,
+  CoverPrecacheStatus,
+  SteamAppIndexStatus,
 } from '../../types/contracts'
 
 export const sourcesApi = {
   addSource: (payload: AddSourceInput) =>
     tauriClient.invoke<Source>('add_download_source', { payload }),
   listSources: () => tauriClient.invoke<Source[]>('get_download_sources'),
-  syncSources: () => tauriClient.invoke<Source[]>('sync_download_sources'),
+  syncLocalSource: (id: string) =>
+    tauriClient.invoke<SyncLocalSourceResult>('sync_local_source_catalog', {
+      payload: { id },
+    }),
+  syncAllLocalSources: () =>
+    tauriClient.invoke<SyncAllLocalSourcesResult>('sync_all_local_source_catalogs'),
   removeSource: (id: string) =>
     tauriClient.invoke<void>('remove_download_source', { payload: { id } }),
-  testSource: (id: string) =>
-    tauriClient.invoke<SourceTestResult>('test_download_source', { payload: { id } }),
   getDownloadSourcesChanges: () =>
     tauriClient.invoke<GameSourceChange[]>('check_download_sources_changes'),
   searchDownloadOptions: (payload: SearchDownloadOptionsInput) =>
     tauriClient.invoke<DownloadOption[]>('search_download_options', { payload }),
   searchGameCatalog: (payload: SearchCatalogInput) =>
     tauriClient.invoke<CatalogGame[]>('search_game_catalog', { payload }),
-  searchGameDownloadOptions: (gameId: number) =>
-    tauriClient.invoke<DownloadOption[]>('search_game_download_options', {
-      payload: { gameId },
-    }),
   setDefaultDownloadPath: (path: string) =>
     tauriClient.invoke<void>('set_default_download_path', { payload: { path } }),
   getDefaultDownloadPath: () =>
@@ -64,14 +66,39 @@ export const sourcesApi = {
     tauriClient.invoke<void>('invalidate_game_cover_local', { title }),
   resolveGameCoverUrl: (title: string) =>
     tauriClient.invoke<string | null>('resolve_game_cover_url', { title }),
-  checkPathPlayable: (title: string, path: string, jobId?: string) =>
-    tauriClient.invoke<boolean>('check_path_playable', {
-      payload: { title, path, jobId: jobId ?? null },
-    }),
+  resolveCoversForTitles: (titles: string[]) =>
+    tauriClient.invoke<import('../../types/contracts').ResolvedCoverBatchItem[]>(
+      'resolve_covers_for_titles',
+      { titles },
+    ),
+  getCoverPrecacheStatus: () =>
+    tauriClient.invoke<CoverPrecacheStatus>('get_cover_precache_status'),
+  getCoverCacheStats: () =>
+    tauriClient.invoke<CoverPrecacheStatus>('get_cover_cache_stats'),
+  startCoverPrecache: () =>
+    tauriClient.invoke<CoverPrecacheStatus>('start_cover_precache'),
+  stopCoverPrecache: () =>
+    tauriClient.invoke<CoverPrecacheStatus>('stop_cover_precache'),
+  retryUnresolvedCovers: () =>
+    tauriClient.invoke<CoverPrecacheStatus>('retry_unresolved_covers'),
+  getSteamAppIndexStatus: () =>
+    tauriClient.invoke<SteamAppIndexStatus>('get_steam_app_index_status'),
+  refreshSteamAppIndex: () =>
+    tauriClient.invoke<SteamAppIndexStatus>('refresh_steam_app_index'),
   inspectLibraryPath: (title: string, path: string, jobId?: string) =>
     tauriClient.invoke<LibraryPathState>('inspect_library_path', {
       payload: { title, path, jobId: jobId ?? null },
     }),
+  inspectLibraryPaths: (entries: import('../../types/contracts').InspectLibraryPathInput[]) =>
+    tauriClient.invoke<import('../../types/contracts').InspectLibraryPathResult[]>(
+      'inspect_library_paths',
+      { payload: { entries: entries.map((entry) => ({
+        key: entry.key,
+        title: entry.title,
+        path: entry.path,
+        jobId: entry.jobId ?? null,
+      })) } },
+    ),
   setLibraryGameRoot: (title: string, destPath: string, gameRoot: string, jobId?: string) =>
     tauriClient.invoke<LibraryPathState>('set_library_game_root', {
       payload: { title, destPath, gameRoot, jobId: jobId ?? null },

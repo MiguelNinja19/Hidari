@@ -49,10 +49,11 @@ const tabs: TabDef[] = [
 
 type SidebarProps = {
   activeTab: NavTab
+  activeDownloadsCount: number
   onTabChange: (tab: NavTab) => void
 }
 
-export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
+export function Sidebar({ activeTab, activeDownloadsCount, onTabChange }: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="sidebar__logo">
@@ -71,6 +72,11 @@ export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
           >
             <span className="sidebar-link__icon">{tab.icon}</span>
             <span className="sidebar-link__label">{tab.label}</span>
+            {tab.id === 'downloads' && activeDownloadsCount > 0 ? (
+              <span className="sidebar-link__badge" aria-label={`${activeDownloadsCount} downloads ativos`}>
+                {activeDownloadsCount > 99 ? '99+' : activeDownloadsCount}
+              </span>
+            ) : null}
           </button>
         ))}
       </nav>

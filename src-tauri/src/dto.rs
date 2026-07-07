@@ -32,20 +32,8 @@ pub struct DeleteLocalLibraryItemPayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AddSourcePayload {
-  pub name: String,
-  pub base_url: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AddDownloadSourcePayload {
   pub url: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RemoveSourcePayload {
-  pub id: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,14 +41,33 @@ pub struct RemoveHydraSourcePayload {
   pub id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SyncLocalSourcePayload {
+  pub id: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SourceDto {
-  pub id: i64,
-  pub name: String,
-  pub base_url: String,
-  pub status: String,
-  pub created_at: String,
+pub struct SyncLocalSourceResultDto {
+  pub source_id: String,
+  pub download_count: usize,
+  pub warning: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncLocalSourceFailureDto {
+  pub source_id: String,
+  pub source_name: String,
+  pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncAllLocalSourcesResultDto {
+  pub synced: Vec<SyncLocalSourceResultDto>,
+  pub failures: Vec<SyncLocalSourceFailureDto>,
+  pub unchanged_count: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -72,6 +79,8 @@ pub struct HydraSourceDto {
   pub status: String,
   pub download_count: i64,
   pub fingerprint: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub api_source_id: Option<String>,
   pub created_at: String,
 }
 
@@ -95,12 +104,6 @@ pub struct TestSourceResultDto {
 pub struct GameSourceChangeDto {
   pub game_id: i64,
   pub new_download_options_count: i64,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchGameOptionsPayload {
-  pub game_id: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -128,6 +131,10 @@ pub struct SearchCatalogPayload {
   pub query: String,
   pub include_steam: Option<bool>,
   pub only_with_sources: Option<bool>,
+  pub offset: Option<usize>,
+  pub limit: Option<usize>,
+  /// Quando false, não resolve capas na pesquisa (mais rápido; UI resolve depois).
+  pub attach_covers: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -144,7 +151,20 @@ pub struct CatalogGameDto {
   pub title: String,
   pub genre: String,
   pub cover_url: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub local_cover_path: Option<String>,
   pub source: String,
+  /// Número de repacks/variantes disponíveis para este jogo.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub option_count: Option<u32>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedCoverBatchItem {
+  pub title: String,
+  pub cover_url: Option<String>,
+  pub local_cover_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -210,37 +230,6 @@ pub struct HydraChangesResponseItem {
 
 // ── DTOs: Queue ───────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EnqueueJobPayload {
-  pub title: String,
-  pub url: String,
-  pub dest_path: String,
-  pub priority: Option<i64>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct JobIdPayload {
-  pub id: i64,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct DownloadJobDto {
-  pub id: i64,
-  pub title: String,
-  pub url: String,
-  pub dest_path: String,
-  pub status: String,
-  pub priority: i64,
-  pub progress: i64,
-  pub bytes_downloaded: i64,
-  pub total_bytes: i64,
-  pub error_msg: Option<String>,
-  pub created_at: String,
-  pub updated_at: String,
-}
-
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JobProgressEvent {
@@ -289,6 +278,28 @@ pub struct LaunchGamePayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InspectLibraryPathEntry {
+  pub key: String,
+  pub title: String,
+  pub path: String,
+  pub job_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectLibraryPathsPayload {
+  pub entries: Vec<InspectLibraryPathEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectLibraryPathResultItem {
+  pub key: String,
+  pub state: LibraryPathStateDto,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetLibraryGameRootPayload {
   pub title: String,
   pub dest_path: String,
@@ -296,7 +307,7 @@ pub struct SetLibraryGameRootPayload {
   pub job_id: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryPathStateDto {
   pub has_game: bool,
@@ -314,6 +325,26 @@ pub struct GameCoverDto {
   pub title_key: String,
   pub cover_url: String,
   pub local_path: Option<String>,
+}
+
+#[derive(Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamAppIndexStatusDto {
+  pub total_apps: usize,
+  pub last_updated_at: Option<i64>,
+  pub refreshing: bool,
+}
+
+#[derive(Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverPrecacheStatusDto {
+  pub running: bool,
+  pub total: usize,
+  pub processed: usize,
+  pub cached: usize,
+  pub downloaded: usize,
+  pub unresolved: usize,
+  pub failed: usize,
 }
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

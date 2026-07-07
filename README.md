@@ -39,7 +39,7 @@ Toda a documentação do projeto está em **[`docs/`](./docs/README.md)**:
 
 ## Fluxo completo
 
-1. **Configurações** — defina a pasta de download e ative a fonte FitGirl
+1. **Configurações** — defina a pasta de download e importe fontes de catálogo (`.json` Hydra)
 2. **Explorar** — pesquise um jogo e escolha um torrent
 3. **Downloads** — acompanhe o progresso; ao concluir, a extração inicia automaticamente
 4. **Biblioteca** — quando o status for *Pronto para jogar*, clique em **JOGAR**

@@ -11,6 +11,7 @@ export type Source = {
   status: 'pendingMatching' | 'matching' | 'matched' | 'failed' | string
   downloadCount: number
   fingerprint?: string
+  apiSourceId?: string
   createdAt: string
 }
 
@@ -24,6 +25,24 @@ export type SourceTestResult = {
   statusCode?: number
   latencyMs: number
   message: string
+}
+
+export type SyncLocalSourceResult = {
+  sourceId: string
+  downloadCount: number
+  warning?: string | null
+}
+
+export type SyncLocalSourceFailure = {
+  sourceId: string
+  sourceName: string
+  message: string
+}
+
+export type SyncAllLocalSourcesResult = {
+  synced: SyncLocalSourceResult[]
+  failures: SyncLocalSourceFailure[]
+  unchangedCount: number
 }
 
 export type DownloadJob = {
@@ -63,10 +82,26 @@ export type EnqueueJobInput = {
   coverUrl?: string | null
 }
 
+export type CoverPrecacheStatus = {
+  running: boolean
+  total: number
+  processed: number
+  cached: number
+  downloaded: number
+  unresolved: number
+  failed: number
+}
+
 export type GameCover = {
   titleKey: string
   coverUrl: string
   localPath?: string | null
+}
+
+export type SteamAppIndexStatus = {
+  totalApps: number
+  lastUpdatedAt: number | null
+  refreshing: boolean
 }
 
 export type LibraryPathState = {
@@ -119,13 +154,37 @@ export type CatalogGame = {
   title: string
   genre: string
   coverUrl?: string | null
+  localCoverPath?: string | null
   source: string
+  optionCount?: number | null
+}
+
+export type ResolvedCoverBatchItem = {
+  title: string
+  coverUrl?: string | null
+  localCoverPath?: string | null
 }
 
 export type SearchCatalogInput = {
   query: string
   includeSteam?: boolean
   onlyWithSources?: boolean
+  offset?: number
+  limit?: number
+  /** false = pesquisa rápida sem resolver capas no backend */
+  attachCovers?: boolean
+}
+
+export type InspectLibraryPathInput = {
+  key: string
+  title: string
+  path: string
+  jobId?: string
+}
+
+export type InspectLibraryPathResult = {
+  key: string
+  state: LibraryPathState
 }
 
 export type LocalLibraryItem = {

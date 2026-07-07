@@ -1,3 +1,15 @@
+mod precache;
+mod steam_index;
+
+pub use precache::{
+  attach_cover_urls_to_games, bulk_resolve_catalog_covers_from_index, get_cover_cache_stats,
+  get_cover_precache_status, resolve_cover_url, resolve_covers_for_titles, retry_unresolved_covers,
+  start_cover_precache, stop_cover_precache, CoverPrecacheState, maybe_start_cover_precache,
+};
+pub use steam_index::{
+  get_steam_app_index_status, maybe_refresh_steam_app_index, refresh_steam_app_index,
+};
+
 use crate::db::open_database_connection;
 use crate::dto::GameCoverDto;
 use crate::title;
@@ -11,7 +23,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tokio::time::{sleep, Duration};
 
-fn covers_dir_for_app(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn covers_dir_for_app(app: &AppHandle) -> Result<PathBuf, String> {
   let dir = app
     .path()
     .app_data_dir()
@@ -40,7 +52,48 @@ pub fn is_valid_cover_bytes(bytes: &[u8]) -> bool {
   false
 }
 
+pub fn is_plausible_cover_url(url: &str) -> bool {
+  let trimmed = url.trim();
+  trimmed.len() >= 12
+    && (trimmed.starts_with("http://") || trimmed.starts_with("https://"))
+}
+
+pub fn is_plausible_local_cover_path(path: &str, covers_dir: &Path) -> bool {
+  let trimmed = path.trim();
+  if trimmed.is_empty() {
+    return false;
+  }
+  if trimmed.contains("://")
+    || trimmed.contains(".jpg:")
+    || trimmed.contains(".jpeg:")
+    || trimmed.contains(".png:")
+    || trimmed.contains(".webp:")
+  {
+    return false;
+  }
+  let path_obj = Path::new(trimmed);
+  if path_obj.is_relative() {
+    return false;
+  }
+  if trimmed.starts_with("\\\\") {
+    let covers_leaf = covers_dir
+      .file_name()
+      .and_then(|name| name.to_str())
+      .unwrap_or("covers")
+      .to_ascii_lowercase();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.contains(&format!("\\{covers_leaf}\\")) {
+      return false;
+    }
+  }
+  true
+}
+
 pub fn is_usable_cover_file(path: &Path, covers_dir: &Path) -> bool {
+  let path_str = path.to_string_lossy();
+  if !is_plausible_local_cover_path(&path_str, covers_dir) {
+    return false;
+  }
   if !path.is_file() {
     return false;
   }
@@ -63,6 +116,61 @@ pub fn is_usable_cover_file(path: &Path, covers_dir: &Path) -> bool {
     return false;
   };
   is_valid_cover_bytes(&bytes)
+}
+
+pub fn repair_corrupt_cover_paths(conn: &Connection, covers_dir: &Path) -> Result<usize, String> {
+  let mut stmt = conn
+    .prepare("SELECT title_key, local_path FROM game_covers WHERE local_path IS NOT NULL")
+    .map_err(|e| format!("could_not_prepare_cover_repair: {e}"))?;
+  let rows = stmt
+    .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+    .map_err(|e| format!("could_not_query_cover_repair: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("could_not_map_cover_repair: {e}"))?;
+
+  let mut repaired = 0usize;
+  for (title_key, local_path) in rows {
+    let plausible = is_plausible_local_cover_path(&local_path, covers_dir);
+    let usable = plausible && is_usable_cover_file(Path::new(&local_path), covers_dir);
+    if usable {
+      continue;
+    }
+    conn
+      .execute(
+        "UPDATE game_covers SET local_path = NULL WHERE title_key = ?1",
+        params![title_key],
+      )
+      .map_err(|e| format!("could_not_clear_corrupt_cover_path: {e}"))?;
+    if is_plausible_local_cover_path(&local_path, covers_dir) {
+      remove_cover_file(&local_path);
+    }
+    repaired += 1;
+  }
+  Ok(repaired)
+}
+
+/// Remove entradas com `cover_url` inválida (ex.: "https" gravado por bug no script Python).
+pub fn repair_corrupt_cover_urls(conn: &Connection) -> Result<usize, String> {
+  let mut stmt = conn
+    .prepare("SELECT title_key, cover_url FROM game_covers")
+    .map_err(|e| format!("could_not_prepare_cover_url_repair: {e}"))?;
+  let rows = stmt
+    .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+    .map_err(|e| format!("could_not_query_cover_url_repair: {e}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|e| format!("could_not_map_cover_url_repair: {e}"))?;
+
+  let mut repaired = 0usize;
+  for (title_key, cover_url) in rows {
+    if is_plausible_cover_url(&cover_url) {
+      continue;
+    }
+    conn
+      .execute("DELETE FROM game_covers WHERE title_key = ?1", params![title_key])
+      .map_err(|e| format!("could_not_delete_corrupt_cover_url: {e}"))?;
+    repaired += 1;
+  }
+  Ok(repaired)
 }
 
 pub fn cover_download_urls(cover_url: &str) -> Vec<String> {
@@ -114,7 +222,7 @@ pub fn upsert_game_cover(
   cover_url: &str,
 ) -> Result<Option<String>, String> {
   let title_key = title::normalize_title_key(title);
-  if title_key.is_empty() || cover_url.trim().is_empty() {
+  if title_key.is_empty() || !is_plausible_cover_url(cover_url) {
     return Ok(None);
   }
   let trimmed = cover_url.trim();
@@ -139,6 +247,82 @@ pub fn upsert_game_cover(
     )
     .map_err(|e| format!("could_not_upsert_game_cover: {e}"))?;
   Ok(stale_local)
+}
+
+const COVER_SKIP_RETRY_SECS: i64 = 7 * 86400;
+
+pub fn lookup_cover_row(conn: &Connection, title_key: &str) -> Option<(String, Option<String>)> {
+  let row: Option<(String, Option<String>)> = conn
+    .query_row(
+      "SELECT cover_url, local_path FROM game_covers WHERE title_key = ?1",
+      params![title_key],
+      |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+    )
+    .ok();
+  row.and_then(|(url, local)| {
+    if is_plausible_cover_url(&url) {
+      Some((url, local))
+    } else {
+      None
+    }
+  })
+}
+
+/// Procura capa pelo título bruto ou pelo nome base do jogo (repack/versão no título).
+pub fn lookup_cover_row_for_title(conn: &Connection, title: &str) -> Option<(String, Option<String>)> {
+  let trimmed = title.trim();
+  if trimmed.is_empty() {
+    return None;
+  }
+  let key = title::normalize_title_key(trimmed);
+  if let Some(row) = lookup_cover_row(conn, &key) {
+    return Some(row);
+  }
+  let group = title::catalog_game_group_key(trimmed);
+  if group != key {
+    lookup_cover_row(conn, &group)
+  } else {
+    None
+  }
+}
+
+pub fn should_skip_cover_resolve(conn: &Connection, title_key: &str) -> bool {
+  let now = precache::now_unix_secs();
+  conn
+    .query_row(
+      "SELECT tried_at FROM cover_precache_skip WHERE title_key = ?1",
+      params![title_key],
+      |row| row.get::<_, i64>(0),
+    )
+    .ok()
+    .is_some_and(|tried_at| now - tried_at < COVER_SKIP_RETRY_SECS)
+}
+
+pub fn mark_cover_resolve_skip(conn: &Connection, title_key: &str) {
+  let now = precache::now_unix_secs();
+  let _ = conn.execute(
+    "INSERT INTO cover_precache_skip (title_key, tried_at) VALUES (?1, ?2) \
+     ON CONFLICT(title_key) DO UPDATE SET tried_at = excluded.tried_at",
+    params![title_key, now],
+  );
+}
+
+pub fn clear_cover_precache_skips(conn: &Connection) -> Result<usize, String> {
+  let removed = conn
+    .execute("DELETE FROM cover_precache_skip", [])
+    .map_err(|e| format!("could_not_clear_cover_skips: {e}"))?;
+  Ok(removed)
+}
+
+pub fn count_active_cover_skips(conn: &Connection) -> Result<usize, String> {
+  let now = precache::now_unix_secs();
+  conn
+    .query_row(
+      "SELECT COUNT(*) FROM cover_precache_skip WHERE tried_at > ?1",
+      params![now - COVER_SKIP_RETRY_SECS],
+      |row| row.get(0),
+    )
+    .map_err(|e| format!("could_not_count_cover_skips: {e}"))
 }
 
 pub async fn download_and_cache_cover(
@@ -328,6 +512,10 @@ pub async fn save_game_cover(app: AppHandle, title: String, cover_url: String) -
   Ok(())
 }
 
+#[tauri::command]
+pub async fn resolve_game_cover_url(app: AppHandle, title: String) -> Result<Option<String>, String> {
+  Ok(resolve_cover_url(&app, &title).await)
+}
 
 #[cfg(test)]
 mod cover_cache_tests {

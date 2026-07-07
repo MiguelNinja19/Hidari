@@ -1,34 +1,55 @@
 import type { DownloadOption } from '../types/contracts'
+import { decodeHtmlEntities } from './normalizeTitleKey'
 
-const MIRROR_LABEL =
-  /1337x|fuckingfast|torrage|rutor|rustork|tapochek|online-fix|linux|macos|windows|magnet \d+/i
-
-function looksLikeTorrentTitle(value: string): boolean {
-  if (value.length > 36) return true
-  if (/\bv?\d[\d.]+/i.test(value) && /[+(]/.test(value)) return true
-  if (/repack|fitgirl|update|dlc|bonus/i.test(value)) return true
-  return false
+export type PickOptionMeta = {
+  source: string
+  size: string | null
+  downloadType: string
 }
 
+/** Título completo da entrada (para tooltip / fila / modal). */
 export function pickOptionLabel(option: DownloadOption): string {
-  const source = option.sourceName.trim() || 'Fonte'
+  const title = decodeHtmlEntities(option.title.trim())
+  if (title) return title
+
   const quality = option.quality?.trim()
+  if (quality && quality !== 'standard') return quality
 
-  if (quality && quality !== 'standard') {
-    if (MIRROR_LABEL.test(quality) || (!looksLikeTorrentTitle(quality) && quality.length <= 28)) {
-      return quality
-    }
-  }
-
-  return source
+  return option.sourceName.trim() || 'Download'
 }
 
-export function pickOptionSubtitle(option: DownloadOption): string | null {
-  const label = pickOptionLabel(option)
-  const source = option.sourceName.trim()
+/** No modal: título completo de cada versão (o hero já mostra só o nome do jogo). */
+export function pickOptionVariantLabel(option: DownloadOption, _baseTitle: string): string {
+  return pickOptionLabel(option)
+}
 
-  if (source && label !== source) return source
-  return 'Torrent'
+export function pickOptionMetaLine(option: DownloadOption): string {
+  const meta = pickOptionMeta(option)
+  const parts = [meta.source]
+  if (meta.size) parts.push(meta.size)
+  parts.push(meta.downloadType)
+  return parts.join(' · ')
+}
+
+export function pickOptionMeta(option: DownloadOption): PickOptionMeta {
+  const quality = option.quality?.trim()
+  const looksLikeSize = quality && quality !== 'standard' && !/^link\s+\d+$/i.test(quality)
+
+  return {
+    source: option.sourceName.trim() || 'Fonte',
+    size: looksLikeSize ? quality : null,
+    downloadType:
+      option.downloadType === 'torrent'
+        ? 'Torrent'
+        : option.downloadType === 'http'
+          ? 'HTTP'
+          : option.downloadType,
+  }
+}
+
+/** @deprecated use pickOptionMeta */
+export function pickOptionSubtitle(option: DownloadOption): string | null {
+  return pickOptionMetaLine(option)
 }
 
 export function dedupeDownloadOptions(options: DownloadOption[]): DownloadOption[] {

@@ -20,18 +20,21 @@ use sidecar::{
   pause_all_active_sidecar_jobs, spawn_download_engine, spawn_extraction_watcher,
   spawn_sidecar_progress_watcher,
 };
-use state::{ExtractionState, QueueManager, SidecarState};
+use state::{ExtractionState, SidecarState};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  load_env_from_cwd();
+
   tauri::Builder::default()
-    .manage(QueueManager::new())
     .manage(SidecarState::default())
     .manage(ExtractionState::default())
+    .manage(covers::CoverPrecacheState::default())
     .setup(|app| {
+      load_env_from_app_config(app.handle());
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
@@ -41,12 +44,30 @@ pub fn run() {
       }
       app.handle().plugin(tauri_plugin_notification::init())?;
       app.handle().plugin(tauri_plugin_dialog::init())?;
-      let _ = crate::db::open_database_connection(app.handle());
+      let _ = crate::db::init_database_pool(app.handle());
+      if let (Ok(conn), Ok(covers_dir)) = (
+        crate::db::open_database_connection(app.handle()),
+        crate::covers::covers_dir_for_app(app.handle()),
+      ) {
+        match crate::covers::repair_corrupt_cover_paths(&conn, &covers_dir) {
+          Ok(n) if n > 0 => eprintln!("cover_paths_repaired: {n} entradas inválidas limpas"),
+          Err(error) => eprintln!("cover_paths_repair_failed: {error}"),
+          _ => {}
+        }
+        match crate::covers::repair_corrupt_cover_urls(&conn) {
+          Ok(n) if n > 0 => eprintln!("cover_urls_repaired: {n} URLs inválidas removidas"),
+          Err(error) => eprintln!("cover_urls_repair_failed: {error}"),
+          _ => {}
+        }
+      }
       startup_queue_recovery(app.handle());
       spawn_download_engine(app.handle().clone());
       spawn_sidecar_progress_watcher(app.handle().clone());
       spawn_extraction_watcher(app.handle().clone());
 
+      covers::maybe_refresh_steam_app_index(app.handle());
+
+      // Pré-cache em disco só manual (Configurações) — evita competir com a UI no arranque.
       let show_item = MenuItem::with_id(app, "tray_show", "Mostrar janela", true, None::<&str>)?;
       let hide_item = MenuItem::with_id(app, "tray_hide", "Ocultar janela", true, None::<&str>)?;
       let quit_item = MenuItem::with_id(app, "tray_quit", "Sair", true, None::<&str>)?;
@@ -101,9 +122,9 @@ pub fn run() {
       ping,
       app_version,
       get_paths,
-      add_source,
       add_download_source,
-      list_sources,
+      sync_local_source_catalog,
+      sync_all_local_source_catalogs,
       get_download_sources,
       remove_download_source,
       search_download_options,
@@ -117,17 +138,10 @@ pub fn run() {
       get_disk_free_bytes_for_path,
       scan_default_download_path,
       delete_local_library_item,
-      remove_source,
       test_download_source,
       get_download_sources_changes,
       sync_download_sources,
       check_download_sources_changes,
-      search_game_download_options,
-      enqueue_job,
-      list_jobs,
-      cancel_job,
-      pause_job,
-      resume_job,
       clear_completed_jobs,
       sidecar_enqueue_job,
       sidecar_list_jobs,
@@ -146,13 +160,42 @@ pub fn run() {
       ensure_game_cover_cached,
       save_game_cover,
       resolve_game_cover_url,
+      resolve_covers_for_titles,
       invalidate_game_cover_local,
-      check_path_playable,
+      get_cover_precache_status,
+      get_cover_cache_stats,
+      start_cover_precache,
+      stop_cover_precache,
+      retry_unresolved_covers,
+      get_steam_app_index_status,
+      refresh_steam_app_index,
       inspect_library_path,
+      inspect_library_paths,
       set_library_game_root,
       launch_setup_from_path,
       extract_library_folder
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
+}
+
+/// Carrega `.env` na raiz do projeto (dev: `npm run tauri:dev`).
+fn load_env_from_cwd() {
+  let _ = dotenvy::dotenv();
+}
+
+/// Fallback: `%APPDATA%/.../config/.env` se a variável ainda não estiver definida.
+fn load_env_from_app_config(app: &tauri::AppHandle) {
+  let has_steam_web = std::env::var(crate::config::STEAM_WEB_API_KEY_ENV)
+    .map(|value| !value.trim().is_empty())
+    .unwrap_or(false);
+  if has_steam_web {
+    return;
+  }
+  if let Ok(dir) = app.path().app_config_dir() {
+    let path = dir.join(".env");
+    if path.is_file() {
+      let _ = dotenvy::from_path(&path);
+    }
+  }
 }

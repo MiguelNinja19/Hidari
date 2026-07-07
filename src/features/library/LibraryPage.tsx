@@ -1,4 +1,6 @@
 import { CatalogCover } from '../../shared/components/CatalogCover'
+import { EmptyState } from '../../shared/components/EmptyState'
+import { GameTileSkeleton } from '../../shared/components/GameTile'
 import { GameTile, type GameTileAction } from '../../shared/components/GameTile'
 import { PageNotice } from '../../shared/components/PageNotice'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
@@ -204,15 +206,14 @@ function buildLibraryActions(
 export function LibraryPage() {
   const {
     libraryItems,
+    libraryLoading,
     pathStateByKey,
     libraryFilter,
-    libraryStatusFilter,
     playBusyId,
     installBusyId,
     savePathError,
     actionMessage,
     setLibraryFilter,
-    setLibraryStatusFilter,
     onGoDownloads,
     resolveCover,
     invalidateLocalCover,
@@ -232,6 +233,7 @@ export function LibraryPage() {
   } = useLibraryItemHelpers()
   const onResumeItem = useLibraryResumeItem()
   const onOpenLocalPath = useOpenLocalPath()
+  const hasActiveFilter = libraryFilter.trim().length > 0
 
   return (
     <section className="library-page">
@@ -241,26 +243,7 @@ export function LibraryPage() {
           value={libraryFilter}
           placeholder="Filtrar biblioteca…"
           onChange={setLibraryFilter}
-        />        <div className="library-toolbar__filters" role="tablist" aria-label="Filtrar biblioteca">
-          {(
-            [
-              ['all', 'Todos'],
-              ['installed', 'Instalados'],
-              ['not_installed', 'Em andamento'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              className={`chip${libraryStatusFilter === value ? ' chip--active' : ''}`}
-              aria-selected={libraryStatusFilter === value}
-              onClick={() => setLibraryStatusFilter(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        />
       </header>
 
       {(savePathError?.trim() || actionMessage?.trim()) ? (
@@ -270,7 +253,15 @@ export function LibraryPage() {
         />
       ) : null}
 
-      {libraryItems.length > 0 ? (
+      {libraryLoading ? (
+        <ul className="library-grid library-grid--skeleton" aria-hidden="true">
+          {Array.from({ length: 8 }, (_, index) => (
+            <GameTileSkeleton key={index} />
+          ))}
+        </ul>
+      ) : null}
+
+      {!libraryLoading && libraryItems.length > 0 ? (
         <ul className="library-grid">
           {libraryItems.map((item) => {
             const status = libraryStatusMeta(item)
@@ -308,8 +299,13 @@ export function LibraryPage() {
             return (
               <li key={item.id}>
                 <GameTile
+                  variant="library"
                   title={cleanTitleForDisplay(item.title)}
-                  titleAttr={[status.label, manualRoot ? 'Pasta indicada manualmente' : '']
+                  titleAttr={[
+                    cleanTitleForDisplay(item.title),
+                    status.label,
+                    manualRoot ? 'Pasta indicada manualmente' : '',
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
                   cover={
@@ -327,8 +323,16 @@ export function LibraryPage() {
                   statusLine={statusLine}
                 />
               </li>
-            )          })}
+            )
+          })}
         </ul>
+      ) : null}
+
+      {!libraryLoading && libraryItems.length === 0 && hasActiveFilter ? (
+        <EmptyState
+          title="Sem resultados"
+          description="Nenhum jogo corresponde ao filtro atual."
+        />
       ) : null}
     </section>
   )

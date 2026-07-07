@@ -1,9 +1,26 @@
-use crate::dto::{DownloadJobDto, SourceDto};
 use rusqlite::{params, Connection};
 use rusqlite::OptionalExtension;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
+
+static SCHEMA_MIGRATED: AtomicBool = AtomicBool::new(false);
+
+fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
+  let dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|e| format!("could_not_get_app_data_dir: {e}"))?;
+  std::fs::create_dir_all(&dir).map_err(|e| format!("could_not_create_app_data_dir: {e}"))?;
+  Ok(dir.join("launcher.db"))
+}
+
+/// Migrações e seed só no arranque; invokes seguintes reutilizam WAL mode.
+pub fn init_database_pool(app: &AppHandle) -> Result<(), String> {
+  let _ = open_database_connection(app)?;
+  Ok(())
+}
 
 pub fn validate_app_setting_key(key: &str) -> Result<(), String> {
   if key.is_empty() || key.len() > 80 {
@@ -49,16 +66,68 @@ pub fn get_default_download_path(app: &AppHandle) -> Result<Option<String>, Stri
 }
 
 pub fn open_database_connection(app: &AppHandle) -> Result<Connection, String> {
-  let dir = app
-    .path()
-    .app_data_dir()
-    .map_err(|e| format!("could_not_get_app_data_dir: {e}"))?;
-  std::fs::create_dir_all(&dir).map_err(|e| format!("could_not_create_app_data_dir: {e}"))?;
-  let conn = Connection::open(dir.join("launcher.db"))
+  let conn = Connection::open(database_path(app)?)
     .map_err(|e| format!("could_not_open_db: {e}"))?;
-  initialize_database(&conn)?;
-  crate::sources::hydra::ensure_default_hydra_sources(&conn)?;
+  let _ = conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
+  if !SCHEMA_MIGRATED.load(Ordering::Acquire) {
+    initialize_database(&conn)?;
+    migrate_schema(&conn)?;
+    crate::sources::hydra::ensure_default_hydra_sources(&conn)?;
+    SCHEMA_MIGRATED.store(true, Ordering::Release);
+  }
   Ok(conn)
+}
+
+fn migrate_schema(conn: &Connection) -> Result<(), String> {
+  let has_hash = conn
+    .prepare("PRAGMA table_info(hydra_source_catalogs)")
+    .map_err(|e| format!("migrate_pragma: {e}"))?
+    .query_map([], |row| row.get::<_, String>(1))
+    .map_err(|e| format!("migrate_pragma_map: {e}"))?
+    .filter_map(Result::ok)
+    .any(|name| name == "payload_hash");
+  if !has_hash {
+    conn
+      .execute(
+        "ALTER TABLE hydra_source_catalogs ADD COLUMN payload_hash TEXT",
+        [],
+      )
+      .map_err(|e| format!("migrate_payload_hash: {e}"))?;
+  }
+  let has_api_id = conn
+    .prepare("PRAGMA table_info(hydra_download_sources)")
+    .map_err(|e| format!("migrate_pragma_hds: {e}"))?
+    .query_map([], |row| row.get::<_, String>(1))
+    .map_err(|e| format!("migrate_pragma_hds_map: {e}"))?
+    .filter_map(Result::ok)
+    .any(|name| name == "api_source_id");
+  if !has_api_id {
+    conn
+      .execute(
+        "ALTER TABLE hydra_download_sources ADD COLUMN api_source_id TEXT",
+        [],
+      )
+      .map_err(|e| format!("migrate_api_source_id: {e}"))?;
+  }
+  conn
+    .execute_batch(
+      "CREATE TABLE IF NOT EXISTS cover_precache_skip (
+        title_key TEXT PRIMARY KEY,
+        tried_at  INTEGER NOT NULL
+      );",
+    )
+    .map_err(|e| format!("migrate_cover_precache_skip: {e}"))?;
+  conn
+    .execute_batch(
+      "CREATE TABLE IF NOT EXISTS steam_app_index (
+        app_id     INTEGER PRIMARY KEY,
+        name       TEXT NOT NULL,
+        name_norm  TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_steam_app_index_name_norm ON steam_app_index(name_norm);",
+    )
+    .map_err(|e| format!("migrate_steam_app_index: {e}"))?;
+  Ok(())
 }
 
 fn initialize_database(conn: &Connection) -> Result<(), String> {
@@ -131,6 +200,29 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
         created_at     TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS hydra_source_catalogs (
+        source_id    TEXT PRIMARY KEY,
+        source_url   TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        payload_hash TEXT,
+        fetched_at   INTEGER NOT NULL,
+        FOREIGN KEY (source_id) REFERENCES hydra_download_sources(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS hydra_catalog_entries (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id     TEXT NOT NULL,
+        title         TEXT NOT NULL,
+        title_norm    TEXT NOT NULL,
+        file_size     TEXT,
+        uris_json     TEXT NOT NULL,
+        group_key     TEXT NOT NULL DEFAULT '',
+        display_title TEXT NOT NULL DEFAULT '',
+        FOREIGN KEY (source_id) REFERENCES hydra_download_sources(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_hce_source_title ON hydra_catalog_entries(source_id, title_norm);
+
       CREATE TABLE IF NOT EXISTS app_settings (
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -158,6 +250,11 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
         updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS cover_precache_skip (
+        title_key TEXT PRIMARY KEY,
+        tried_at  INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS library_game_roots (
         library_key TEXT PRIMARY KEY,
         title       TEXT NOT NULL,
@@ -165,10 +262,77 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
         game_root   TEXT NOT NULL,
         updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS steam_app_index (
+        app_id     INTEGER PRIMARY KEY,
+        name       TEXT NOT NULL,
+        name_norm  TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_steam_app_index_name_norm ON steam_app_index(name_norm);
       ",
     )
     .map_err(|e| format!("could_not_initialize_database: {e}"))?;
-  migrate_catalog_steam_cache_hd_covers(conn)
+  migrate_catalog_steam_cache_hd_covers(conn)?;
+  migrate_catalog_group_keys(conn)
+}
+fn migrate_catalog_group_keys(conn: &Connection) -> Result<(), String> {
+  const KEY: &str = "catalog_group_keys_v1";
+
+  let _ = conn.execute(
+    "ALTER TABLE hydra_catalog_entries ADD COLUMN group_key TEXT NOT NULL DEFAULT ''",
+    [],
+  );
+  let _ = conn.execute(
+    "ALTER TABLE hydra_catalog_entries ADD COLUMN display_title TEXT NOT NULL DEFAULT ''",
+    [],
+  );
+  let _ = conn.execute(
+    "CREATE INDEX IF NOT EXISTS idx_hce_source_group ON hydra_catalog_entries(source_id, group_key)",
+    [],
+  );
+
+  if read_app_setting(conn, KEY).is_some() {
+    return Ok(());
+  }
+
+  let mut update = conn
+    .prepare(
+      "UPDATE hydra_catalog_entries SET group_key = ?1, display_title = ?2 WHERE id = ?3",
+    )
+    .map_err(|e| format!("migrate_group_keys_prepare: {e}"))?;
+
+  loop {
+    let mut stmt = conn
+      .prepare(
+        "SELECT id, title FROM hydra_catalog_entries \
+         WHERE group_key = '' OR display_title = '' LIMIT 2000",
+      )
+      .map_err(|e| format!("migrate_group_keys_select: {e}"))?;
+    let rows: Vec<(i64, String)> = stmt
+      .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+      .map_err(|e| format!("migrate_group_keys_query: {e}"))?
+      .filter_map(Result::ok)
+      .collect();
+    if rows.is_empty() {
+      break;
+    }
+    for (id, title) in rows {
+      let group_key = crate::title::catalog_game_group_key(&title);
+      let display_title = crate::title::clean_title_for_matching(&title);
+      update
+        .execute(params![group_key, display_title, id])
+        .map_err(|e| format!("migrate_group_keys_update: {e}"))?;
+    }
+  }
+
+  conn
+    .execute(
+      "INSERT INTO app_settings (key, value) VALUES (?1, '1')",
+      params![KEY],
+    )
+    .map_err(|e| format!("migrate_group_keys_mark: {e}"))?;
+  Ok(())
 }
 fn migrate_catalog_steam_cache_hd_covers(conn: &Connection) -> Result<(), String> {
   const KEY: &str = "catalog_steam_cache_hd_covers_v1";
@@ -194,51 +358,7 @@ fn migrate_catalog_steam_cache_hd_covers(conn: &Connection) -> Result<(), String
     .map_err(|e| format!("migrate_catalog_cache_mark: {e}"))?;
   Ok(())
 }
-pub fn fetch_source_by_id(conn: &Connection, id: i64) -> Result<SourceDto, String> {
-  conn
-    .query_row(
-      "SELECT id, name, base_url, status, created_at FROM download_sources WHERE id = ?1",
-      params![id],
-      |row| {
-        Ok(SourceDto {
-          id: row.get(0)?,
-          name: row.get(1)?,
-          base_url: row.get(2)?,
-          status: row.get(3)?,
-          created_at: row.get(4)?,
-        })
-      },
-    )
-    .map_err(|e| format!("could_not_fetch_source: {e}"))
-}
 
-pub fn map_job_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DownloadJobDto> {
-  Ok(DownloadJobDto {
-    id: row.get(0)?,
-    title: row.get(1)?,
-    url: row.get(2)?,
-    dest_path: row.get(3)?,
-    status: row.get(4)?,
-    priority: row.get(5)?,
-    progress: row.get(6)?,
-    bytes_downloaded: row.get(7)?,
-    total_bytes: row.get(8)?,
-    error_msg: row.get(9)?,
-    created_at: row.get(10)?,
-    updated_at: row.get(11)?,
-  })
-}
-
-pub fn fetch_job_by_id(conn: &Connection, id: i64) -> Result<DownloadJobDto, String> {
-  conn
-    .query_row(
-      "SELECT id, title, url, dest_path, status, priority, progress, bytes_downloaded, \
-       total_bytes, error_msg, created_at, updated_at FROM download_jobs WHERE id = ?1",
-      params![id],
-      map_job_row,
-    )
-    .map_err(|e| format!("could_not_fetch_job: {e}"))
-}
 pub fn read_app_setting(conn: &Connection, key: &str) -> Option<String> {
   conn
     .query_row(

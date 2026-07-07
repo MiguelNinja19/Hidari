@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { cleanTitleForCover, cleanTitleForDisplay, normalizeTitleKey } from './normalizeTitleKey'
+import {
+  catalogGameDisplayTitle,
+  cleanTitleForCover,
+  cleanTitleForDisplay,
+  coverTitleKey,
+  normalizeTitleKey,
+} from './normalizeTitleKey'
 
 describe('normalizeTitleKey', () => {
   it('normaliza título FitGirl para chave estável', () => {
@@ -19,7 +25,23 @@ describe('normalizeTitleKey', () => {
   })
 })
 
+describe('catalogGameDisplayTitle', () => {
+  it('remove sufixo de versão V + números', () => {
+    expect(catalogGameDisplayTitle('Eldest Souls V1 0 466')).toBe('Eldest Souls')
+    expect(catalogGameDisplayTitle('Some Game v2.0.1')).toBe('Some Game')
+    expect(catalogGameDisplayTitle('Terraria V1 4 4 1 Labor of Love')).toBe('Terraria')
+    expect(catalogGameDisplayTitle('Terraria v1.4.4.1 - Labor of Love Update')).toBe(
+      'Terraria',
+    )
+  })
+})
+
 describe('cleanTitleForDisplay', () => {
+  it('remove sufixo de versão V + números', () => {
+    expect(cleanTitleForDisplay('Eldest Souls V1 0 466')).toBe('Eldest Souls')
+    expect(cleanTitleForDisplay('Terraria V1 4 4 1 Labor of Love')).toBe('Terraria')
+  })
+
   it('remove builds e DLCs do título FitGirl', () => {
     expect(
       cleanTitleForDisplay(
@@ -36,5 +58,12 @@ describe('cleanTitleForCover', () => {
 
   it('remove tags entre colchetes', () => {
     expect(cleanTitleForCover('Cyberpunk 2077 [DODI Repack]')).toBe('Cyberpunk 2077')
+  })
+})
+
+describe('coverTitleKey', () => {
+  it('ignora repack e versão na chave de capa', () => {
+    expect(coverTitleKey('Eldest Souls V1 0 466 [FitGirl Repack]')).toBe('eldest souls')
+    expect(coverTitleKey('Terraria V1 4 4 1 Labor of Love')).toBe('terraria')
   })
 })

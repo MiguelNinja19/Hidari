@@ -17,7 +17,7 @@ Saída típica: `src-tauri/target/release/bundle/`.
 
 ## Configuração Tauri
 
-Ficheiro: `src-tauri/tauri.conf.json`
+Arquivo: `src-tauri/tauri.conf.json`
 
 | Campo | Valor atual |
 |-------|-------------|
@@ -48,7 +48,7 @@ src-tauri/binaries/7za.exe
 src-tauri/binaries/7za.dll
 ```
 
-Execute `npm run setup:binaries` se estes ficheiros não existirem. O launcher também procura `7z` no PATH ou em `Program Files\7-Zip`.
+Execute `npm run setup:binaries` se esses arquivos não existirem. O launcher também procura `7z` no PATH ou em `Program Files\7-Zip`.
 
 Para release, os binários são incluídos em `bundle.resources` no `tauri.conf.json`.
 
@@ -60,7 +60,7 @@ Usado pelo motor de download para transferências. Coloque em:
 src-tauri/binaries/aria2c.exe
 ```
 
-Em release, o ficheiro é incluído via `bundle.resources` no `tauri.conf.json`.
+Em release, o arquivo é incluído via `bundle.resources` no `tauri.conf.json`.
 
 Em runtime, o launcher também procura:
 

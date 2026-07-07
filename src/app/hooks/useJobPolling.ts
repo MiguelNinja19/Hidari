@@ -5,6 +5,7 @@ import {
   POLL_ACTIVE_JOBS_MS,
   POLL_DOWNLOADS_MS,
   POLL_LIBRARY_IDLE_MS,
+  POLL_RECONCILE_MS,
 } from '../../shared/config/polling'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { NavTab } from '../../layout/types'
@@ -12,7 +13,7 @@ import type { NavTab } from '../../layout/types'
 type UseJobPollingArgs = {
   activeTab: NavTab
   jobs: DownloadJob[]
-  refreshLibraryScan?: () => void
+  refreshLibraryScan?: (options?: { background?: boolean }) => void
   setDownloadsBooting?: (v: boolean) => void
 }
 
@@ -33,19 +34,29 @@ export function useJobPolling({
   )
 
   useEffect(() => {
+    if (activeTab === 'discover' && !needsFastJobPolling) return
     if (activeTab !== 'downloads' && activeTab !== 'library' && !needsFastJobPolling) return
 
-    const intervalMs =
-      activeTab === 'downloads'
+    const intervalMs = needsFastJobPolling
+      ? POLL_ACTIVE_JOBS_MS
+      : activeTab === 'downloads'
         ? POLL_DOWNLOADS_MS
-        : needsFastJobPolling
-          ? POLL_ACTIVE_JOBS_MS
-          : POLL_LIBRARY_IDLE_MS
+        : activeTab === 'library'
+          ? POLL_LIBRARY_IDLE_MS
+          : POLL_RECONCILE_MS
     const polling = window.setInterval(() => {
       void dispatch(fetchJobs())
     }, intervalMs)
     return () => window.clearInterval(polling)
   }, [dispatch, activeTab, needsFastJobPolling])
+
+  useEffect(() => {
+    if (activeTab !== 'library' || !refreshLibraryScan) return
+    const timer = window.setInterval(() => {
+      refreshLibraryScan({ background: true })
+    }, POLL_LIBRARY_IDLE_MS)
+    return () => window.clearInterval(timer)
+  }, [activeTab, refreshLibraryScan])
 
   useEffect(() => {
     if (activeTab !== 'library' && activeTab !== 'downloads') return
@@ -70,7 +81,7 @@ export function useJobPolling({
       }
 
       if (activeTab === 'downloads') setDownloadsBooting?.(false)
-      if (activeTab === 'library') refreshLibraryScan?.()
+      if (activeTab === 'library') refreshLibraryScan?.({ background: true })
     }
 
     void loadQueue()

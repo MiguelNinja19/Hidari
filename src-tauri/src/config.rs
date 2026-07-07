@@ -1,7 +1,16 @@
-pub const HYDRA_API_URL: &str = "https://api.hydralauncher.gg";
-pub const FITGIRL_SITE_URL: &str = "https://fitgirl-repacks.site";
+pub const HYDRA_API_URL: &str = "https://hydra-api-us-east-1.losbroxas.org";
+pub const HYDRALINKS_SOURCES_BASE: &str = "https://hydralinks.cloud/sources";
+/// Mirror comunitário dos catálogos hydralinks (sem Cloudflare).
+pub const HYDRALINKS_GITHUB_MIRROR_BASE: &str =
+  "https://raw.githubusercontent.com/ArnamentGames/HydraLinks/refs/heads/main";
 pub const STEAM_STORE_SEARCH_URL: &str =
   "https://store.steampowered.com/api/storesearch/";
+pub const STEAM_WEB_API_KEY_ENV: &str = "STEAM_WEB_API_KEY";
+/// Lista de jogos (appid + nome) actualizada diariamente — fallback quando a API oficial exige chave.
+pub const STEAM_GAMES_APPID_MIRROR_URL: &str =
+  "https://raw.githubusercontent.com/jsnli/steamappidlist/master/data/games_appid.json";
+pub const STEAM_STORE_APP_LIST_URL: &str =
+  "https://api.steampowered.com/IStoreService/GetAppList/v1/";
 
 pub const DOWNLOAD_ENGINE_BINARY: &str = "download-engine.exe";
 pub const ARIA2_BINARY: &str = "aria2c.exe";

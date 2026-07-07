@@ -1,61 +1,16 @@
-use crate::db::{
-  fetch_source_by_id, get_disabled_hydra_source_ids_from_conn, open_database_connection,
-};
+use crate::db::{get_disabled_hydra_source_ids_from_conn, open_database_connection};
 use crate::dto::*;
 use crate::sources::{
-  create_local_hydra_source, fetch_options_from_sources, hydra_check_download_sources_changes,
-  list_hydra_sources, load_source_by_id, load_sources, search_download_options_from_local_sources,
-  set_source_status, upsert_hydra_source, validate_source_url,
+  create_hydra_source, delete_source_catalog,
+  fetch_options_from_sources, get_hydra_source_by_id, hydra_check_download_sources_changes,
+  import_source_catalog_from_file, is_local_catalog_path,
+  list_hydra_sources, load_source_by_id, load_sources, persist_hydra_api_meta,
+  search_download_options_from_local_sources, set_source_status,
+  sync_source_catalog_from_remote, upsert_hydra_source, validate_source_url, SyncCatalogOutcome,
 };
 use rusqlite::params;
 use tauri::AppHandle;
 use tokio::time::Duration;
-
-#[tauri::command]
-pub fn add_source(app: AppHandle, payload: AddSourcePayload) -> Result<SourceDto, String> {
-  validate_source_url(&payload.base_url)?;
-  let conn = open_database_connection(&app)?;
-  conn
-    .execute(
-      "INSERT INTO download_sources (name, base_url, status) VALUES (?1, ?2, 'active')",
-      params![payload.name, payload.base_url],
-    )
-    .map_err(|e| format!("could_not_insert_source: {e}"))?;
-  fetch_source_by_id(&conn, conn.last_insert_rowid())
-}
-
-#[tauri::command]
-pub fn list_sources(app: AppHandle) -> Result<Vec<SourceDto>, String> {
-  let conn = open_database_connection(&app)?;
-  let mut stmt = conn
-    .prepare(
-      "SELECT id, name, base_url, status, created_at FROM download_sources ORDER BY id DESC",
-    )
-    .map_err(|e| format!("could_not_prepare_list_sources: {e}"))?;
-  let result = stmt
-    .query_map([], |row| {
-      Ok(SourceDto {
-        id: row.get(0)?,
-        name: row.get(1)?,
-        base_url: row.get(2)?,
-        status: row.get(3)?,
-        created_at: row.get(4)?,
-      })
-    })
-    .map_err(|e| format!("could_not_query_sources: {e}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| format!("could_not_map_sources: {e}"));
-  result
-}
-
-#[tauri::command]
-pub fn remove_source(app: AppHandle, payload: RemoveSourcePayload) -> Result<(), String> {
-  let conn = open_database_connection(&app)?;
-  conn
-    .execute("DELETE FROM download_sources WHERE id = ?1", params![payload.id])
-    .map_err(|e| format!("could_not_remove_source: {e}"))?;
-  Ok(())
-}
 
 #[tauri::command]
 pub async fn test_download_source(
@@ -100,7 +55,7 @@ pub async fn test_download_source(
         status_code: Some(code),
         latency_ms: latency,
         message: if ok {
-          format!("Conexao ok via /{path_used}")
+          format!("Conexão ok via /{path_used}")
         } else {
           format!("Fonte respondeu com HTTP {code} em /{path_used}")
         },
@@ -113,7 +68,7 @@ pub async fn test_download_source(
         ok: false,
         status_code: None,
         latency_ms: started.elapsed().as_millis(),
-        message: format!("Falha de conexao: {error}"),
+        message: format!("Falha de conexão: {error}"),
       })
     }
   }
@@ -161,25 +116,6 @@ pub async fn get_download_sources_changes(app: AppHandle) -> Result<Vec<GameSour
 }
 
 #[tauri::command]
-pub async fn search_game_download_options(
-  app: AppHandle,
-  payload: SearchGameOptionsPayload,
-) -> Result<Vec<DownloadOptionDto>, String> {
-  let conn = open_database_connection(&app)?;
-  let game_title: String = conn
-    .query_row(
-      "SELECT title FROM games WHERE id = ?1",
-      params![payload.game_id],
-      |row| row.get(0),
-    )
-    .map_err(|error| format!("could_not_find_game: {error}"))?;
-  let sources = load_sources(&conn)?;
-  drop(conn);
-
-  Ok(fetch_options_from_sources(&app, payload.game_id, &game_title, &sources).await)
-}
-
-#[tauri::command]
 pub async fn search_download_options(
   app: AppHandle,
   payload: SearchDownloadOptionsPayload,
@@ -203,7 +139,7 @@ pub async fn search_download_options(
     return Ok(Vec::new());
   }
 
-  Ok(search_download_options_from_local_sources(query, &active_sources).await)
+  Ok(search_download_options_from_local_sources(&app, query, &active_sources).await)
 }
 
 #[tauri::command]
@@ -212,9 +148,54 @@ pub async fn add_download_source(
   payload: AddDownloadSourcePayload,
 ) -> Result<HydraSourceDto, String> {
   validate_source_url(&payload.url)?;
-  let source = create_local_hydra_source(&payload.url);
+  let input = payload.url.trim();
+
+  if input.starts_with("http://") || input.starts_with("https://") {
+    return Err(
+      "Use \"Buscar\" para escolher um arquivo .json local (ex.: fitgirl.json).".to_string(),
+    );
+  }
+
+  if !is_local_catalog_path(input) {
+    return Err(
+      "Escolha um arquivo .json existente no disco com \"Buscar\".".to_string(),
+    );
+  }
+
+  let source = create_hydra_source(input, None);
   let conn = open_database_connection(&app)?;
   upsert_hydra_source(&conn, &source)?;
+  drop(conn);
+
+  let download_count = match import_source_catalog_from_file(&app, &source.id, input) {
+    Ok(count) => count,
+    Err(error) => {
+      delete_source_catalog(&app, &source.id);
+      if let Ok(conn) = open_database_connection(&app) {
+        let _ = conn.execute(
+          "DELETE FROM hydra_download_sources WHERE id = ?1",
+          params![source.id],
+        );
+      }
+      return Err(error);
+    }
+  };
+
+  if let Ok(conn) = open_database_connection(&app) {
+    let _ = conn.execute(
+      "UPDATE hydra_download_sources SET download_count = ?1 WHERE id = ?2",
+      params![download_count as i64, source.id],
+    );
+  }
+
+  let mut source = source;
+  source.download_count = download_count as i64;
+  if let Ok(n) = crate::covers::bulk_resolve_catalog_covers_from_index(&app) {
+    if n > 0 {
+      eprintln!("catalog_covers_resolved_on_import: {n}");
+    }
+  }
+  crate::covers::maybe_start_cover_precache(&app);
   Ok(source)
 }
 
@@ -226,8 +207,141 @@ pub fn get_download_sources(app: AppHandle) -> Result<Vec<HydraSourceDto>, Strin
 
 #[tauri::command]
 pub async fn sync_download_sources(app: AppHandle) -> Result<Vec<HydraSourceDto>, String> {
+  sync_all_local_source_catalogs(app.clone()).await?;
   let conn = open_database_connection(&app)?;
   list_hydra_sources(&conn)
+}
+
+fn persist_source_download_count(app: &AppHandle, source_id: &str, count: usize) {
+  if let Ok(conn) = open_database_connection(app) {
+    let _ = conn.execute(
+      "UPDATE hydra_download_sources SET download_count = ?1 WHERE id = ?2",
+      params![count as i64, source_id],
+    );
+  }
+}
+
+fn sync_outcome_to_dto(source_id: &str, outcome: SyncCatalogOutcome) -> SyncLocalSourceResultDto {
+  match outcome {
+    SyncCatalogOutcome::Updated(count) => SyncLocalSourceResultDto {
+      source_id: source_id.to_string(),
+      download_count: count,
+      warning: None,
+    },
+    SyncCatalogOutcome::Unchanged(count) => SyncLocalSourceResultDto {
+      source_id: source_id.to_string(),
+      download_count: count,
+      warning: Some(format!("Catálogo já está em dia ({count} jogos).")),
+    },
+    SyncCatalogOutcome::OfflineOnly { count, warning } => SyncLocalSourceResultDto {
+      source_id: source_id.to_string(),
+      download_count: count,
+      warning: Some(warning),
+    },
+  }
+}
+
+#[tauri::command]
+pub async fn sync_local_source_catalog(
+  app: AppHandle,
+  payload: SyncLocalSourcePayload,
+) -> Result<SyncLocalSourceResultDto, String> {
+  let conn = open_database_connection(&app)?;
+  let source = get_hydra_source_by_id(&conn, &payload.id)?;
+  drop(conn);
+
+  if !is_local_catalog_path(&source.url) {
+    return Err(
+      "Só é possível atualizar fontes importadas a partir de um arquivo .json local.".to_string(),
+    );
+  }
+
+  let outcome = sync_source_catalog_from_remote(&app, &source).await?;
+  if let Some(api) = &outcome.1 {
+    if let Ok(conn) = open_database_connection(&app) {
+      let _ = persist_hydra_api_meta(&conn, &source.id, api);
+    }
+  }
+  let dto = sync_outcome_to_dto(&source.id, outcome.0);
+  if dto.warning.is_none() {
+    persist_source_download_count(&app, &source.id, dto.download_count);
+    if let Ok(n) = crate::covers::bulk_resolve_catalog_covers_from_index(&app) {
+      if n > 0 {
+        eprintln!("catalog_covers_resolved_on_sync: {n}");
+      }
+    }
+    crate::covers::maybe_start_cover_precache(&app);
+  }
+  Ok(dto)
+}
+
+#[tauri::command]
+pub async fn sync_all_local_source_catalogs(
+  app: AppHandle,
+) -> Result<SyncAllLocalSourcesResultDto, String> {
+  let conn = open_database_connection(&app)?;
+  let sources = list_hydra_sources(&conn)?;
+  drop(conn);
+
+  let mut synced = Vec::new();
+  let mut failures = Vec::new();
+  let mut unchanged_count = 0usize;
+
+  for source in sources {
+    if !is_local_catalog_path(&source.url) {
+      continue;
+    }
+
+    match sync_source_catalog_from_remote(&app, &source).await {
+      Ok((outcome @ SyncCatalogOutcome::Unchanged(_), api)) => {
+        if let Some(meta) = api {
+          if let Ok(conn) = open_database_connection(&app) {
+            let _ = persist_hydra_api_meta(&conn, &source.id, &meta);
+          }
+        }
+        unchanged_count += 1;
+        synced.push(sync_outcome_to_dto(&source.id, outcome));
+      }
+      Ok((outcome @ SyncCatalogOutcome::Updated(count), api)) => {
+        if let Some(meta) = api {
+          if let Ok(conn) = open_database_connection(&app) {
+            let _ = persist_hydra_api_meta(&conn, &source.id, &meta);
+          }
+        }
+        persist_source_download_count(&app, &source.id, count);
+        synced.push(sync_outcome_to_dto(&source.id, outcome));
+      }
+      Ok((outcome @ SyncCatalogOutcome::OfflineOnly { .. }, api)) => {
+        if let Some(meta) = api {
+          if let Ok(conn) = open_database_connection(&app) {
+            let _ = persist_hydra_api_meta(&conn, &source.id, &meta);
+          }
+        }
+        synced.push(sync_outcome_to_dto(&source.id, outcome));
+      }
+      Err(message) => failures.push(SyncLocalSourceFailureDto {
+        source_id: source.id,
+        source_name: source.name,
+        message,
+      }),
+    }
+  }
+
+  let has_updates = synced.iter().any(|item| item.warning.is_none());
+  if has_updates {
+    if let Ok(n) = crate::covers::bulk_resolve_catalog_covers_from_index(&app) {
+      if n > 0 {
+        eprintln!("catalog_covers_resolved_on_sync_all: {n}");
+      }
+    }
+    crate::covers::maybe_start_cover_precache(&app);
+  }
+
+  Ok(SyncAllLocalSourcesResultDto {
+    synced,
+    failures,
+    unchanged_count,
+  })
 }
 
 #[tauri::command]
@@ -278,6 +392,7 @@ pub async fn check_download_sources_changes(app: AppHandle) -> Result<Vec<GameSo
 
 #[tauri::command]
 pub fn remove_download_source(app: AppHandle, payload: RemoveHydraSourcePayload) -> Result<(), String> {
+  delete_source_catalog(&app, &payload.id);
   let conn = open_database_connection(&app)?;
   conn
     .execute(
