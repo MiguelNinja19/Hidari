@@ -1,8 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { open, ask } from '@tauri-apps/plugin-dialog'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { useAppSettings } from '../../app/context/AppSettingsContext'
-import { useAppVersion } from '../../app/hooks/useAppVersion'
 import {
   addSource,
   deleteSource,
@@ -11,25 +10,13 @@ import {
   syncSource,
 } from '../sources/sourcesSlice'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import { useCoverPrecache } from '../covers/useCoverPrecache'
-import { useSteamAppIndex } from '../covers/useSteamAppIndex'
 import { SettingsPage } from './SettingsPage'
 import { SETTING_KEY, speedKeyToBps } from '../../shared/config/appSettings'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { formatSize } from '../../shared/utils/formatters'
 
-function canAddSourceInput(value: string): boolean {
-  const trimmed = value.trim()
-  return trimmed.length >= 4 && trimmed.toLowerCase().endsWith('.json')
-}
-
-type SettingsTabProps = {
-  onRefreshCovers: () => void
-}
-
-export function SettingsTab({ onRefreshCovers }: SettingsTabProps) {
+export function SettingsTab() {
   const dispatch = useAppDispatch()
-  const appVersion = useAppVersion()
   const {
     defaultDownloadPath,
     setDefaultDownloadPath,
@@ -51,7 +38,6 @@ export function SettingsTab({ onRefreshCovers }: SettingsTabProps) {
   const sourcesError = useAppSelector((state) => state.sources.error)
   const sourcesNotice = useAppSelector((state) => state.sources.notice)
 
-  const [sourceUrl, setSourceUrl] = useState('')
   const [addingSource, setAddingSource] = useState(false)
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null)
   const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null)
@@ -59,11 +45,7 @@ export function SettingsTab({ onRefreshCovers }: SettingsTabProps) {
   const [settingsError, setSettingsError] = useState('')
   const [diskFreeBytes, setDiskFreeBytes] = useState<number | null>(null)
 
-  const coverPrecache = useCoverPrecache({ onProgress: onRefreshCovers })
-  const steamAppIndex = useSteamAppIndex()
-
   const isSourceEnabled = (sourceId: string) => !disabledSourceIds.includes(sourceId)
-  const canSubmitSource = canAddSourceInput(sourceUrl)
 
   useEffect(() => {
     let cancelled = false
@@ -82,22 +64,22 @@ export function SettingsTab({ onRefreshCovers }: SettingsTabProps) {
     }
   }, [defaultDownloadPath])
 
-  const handleAddSource = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!canSubmitSource || addingSource) return
-    setAddingSource(true)
-    void dispatch(addSource({ url: sourceUrl.trim() }))
-      .unwrap()
-      .then(() => setSourceUrl(''))
-      .finally(() => setAddingSource(false))
-  }
-
-  const handleSelectSourceFile = async () => {
+  const handleImportSource = async () => {
+    if (addingSource) return
     const selected = await open({
       multiple: false,
       filters: [{ name: 'Catálogo JSON', extensions: ['json'] }],
     })
-    if (typeof selected === 'string') setSourceUrl(selected)
+    if (typeof selected !== 'string' || !selected.toLowerCase().endsWith('.json')) return
+
+    setAddingSource(true)
+    try {
+      await dispatch(addSource({ url: selected.trim() })).unwrap()
+    } catch (error) {
+      setSettingsError(formatUserError(error, 'Falha ao importar a fonte.'))
+    } finally {
+      setAddingSource(false)
+    }
   }
 
   const handleDeleteSource = async (sourceId: string, sourceName: string) => {
@@ -220,7 +202,6 @@ export function SettingsTab({ onRefreshCovers }: SettingsTabProps) {
 
   return (
     <SettingsPage
-      sourceUrl={sourceUrl}
       defaultDownloadPath={defaultDownloadPath}
       savePathError={settingsError}
       sourcesNotice={sourcesNotice}
@@ -233,17 +214,14 @@ export function SettingsTab({ onRefreshCovers }: SettingsTabProps) {
       removeTemporaryFiles={removeTemporaryFiles}
       seedTorrentsEnabled={seedTorrentsEnabled}
       downloadSpeedLimit={downloadSpeedLimit}
-      canSubmitSource={canSubmitSource}
       addingSource={addingSource}
       isSourceEnabled={isSourceEnabled}
-      setSourceUrl={setSourceUrl}
       setDefaultDownloadPath={setDefaultDownloadPath}
       setInstallOrganization={setInstallOrganization}
       setAfterInstallAction={setAfterInstallAction}
       handleSelectDefaultPath={handleSelectDefaultPath}
       handleSaveInstallSettings={handleSaveInstallSettings}
-      handleAddSource={handleAddSource}
-      onSelectSourceFile={handleSelectSourceFile}
+      onImportSource={handleImportSource}
       onDeleteSource={handleDeleteSource}
       onSyncSource={handleSyncSource}
       onSyncAllSources={handleSyncAllSources}
@@ -255,30 +233,6 @@ export function SettingsTab({ onRefreshCovers }: SettingsTabProps) {
       handleToggleSeed={handleToggleSeed}
       handleSpeedLimitChange={handleSpeedLimitChange}
       formatSize={formatSize}
-      coverCatalogTotal={coverPrecache.catalogTotal}
-      coverCachedTotal={coverPrecache.cachedTotal}
-      coverProgressPct={coverPrecache.progressPct}
-      coverPrecacheRunning={coverPrecache.status.running}
-      coverPrecacheProcessed={coverPrecache.status.processed}
-      coverPrecacheTotal={
-        coverPrecache.status.running ? coverPrecache.status.total : coverPrecache.catalogTotal
-      }
-      coverUnresolvedTotal={coverPrecache.unresolvedTotal}
-      onStartCoverPrecache={async () => {
-        await coverPrecache.startPrecache()
-      }}
-      onStopCoverPrecache={async () => {
-        await coverPrecache.stopPrecache()
-      }}
-      onRetryUnresolvedCovers={async () => {
-        await coverPrecache.retryUnresolved()
-      }}
-      steamAppIndexStatus={steamAppIndex.status}
-      steamAppIndexRefreshing={steamAppIndex.refreshing}
-      onRefreshSteamAppIndex={async () => {
-        await steamAppIndex.refreshIndex()
-      }}
-      appVersion={appVersion}
     />
   )
 }

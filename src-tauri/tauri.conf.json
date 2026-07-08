@@ -16,7 +16,8 @@
         "width": 1094,
         "height": 816,
         "resizable": true,
-        "maximizable": false,
+        "maximizable": true,
+        "theme": "Dark",
         "fullscreen": false
       }
     ],

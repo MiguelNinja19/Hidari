@@ -301,7 +301,7 @@ export function DiscoverPage({
                   coverUrl={pickCoverUrl}
                   localPath={
                     pickCover &&
-                    (pickCover.coverUrl === pickCoverUrl || !discoverPickGame.coverUrl?.trim())
+                      (pickCover.coverUrl === pickCoverUrl || !discoverPickGame.coverUrl?.trim())
                       ? pickCover.localPath
                       : null
                   }

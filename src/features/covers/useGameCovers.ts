@@ -14,6 +14,7 @@ export type ResolvedCover = {
 }
 
 const WARM_RETRY_MS = 30 * 60 * 1000
+const BATCH_LOOKUP_RETRY_MS = 15 * 60 * 1000
 const MAX_WARM_CONCURRENT = 2
 const BATCH_DEBOUNCE_MS = 120
 
@@ -85,6 +86,7 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
   const warmQueueRef = useRef<WarmTask[]>([])
   const warmInFlightRef = useRef(0)
   const warmAttemptAtRef = useRef(new Map<string, number>())
+  const batchLookupAttemptAtRef = useRef(new Map<string, number>())
   const lookupAttemptedRef = useRef(new Set<string>())
   const loadingKeysRef = useRef(new Set<string>())
   const batchInFlightRef = useRef(false)
@@ -273,7 +275,14 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
       const missing = titles.filter((title) => {
         if (isCoverLookupPending(title, loadingKeysRef.current)) return false
         const resolved = resolveCover(title)
-        return !resolved.coverUrl && !resolved.localPath
+        if (resolved.coverUrl || resolved.localPath) return false
+
+        const key = coverTitleKey(title)
+        const lastBatchAttempt = batchLookupAttemptAtRef.current.get(key) ?? 0
+        if (lastBatchAttempt > 0 && Date.now() - lastBatchAttempt < BATCH_LOOKUP_RETRY_MS) {
+          return false
+        }
+        return true
       })
       if (missing.length === 0) return
 
@@ -292,6 +301,7 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
 
         for (const title of pending) {
           markCoverLookupPending(title, loadingKeysRef.current)
+          batchLookupAttemptAtRef.current.set(coverTitleKey(title), Date.now())
         }
         setLoadingVersion((value) => value + 1)
         batchInFlightRef.current = true
@@ -299,6 +309,13 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
         void sourcesApi
           .resolveCoversForTitles(pending)
           .then((rows) => {
+            for (const row of rows) {
+              const url = row.coverUrl?.trim()
+              if (!url) continue
+              if (!row.localCoverPath?.trim()) {
+                enqueueWarm(row.title, url)
+              }
+            }
             setSavedCovers((prev) => {
               const map = { ...prev }
               for (const row of rows) {
@@ -325,7 +342,7 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
           })
       }, BATCH_DEBOUNCE_MS)
     },
-    [resolveCover],
+    [enqueueWarm, resolveCover],
   )
 
   const lookupCoverForTitle = useCallback(

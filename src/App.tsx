@@ -109,7 +109,7 @@ function App() {
     if (activeTab === 'favorites') {
       void favorites.refresh()
     }
-  }, [activeTab, favorites.refresh])
+  }, [activeTab, favorites])
 
   useDeepLinkNavigation({
     onNavigateDiscover: navigateDiscover,
@@ -141,6 +141,7 @@ function App() {
   const {
     resolveCover,
     warmCover,
+    warmCovers,
     refreshCovers,
     syncJobCovers,
     resolveCoversBatch,
@@ -160,6 +161,25 @@ function App() {
   useEffect(() => {
     syncJobCovers(jobs)
   }, [jobs, syncJobCovers])
+
+  useEffect(() => {
+    const visible = discover.displayCatalogSource.slice(0, 80)
+    if (visible.length === 0) return
+
+    const titles = visible.map((game) => game.title)
+    resolveCoversBatch(titles)
+
+    const directUrls = visible
+      .map((game) => {
+        const url = game.coverUrl?.trim()
+        if (!url) return null
+        return { title: game.title, coverUrl: url }
+      })
+      .filter((item): item is { title: string; coverUrl: string } => item != null)
+    if (directUrls.length > 0) {
+      warmCovers(directUrls)
+    }
+  }, [discover.displayCatalogSource, resolveCoversBatch, warmCovers])
 
   useEffect(() => {
     if (!discover.discoverPickGame?.coverUrl) return
@@ -288,7 +308,7 @@ function App() {
           />
         )
       case 'settings':
-        return <SettingsTab onRefreshCovers={refreshCovers} />
+        return <SettingsTab />
       default:
         return null
     }

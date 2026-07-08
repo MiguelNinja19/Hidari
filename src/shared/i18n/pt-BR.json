@@ -75,7 +75,7 @@
   },
   "settings": {
     "title": "Configurações",
-    "subtitle": "Catálogo, pasta de instalação, downloads e capas.",
+    "subtitle": "Pasta de instalação, downloads e catálogo.",
     "version": "Versão {{version}}"
   }
 }

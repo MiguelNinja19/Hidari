@@ -55,7 +55,7 @@
   },
   "settings": {
     "title": "Settings",
-    "subtitle": "Catalog, install folder, downloads, and covers.",
+    "subtitle": "Install folder, downloads, and catalog.",
     "version": "Version {{version}}"
   }
 }
