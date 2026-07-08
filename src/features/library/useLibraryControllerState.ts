@@ -526,10 +526,13 @@ export function useLibraryControllerState({
 
   const handleDeleteLibraryItem = useCallback(
     async (item: LibraryEntry) => {
-      const confirmed = await ask(`Excluir "${item.title}" e os arquivos na pasta de instalação?`, {
-        title: 'Confirmar exclusão',
-        kind: 'warning',
-      })
+      const confirmed = await ask(
+        `Deseja excluir "${item.title}"?\n\nOs arquivos da pasta de instalação também serão removidos e essa ação não pode ser desfeita.`,
+        {
+          title: 'Remover jogo',
+          kind: 'warning',
+        },
+      )
       if (!confirmed) return
 
       const gameKey = libraryGameKey(item.title)

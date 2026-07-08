@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { APP_LOCALE } from '../../shared/config/locale'
 import { InlineAlert } from '../../shared/components/InlineAlert'
 import type { Source } from '../../shared/types/contracts'
@@ -11,7 +12,7 @@ type SettingsPageProps = {
   sources: Source[]
   sourcesLoading: boolean
   sourcesError: string | null
-  sourcesNotice: string | null
+  toastMessage: string | null
   removeTemporaryFiles: boolean
   seedTorrentsEnabled: boolean
   downloadSpeedLimit: string
@@ -24,7 +25,7 @@ type SettingsPageProps = {
   handleSaveInstallSettings: () => Promise<void>
   onImportSource: () => Promise<void>
   onDeleteSource: (sourceId: string, sourceName: string) => Promise<void>
-  onSyncSource: (sourceId: string) => Promise<void>
+  onSyncSource: (sourceId: string, sourceName: string) => Promise<void>
   onSyncAllSources: () => Promise<void>
   deletingSourceId: string | null
   syncingSourceId: string | null
@@ -49,7 +50,7 @@ export function SettingsPage({
   sources,
   sourcesLoading,
   sourcesError,
-  sourcesNotice,
+  toastMessage,
   removeTemporaryFiles,
   seedTorrentsEnabled,
   downloadSpeedLimit,
@@ -78,6 +79,14 @@ export function SettingsPage({
 
   return (
     <section className="settings-page">
+      {toastMessage
+        ? createPortal(
+            <div className="settings-toast" role="status" aria-live="polite">
+              {toastMessage}
+            </div>,
+            document.body,
+          )
+        : null}
       <div className="settings-stack">
         <div className="settings-stack__row">
           <section id="settings-folder" className="settings-block">
@@ -243,12 +252,6 @@ export function SettingsPage({
                 {sourcesError}
               </InlineAlert>
             ) : null}
-            {sourcesNotice ? (
-              <InlineAlert className="settings-block__alert" variant="info">
-                {sourcesNotice}
-              </InlineAlert>
-            ) : null}
-
             {sources.length === 0 && !sourcesLoading ? (
               <p className="settings-block__hint">Nenhuma fonte importada ainda. Clique em Importar.</p>
             ) : (
@@ -291,7 +294,7 @@ export function SettingsPage({
                               type="button"
                               className="btn btn-outline btn--compact settings-source-actions__btn"
                               disabled={isManagingSources}
-                              onClick={() => void onSyncSource(source.id)}
+                              onClick={() => void onSyncSource(source.id, source.name)}
                             >
                               {syncingSourceId === source.id ? '…' : 'Atualizar'}
                             </button>

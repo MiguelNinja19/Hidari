@@ -273,6 +273,14 @@ select:focus {
     0 0 0 1px rgba(212, 255, 0, 0.2);
 }
 
+/* Explorar: hover/focus suave, igual ao campo da Biblioteca */
+.page-toolbar--discover .browse-search__input:hover:not(:disabled),
+.page-toolbar--discover .browse-search__input:focus {
+  border-color: var(--divider);
+  box-shadow: var(--shadow-inset);
+  outline: none;
+}
+
 /* ── Notices & empty states ─────────────────────────────────────────────── */
 
 .inline-alert {
@@ -742,8 +750,27 @@ select:focus {
 }
 
 .game-detail__option:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  background: rgba(212, 255, 0, 0.04);
+  border-color: var(--divider);
+  background: transparent;
+}
+
+.game-detail .btn:hover:not(:disabled),
+.game-detail .btn:active:not(:disabled),
+.game-detail__back:hover:not(:disabled),
+.game-detail__back:active:not(:disabled) {
+  filter: none;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-main);
+  box-shadow: none;
+}
+
+.game-detail__option-action {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
 
 /* ── Downloads ──────────────────────────────────────────────────────────── */
@@ -800,6 +827,50 @@ select:focus {
   gap: 12px;
   width: 100%;
   min-width: 0;
+}
+
+.settings-toast {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 9999;
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 10px 12px;
+  border: var(--border-thin) solid rgba(212, 255, 0, 0.55);
+  border-radius: var(--radius-sm);
+  background: rgba(212, 255, 0, 0.18);
+  color: #d4ff00;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.35;
+  box-shadow: var(--shadow-card);
+  pointer-events: none;
+  animation:
+    settings-toast-in 0.2s ease-out,
+    settings-toast-out 0.24s ease-in 2.76s;
+}
+
+@keyframes settings-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes settings-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 }
 
 .settings-stack {

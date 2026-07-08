@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { open, ask } from '@tauri-apps/plugin-dialog'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { useAppSettings } from '../../app/context/AppSettingsContext'
+import { APP_LOCALE } from '../../shared/config/locale'
 import {
   addSource,
   deleteSource,
@@ -36,7 +37,6 @@ export function SettingsTab() {
   const sources = useAppSelector((state) => state.sources.items)
   const sourcesLoading = useAppSelector((state) => state.sources.loading)
   const sourcesError = useAppSelector((state) => state.sources.error)
-  const sourcesNotice = useAppSelector((state) => state.sources.notice)
 
   const [addingSource, setAddingSource] = useState(false)
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null)
@@ -44,6 +44,19 @@ export function SettingsTab() {
   const [syncingAllSources, setSyncingAllSources] = useState(false)
   const [settingsError, setSettingsError] = useState('')
   const [diskFreeBytes, setDiskFreeBytes] = useState<number | null>(null)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const toastTimerRef = useRef<number | null>(null)
+
+  const showToast = useCallback((message: string) => {
+    const trimmed = message.trim()
+    if (!trimmed) return
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    setToastMessage(trimmed)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null)
+      toastTimerRef.current = null
+    }, 3000)
+  }, [])
 
   const isSourceEnabled = (sourceId: string) => !disabledSourceIds.includes(sourceId)
 
@@ -64,6 +77,12 @@ export function SettingsTab() {
     }
   }, [defaultDownloadPath])
 
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    }
+  }, [])
+
   const handleImportSource = async () => {
     if (addingSource) return
     const selected = await open({
@@ -74,7 +93,8 @@ export function SettingsTab() {
 
     setAddingSource(true)
     try {
-      await dispatch(addSource({ url: selected.trim() })).unwrap()
+      const source = await dispatch(addSource({ url: selected.trim() })).unwrap()
+      showToast(`${source.downloadCount.toLocaleString(APP_LOCALE)} jogos importados.`)
     } catch (error) {
       setSettingsError(formatUserError(error, 'Falha ao importar a fonte.'))
     } finally {
@@ -84,8 +104,8 @@ export function SettingsTab() {
 
   const handleDeleteSource = async (sourceId: string, sourceName: string) => {
     const confirmed = await ask(
-      `Excluir a fonte "${sourceName}"? O catálogo offline será removido da app (o arquivo .json no disco não é apagado).`,
-      { title: 'Excluir fonte', kind: 'warning' },
+      `Deseja excluir a fonte "${sourceName}"?\n\nIsso remove o catálogo da aplicação, mas não apaga o arquivo .json do seu disco.`,
+      { title: 'Remover fonte', kind: 'warning' },
     )
     if (!confirmed) return
 
@@ -100,10 +120,11 @@ export function SettingsTab() {
     }
   }
 
-  const handleSyncSource = async (sourceId: string) => {
+  const handleSyncSource = async (sourceId: string, sourceName: string) => {
     setSyncingSourceId(sourceId)
     try {
       await dispatch(syncSource(sourceId)).unwrap()
+      showToast(`Fonte ${sourceName} atualizada`)
     } finally {
       setSyncingSourceId(null)
     }
@@ -114,6 +135,7 @@ export function SettingsTab() {
     setSyncingAllSources(true)
     try {
       await dispatch(syncAllSources()).unwrap()
+      showToast('Todas as fontes atualizadas')
       await dispatch(fetchSources())
     } finally {
       setSyncingAllSources(false)
@@ -204,7 +226,7 @@ export function SettingsTab() {
     <SettingsPage
       defaultDownloadPath={defaultDownloadPath}
       savePathError={settingsError}
-      sourcesNotice={sourcesNotice}
+      toastMessage={toastMessage}
       diskFreeBytes={diskFreeBytes}
       installOrganization={installOrganization}
       afterInstallAction={afterInstallAction}
