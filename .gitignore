@@ -24,8 +24,10 @@ dist-ssr
 *.sln
 *.sw?
 
+# Temporários e snapshots locais
 .tmp-7z-setup
-scripts/.tmp-hydra-db-snapshot
+**/.tmp-hydra-db/
+**/.tmp-hydra-db-snapshot/
 src-tauri/binaries/*.exe
 src-tauri/binaries/*.dll
 src-tauri/target/
