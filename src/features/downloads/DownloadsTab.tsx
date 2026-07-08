@@ -15,6 +15,7 @@ import {
   isTorrentMetadataPhase,
   resolveJobProgressPercent,
 } from '../../shared/utils/jobProgress'
+import { formatUserError } from '../../shared/utils/formatUserError'
 import type { DownloadJob } from '../../shared/types/contracts'
 
 type DownloadsTabProps = {
@@ -46,7 +47,7 @@ export function DownloadsTab({
     try {
       await action()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Falha na operação.')
+      setActionError(formatUserError(error, 'Falha na operação.'))
     } finally {
       setActionBusyId(null)
     }

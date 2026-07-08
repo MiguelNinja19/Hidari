@@ -17,7 +17,9 @@ export function Button({ variant = 'default', size = 'default', className, child
         ? 'btn-outline'
         : variant === 'danger'
           ? 'btn-danger'
-          : ''
+          : variant === 'ghost'
+            ? 'btn-ghost'
+            : ''
   const sizeClass = size === 'compact' ? 'btn--compact' : ''
   const classes = ['btn', variantClass, sizeClass, className].filter(Boolean).join(' ')
   return (

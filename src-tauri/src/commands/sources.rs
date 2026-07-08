@@ -1,119 +1,12 @@
 use crate::db::{get_disabled_hydra_source_ids_from_conn, open_database_connection};
 use crate::dto::*;
 use crate::sources::{
-  create_hydra_source, delete_source_catalog,
-  fetch_options_from_sources, get_hydra_source_by_id, hydra_check_download_sources_changes,
-  import_source_catalog_from_file, is_local_catalog_path,
-  list_hydra_sources, load_source_by_id, load_sources, persist_hydra_api_meta,
-  search_download_options_from_local_sources, set_source_status,
+  create_hydra_source, delete_source_catalog, get_hydra_source_by_id, import_source_catalog_from_file,
+  is_local_catalog_path, list_hydra_sources, persist_hydra_api_meta, search_download_options_from_local_sources,
   sync_source_catalog_from_remote, upsert_hydra_source, validate_source_url, SyncCatalogOutcome,
 };
 use rusqlite::params;
 use tauri::AppHandle;
-use tokio::time::Duration;
-
-#[tauri::command]
-pub async fn test_download_source(
-  app: AppHandle,
-  payload: TestSourcePayload,
-) -> Result<TestSourceResultDto, String> {
-  let conn = open_database_connection(&app)?;
-  let source = load_source_by_id(&conn, payload.id)?;
-  drop(conn);
-
-  let client = reqwest::Client::builder()
-    .timeout(Duration::from_secs(8))
-    .build()
-    .map_err(|error| format!("could_not_create_http_client: {error}"))?;
-
-  let base = source.base_url.trim_end_matches('/');
-  let started = std::time::Instant::now();
-
-  // Primeiro tenta health, fallback para search.
-  let primary = client.get(format!("{base}/health")).send().await;
-  let response = match primary {
-    Ok(resp) => Ok(("health".to_string(), resp)),
-    Err(_) => client
-      .get(format!("{base}/search"))
-      .query(&[("query", "test"), ("gameId", "0")])
-      .send()
-      .await
-      .map(|resp| ("search".to_string(), resp)),
-  };
-
-  match response {
-    Ok((path_used, resp)) => {
-      let latency = started.elapsed().as_millis();
-      let code = resp.status().as_u16();
-      let ok = resp.status().is_success();
-      let status = if ok { "active" } else { "failed" };
-      set_source_status(&app, source.id, status);
-
-      Ok(TestSourceResultDto {
-        source_id: source.id,
-        ok,
-        status_code: Some(code),
-        latency_ms: latency,
-        message: if ok {
-          format!("Conexão ok via /{path_used}")
-        } else {
-          format!("Fonte respondeu com HTTP {code} em /{path_used}")
-        },
-      })
-    }
-    Err(error) => {
-      set_source_status(&app, source.id, "failed");
-      Ok(TestSourceResultDto {
-        source_id: source.id,
-        ok: false,
-        status_code: None,
-        latency_ms: started.elapsed().as_millis(),
-        message: format!("Falha de conexão: {error}"),
-      })
-    }
-  }
-}
-
-#[tauri::command]
-pub async fn get_download_sources_changes(app: AppHandle) -> Result<Vec<GameSourceChangeDto>, String> {
-  let conn = open_database_connection(&app)?;
-  let games: Vec<(i64, String)> = {
-    let mut stmt = conn
-      .prepare("SELECT id, title FROM games ORDER BY id ASC")
-      .map_err(|error| format!("could_not_prepare_games_query: {error}"))?;
-    let rows = stmt
-      .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-      .map_err(|error| format!("could_not_query_games: {error}"))?
-      .collect::<Result<Vec<_>, _>>()
-      .map_err(|error| format!("could_not_map_games: {error}"))?;
-    rows
-  };
-  let sources = load_sources(&conn)?;
-  drop(conn);
-
-  let mut changes: Vec<GameSourceChangeDto> = Vec::new();
-  for (game_id, game_title) in games {
-    let options = fetch_options_from_sources(&app, game_id, &game_title, &sources).await;
-    let count = options.len() as i64;
-
-    let conn = open_database_connection(&app)?;
-    conn
-      .execute(
-        "INSERT INTO download_source_changes (game_id, new_count, updated_at) \
-         VALUES (?1, ?2, CURRENT_TIMESTAMP) \
-         ON CONFLICT(game_id) DO UPDATE SET new_count = excluded.new_count, updated_at = CURRENT_TIMESTAMP",
-        params![game_id, count],
-      )
-      .map_err(|error| format!("could_not_upsert_source_change: {error}"))?;
-
-    changes.push(GameSourceChangeDto {
-      game_id,
-      new_download_options_count: count,
-    });
-  }
-
-  Ok(changes)
-}
 
 #[tauri::command]
 pub async fn search_download_options(
@@ -195,7 +88,6 @@ pub async fn add_download_source(
       eprintln!("catalog_covers_resolved_on_import: {n}");
     }
   }
-  crate::covers::maybe_start_cover_precache(&app);
   Ok(source)
 }
 
@@ -265,12 +157,21 @@ pub async fn sync_local_source_catalog(
   let dto = sync_outcome_to_dto(&source.id, outcome.0);
   if dto.warning.is_none() {
     persist_source_download_count(&app, &source.id, dto.download_count);
+    if let Ok(conn) = open_database_connection(&app) {
+      let hash = conn
+        .query_row(
+          "SELECT COALESCE(payload_hash, '') FROM hydra_source_catalogs WHERE source_id = ?1",
+          params![source.id],
+          |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_default();
+      crate::catalog::record_catalog_snapshot(&conn, &source.id, dto.download_count as i64, &hash);
+    }
     if let Ok(n) = crate::covers::bulk_resolve_catalog_covers_from_index(&app) {
       if n > 0 {
         eprintln!("catalog_covers_resolved_on_sync: {n}");
       }
     }
-    crate::covers::maybe_start_cover_precache(&app);
   }
   Ok(dto)
 }
@@ -334,7 +235,6 @@ pub async fn sync_all_local_source_catalogs(
         eprintln!("catalog_covers_resolved_on_sync_all: {n}");
       }
     }
-    crate::covers::maybe_start_cover_precache(&app);
   }
 
   Ok(SyncAllLocalSourcesResultDto {
@@ -342,52 +242,6 @@ pub async fn sync_all_local_source_catalogs(
     failures,
     unchanged_count,
   })
-}
-
-#[tauri::command]
-pub async fn check_download_sources_changes(app: AppHandle) -> Result<Vec<GameSourceChangeDto>, String> {
-  let conn = open_database_connection(&app)?;
-  let sources = list_hydra_sources(&conn)?;
-  let source_ids: Vec<String> = sources.into_iter().map(|source| source.id).collect();
-  if source_ids.is_empty() {
-    return Ok(Vec::new());
-  }
-
-  let games: Vec<(i64, String)> = {
-    let mut stmt = conn
-      .prepare("SELECT id, title FROM games ORDER BY id ASC")
-      .map_err(|error| format!("could_not_prepare_games_query: {error}"))?;
-    let result = stmt
-      .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-      .map_err(|error| format!("could_not_query_games: {error}"))?
-      .collect::<Result<Vec<_>, _>>()
-      .map_err(|error| format!("could_not_map_games: {error}"))?;
-    result
-  };
-
-  if games.is_empty() {
-    return Ok(Vec::new());
-  }
-
-  let raw_changes = hydra_check_download_sources_changes(&source_ids, &games).await?;
-  let mut changes: Vec<GameSourceChangeDto> = Vec::new();
-
-  for (game_id, count) in raw_changes {
-    conn
-      .execute(
-        "INSERT INTO download_source_changes (game_id, new_count, updated_at) \
-         VALUES (?1, ?2, CURRENT_TIMESTAMP) \
-         ON CONFLICT(game_id) DO UPDATE SET new_count = excluded.new_count, updated_at = CURRENT_TIMESTAMP",
-        params![game_id, count],
-      )
-      .map_err(|error| format!("could_not_upsert_source_change: {error}"))?;
-    changes.push(GameSourceChangeDto {
-      game_id,
-      new_download_options_count: count,
-    });
-  }
-
-  Ok(changes)
 }
 
 #[tauri::command]

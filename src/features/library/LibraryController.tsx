@@ -3,9 +3,11 @@ import { useAppDispatch } from '../../app/hooks'
 import { resumeJob } from '../queue/queueSlice'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import type { DownloadJob, LibraryPathState } from '../../shared/types/contracts'
+import type { LibrarySort } from '../../shared/config/appSettings'
 import type { ResolvedCover } from '../covers/useGameCovers'
 import {
   hasManualInstallRoot,
+  isPathStateResolved,
   isPlayableLibraryItem,
   libraryStatusMeta,
   showInstallAction,
@@ -16,16 +18,19 @@ import type { LibraryEntry } from './types'
 
 export type LibraryControllerValue = {
   libraryItems: LibraryEntry[]
+  filteredEntries: LibraryEntry[]
   libraryLoading: boolean
   refreshLibraryScan: (options?: { background?: boolean }) => Promise<void>
   jobs: DownloadJob[]
   pathStateByKey: Record<string, LibraryPathState>
   libraryFilter: string
+  librarySort: LibrarySort
   playBusyId: string | null
   installBusyId: string | null
   savePathError: string
-  actionMessage: string
+  clearSavePathError: () => void
   setLibraryFilter: (value: string) => void
+  setLibrarySort: (value: LibrarySort) => void
   onGoDownloads: () => void
   onGoDiscover: () => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
@@ -74,6 +79,7 @@ export function useLibraryItemHelpers() {
     showLocateInstallAction: (item: LibraryEntry) =>
       showLocateInstallAction(item, jobs, pathStateByKey),
     hasManualInstallRoot: (item: LibraryEntry) => hasManualInstallRoot(item, pathStateByKey),
+    isPathStateResolved: (item: LibraryEntry) => isPathStateResolved(item, pathStateByKey),
     isLibraryInstalled: (item: LibraryEntry) => isPlayableLibraryItem(item, jobs, pathStateByKey),
   }
 }

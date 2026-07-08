@@ -58,16 +58,16 @@ function LibraryGameTile({
       className={`game-tile game-tile--library${className ? ` ${className}` : ''}`}
       aria-label={titleAttr ?? title}
     >
+      <h3 className="game-tile__title game-tile__title--above" title={titleAttr ?? title}>
+        {title}
+      </h3>
+
       <div className="game-tile__card">
         <div className="game-tile__cover-wrap">
           <div className="game-tile__cover">{cover}</div>
         </div>
 
         <div className="game-tile__body">
-          <h3 className="game-tile__title" title={titleAttr ?? title}>
-            {title}
-          </h3>
-
           {statusLine ? <p className="game-tile__status">{statusLine}</p> : null}
 
           {hasActions ? (
@@ -140,54 +140,59 @@ export function GameTile({
       className={`game-tile${className ? ` ${className}` : ''}`}
       aria-label={titleAttr ?? title}
     >
-      <div className="game-tile__cover-wrap">
-        <div className="game-tile__cover">{cover}</div>
-      </div>
-      <h3 className="game-tile__title" title={titleAttr ?? title}>
+      <h3 className="game-tile__title game-tile__title--above" title={titleAttr ?? title}>
         {title}
       </h3>
-      {hasActions ? (
-        <div className="game-tile__actions">
-          {primaryAction ? (
-            <Button
-              variant={primaryAction.variant ?? 'primary'}
-              size="compact"
-              className={`game-tile__cta${
-                primaryAction.id === 'install' ? ' game-tile__cta--install' : ''
-              }`}
-              type="button"
-              title={primaryAction.title}
-              disabled={primaryAction.disabled}
-              onClick={primaryAction.onClick}
-            >
-              {primaryAction.label}
-            </Button>
-          ) : null}
-          {secondaryActions.length > 0 ? (
-            <div className="game-tile__secondary" role="group" aria-label="Mais ações">
-              {secondaryActions.map((action) => (
-                <Button
-                  key={action.id}
-                  variant={action.variant ?? 'outline'}
-                  size="compact"
-                  className="game-tile__tool"
-                  type="button"
-                  title={action.title ?? action.label}
-                  disabled={action.disabled}
-                  onClick={action.onClick}
-                >
-                  {action.label}
-                </Button>
-              ))}
-            </div>
-          ) : null}
+
+      <div className="game-tile__card">
+        <div className="game-tile__cover-wrap">
+          <div className="game-tile__cover">{cover}</div>
         </div>
-      ) : null}
-      {statusLine ? (
-        <div className="game-tile__foot">
-          <p className="game-tile__status">{statusLine}</p>
-        </div>
-      ) : null}
+
+        {hasActions ? (
+          <div className="game-tile__actions">
+            {primaryAction ? (
+              <Button
+                variant={primaryAction.variant ?? 'primary'}
+                size="compact"
+                className={`game-tile__cta${
+                  primaryAction.id === 'install' ? ' game-tile__cta--install' : ''
+                }`}
+                type="button"
+                title={primaryAction.title}
+                disabled={primaryAction.disabled}
+                onClick={primaryAction.onClick}
+              >
+                {primaryAction.label}
+              </Button>
+            ) : null}
+            {secondaryActions.length > 0 ? (
+              <div className="game-tile__secondary" role="group" aria-label="Mais ações">
+                {secondaryActions.map((action) => (
+                  <Button
+                    key={action.id}
+                    variant={action.variant ?? 'outline'}
+                    size="compact"
+                    className="game-tile__tool"
+                    type="button"
+                    title={action.title ?? action.label}
+                    disabled={action.disabled}
+                    onClick={action.onClick}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {statusLine ? (
+          <div className="game-tile__foot">
+            <p className="game-tile__status">{statusLine}</p>
+          </div>
+        ) : null}
+      </div>
     </article>
   )
 }

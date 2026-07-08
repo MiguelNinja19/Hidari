@@ -231,8 +231,16 @@ fn stem_of_exe(file_name: &str) -> &str {
     .unwrap_or(file_name)
 }
 
-fn collect_executable_candidates(root: &Path, depth: usize, out: &mut Vec<(usize, PathBuf)>) {
-  if depth > 10 {
+const SCAN_DEPTH_FAST: usize = 3;
+const SCAN_DEPTH_FULL: usize = 10;
+
+fn collect_executable_candidates(
+  root: &Path,
+  depth: usize,
+  max_depth: usize,
+  out: &mut Vec<(usize, PathBuf)>,
+) {
+  if depth > max_depth {
     return;
   }
 
@@ -249,7 +257,7 @@ fn collect_executable_candidates(root: &Path, depth: usize, out: &mut Vec<(usize
     };
 
     if metadata.is_dir() {
-      collect_executable_candidates(&path, depth + 1, out);
+      collect_executable_candidates(&path, depth + 1, max_depth, out);
       continue;
     }
 
@@ -333,7 +341,7 @@ pub fn folder_has_playable_game_exe(title: &str, folder: &Path) -> bool {
 
   let title_tokens = title::tokenize_title(title);
   let mut local: Vec<(usize, PathBuf)> = Vec::new();
-  collect_executable_candidates(folder, 0, &mut local);
+  collect_executable_candidates(folder, 0, SCAN_DEPTH_FULL, &mut local);
 
   for (depth, path) in local {
     if !is_probably_executable(&path) {
@@ -529,8 +537,22 @@ pub fn resolve_launch_candidates_with_extra_roots(
   dest_path: &str,
   extra_roots: &[PathBuf],
 ) -> Result<Vec<PathBuf>, String> {
+  resolve_launch_candidates_with_extra_roots_depth(
+    title,
+    dest_path,
+    extra_roots,
+    SCAN_DEPTH_FULL,
+  )
+}
+
+pub fn resolve_launch_candidates_with_extra_roots_depth(
+  title: &str,
+  dest_path: &str,
+  extra_roots: &[PathBuf],
+  max_depth: usize,
+) -> Result<Vec<PathBuf>, String> {
   let roots = merge_launch_roots(title, dest_path, extra_roots);
-  resolve_launch_candidates_in_roots(title, &roots)
+  resolve_launch_candidates_in_roots(title, &roots, max_depth)
 }
 
 fn is_blocked_installer_exe(file_name: &str) -> bool {
@@ -570,6 +592,7 @@ pub fn is_probably_executable(path: &Path) -> bool {
 fn resolve_launch_candidates_in_roots(
   title: &str,
   roots: &[PathBuf],
+  max_depth: usize,
 ) -> Result<Vec<PathBuf>, String> {
   let title_tokens = title::tokenize_title(title);
   let mut scored: Vec<(i64, PathBuf)> = Vec::new();
@@ -584,7 +607,7 @@ fn resolve_launch_candidates_in_roots(
     any_root_exists = true;
 
     let mut local: Vec<(usize, PathBuf)> = Vec::new();
-    collect_executable_candidates(root, 0, &mut local);
+    collect_executable_candidates(root, 0, max_depth, &mut local);
 
     for (depth, path) in local {
       if !is_probably_executable(&path) {
@@ -925,16 +948,48 @@ pub fn launch_game_candidates(candidates: &[PathBuf]) -> Result<PathBuf, String>
   Err(last_error)
 }
 
+fn try_launch_executable(path: &Path) -> Result<(), String> {
+  if !path.is_file() || !is_probably_executable(path) {
+    return Err("not_executable".to_string());
+  }
+  let file_name = path
+    .file_name()
+    .and_then(|value| value.to_str())
+    .unwrap_or_default();
+  if is_blocked_installer_exe(file_name) || is_store_or_platform_launcher_exe(file_name, path) {
+    return Err("blocked_executable".to_string());
+  }
+  spawn_game_executable(path)
+}
+
 #[allow(dead_code)]
 pub fn resolve_and_launch_game(title: &str, dest_path: &str) -> Result<PathBuf, String> {
-  resolve_and_launch_game_with_extra_roots(title, dest_path, &[])
+  resolve_and_launch_game_with_extra_roots(title, dest_path, &[], None)
 }
 
 pub fn resolve_and_launch_game_with_extra_roots(
   title: &str,
   dest_path: &str,
   extra_roots: &[PathBuf],
+  preferred_exe: Option<&Path>,
 ) -> Result<PathBuf, String> {
+  if let Some(preferred) = preferred_exe {
+    if try_launch_executable(preferred).is_ok() {
+      return Ok(preferred.to_path_buf());
+    }
+  }
+
+  if let Ok(candidates) = resolve_launch_candidates_with_extra_roots_depth(
+    title,
+    dest_path,
+    extra_roots,
+    SCAN_DEPTH_FAST,
+  ) {
+    if let Ok(path) = launch_game_candidates(&candidates) {
+      return Ok(path);
+    }
+  }
+
   if let Ok(candidates) = resolve_launch_candidates_with_extra_roots(title, dest_path, extra_roots) {
     if let Ok(path) = launch_game_candidates(&candidates) {
       return Ok(path);
@@ -979,7 +1034,7 @@ pub fn find_setup_executable_with_extra_roots(
     }
 
     let mut local: Vec<(usize, PathBuf)> = Vec::new();
-    collect_executable_candidates(&root, 0, &mut local);
+    collect_executable_candidates(&root, 0, SCAN_DEPTH_FULL, &mut local);
     for (depth, path) in local {
       let file_name = path
         .file_name()

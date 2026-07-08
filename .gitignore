@@ -31,3 +31,7 @@ src-tauri/binaries/*.dll
 src-tauri/target/
 scripts/__pycache__/
 **/__pycache__/
+
+# Catálogos locais de desenvolvimento
+fitgirl.json
+arqui.json

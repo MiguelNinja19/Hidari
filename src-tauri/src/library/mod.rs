@@ -7,12 +7,16 @@ use crate::dto::{
 };
 use crate::launch;
 use crate::launch_errors;
-use crate::library::roots::{launch_extra_roots, read_library_game_root, upsert_library_game_root};
+use crate::library::roots::{
+  launch_extra_roots, read_library_game_root, read_library_launch_exe, upsert_library_game_root,
+  upsert_library_launch_exe,
+};
 use crate::sidecar::{
-  emit_extract_status, ensure_sidecar_running, process_job_post_download,
+  emit_extract_status, ensure_sidecar_running, process_job_extraction, process_job_post_download,
 };
 use crate::state::ExtractionState;
 use crate::{archive, db};
+use rusqlite::params;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -99,20 +103,44 @@ pub fn delete_local_library_item(
 }
 
 #[tauri::command]
-pub fn launch_game_from_path(app: AppHandle, payload: LaunchGamePayload) -> Result<String, String> {
-  let extra_roots = launch_extra_roots(
-    &app,
-    &payload.title,
-    &payload.path,
-    payload.job_id.as_deref(),
-  );
-  let launched = launch::resolve_and_launch_game_with_extra_roots(
-    &payload.title,
-    &payload.path,
-    &extra_roots,
-  )
-  .map_err(|error| launch_errors::map_launch_user_error(&error, &payload.path))?;
-  Ok(launched.to_string_lossy().to_string())
+pub async fn launch_game_from_path(
+  app: AppHandle,
+  payload: LaunchGamePayload,
+) -> Result<String, String> {
+  tauri::async_runtime::spawn_blocking(move || {
+    let conn = open_database_connection(&app)?;
+    let cached_exe = read_library_launch_exe(&conn, &payload.path, &payload.title);
+    let extra_roots = launch_extra_roots(
+      &app,
+      &payload.title,
+      &payload.path,
+      payload.job_id.as_deref(),
+    );
+    let launched = launch::resolve_and_launch_game_with_extra_roots(
+      &payload.title,
+      &payload.path,
+      &extra_roots,
+      cached_exe.as_deref(),
+    )
+    .map_err(|error| launch_errors::map_launch_user_error(&error, &payload.path))?;
+    let _ = upsert_library_launch_exe(&conn, &payload.path, &payload.title, &launched);
+    let path_key = format!(
+      "{}::{}",
+      payload.path.to_lowercase(),
+      payload.title.to_lowercase()
+    );
+    let _ = conn.execute(
+      "INSERT INTO library_play_stats (path_key, last_played_at, play_count) \
+       VALUES (?1, CURRENT_TIMESTAMP, 1) \
+       ON CONFLICT(path_key) DO UPDATE SET \
+         last_played_at = CURRENT_TIMESTAMP, \
+         play_count = play_count + 1",
+      params![path_key],
+    );
+    Ok(launched.to_string_lossy().to_string())
+  })
+  .await
+  .map_err(|error| format!("launch_task_failed: {error}"))?
 }
 
 #[tauri::command]
@@ -158,8 +186,16 @@ pub fn inspect_library_path_internal(
   let content_path = launch::resolve_game_content_root(title, path)
     .to_string_lossy()
     .to_string();
-  let has_game =
-    launch::resolve_launch_candidates_with_extra_roots(title, path, &extra_roots).is_ok();
+  let candidates_result =
+    launch::resolve_launch_candidates_with_extra_roots(title, path, &extra_roots);
+  let has_game = candidates_result.is_ok();
+  if let Ok(ref candidates) = candidates_result {
+    if let Some(first) = candidates.first() {
+      if let Ok(conn) = open_database_connection(app) {
+        let _ = upsert_library_launch_exe(&conn, path, title, first);
+      }
+    }
+  }
   let install_path = launch::find_setup_executable_with_extra_roots(title, path, &extra_roots)
     .map(|p| p.to_string_lossy().to_string());
   let needs_install = !has_game && install_path.is_some();
@@ -267,7 +303,11 @@ pub async fn extract_library_folder(app: AppHandle, payload: LaunchGamePayload) 
   let title = payload.title.clone();
   let dest_path = payload.path.clone();
 
-  let result = process_job_post_download(app_clone.clone(), job_id.clone(), title, dest_path).await;
+  let result = if archive::find_job_archive(&dest_path).is_some() {
+    process_job_extraction(app_clone.clone(), job_id.clone(), title, dest_path).await
+  } else {
+    process_job_post_download(app_clone.clone(), job_id.clone(), title, dest_path).await
+  };
   extraction.release();
 
   if let Err(ref error) = result {

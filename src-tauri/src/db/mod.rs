@@ -127,6 +127,83 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
       CREATE INDEX IF NOT EXISTS idx_steam_app_index_name_norm ON steam_app_index(name_norm);",
     )
     .map_err(|e| format!("migrate_steam_app_index: {e}"))?;
+  migrate_drop_legacy_tables(conn)?;
+  migrate_feature_tables(conn)?;
+  Ok(())
+}
+
+fn migrate_feature_tables(conn: &Connection) -> Result<(), String> {
+  conn
+    .execute_batch(
+      "CREATE TABLE IF NOT EXISTS steam_game_details (
+        app_id INTEGER PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS favorite_catalog_entries (
+        catalog_key TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS game_collections (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS collection_entries (
+        collection_id TEXT NOT NULL,
+        catalog_key TEXT NOT NULL,
+        title TEXT NOT NULL,
+        PRIMARY KEY (collection_id, catalog_key),
+        FOREIGN KEY (collection_id) REFERENCES game_collections(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS catalog_sync_snapshots (
+        source_id TEXT PRIMARY KEY,
+        entry_count INTEGER NOT NULL DEFAULT 0,
+        payload_hash TEXT NOT NULL DEFAULT '',
+        synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS library_play_stats (
+        path_key TEXT PRIMARY KEY,
+        last_played_at TEXT,
+        play_count INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS library_notes (
+        path_key TEXT PRIMARY KEY,
+        note TEXT NOT NULL DEFAULT ''
+      );
+      CREATE TABLE IF NOT EXISTS library_launch_exe (
+        library_key TEXT PRIMARY KEY,
+        title       TEXT NOT NULL,
+        dest_path   TEXT NOT NULL,
+        exe_path    TEXT NOT NULL,
+        updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );",
+    )
+    .map_err(|e| format!("migrate_feature_tables: {e}"))?;
+  Ok(())
+}
+
+fn migrate_drop_legacy_tables(conn: &Connection) -> Result<(), String> {
+  const KEY: &str = "legacy_tables_dropped_v1";
+  if read_app_setting(conn, KEY).is_some() {
+    return Ok(());
+  }
+  conn
+    .execute_batch(
+      "DROP TABLE IF EXISTS collection_games;
+       DROP TABLE IF EXISTS collections;
+       DROP TABLE IF EXISTS download_source_changes;
+       DROP TABLE IF EXISTS games;
+       DROP TABLE IF EXISTS download_sources;",
+    )
+    .map_err(|e| format!("migrate_drop_legacy_tables: {e}"))?;
+  conn
+    .execute(
+      "INSERT INTO app_settings (key, value) VALUES (?1, '1')",
+      params![KEY],
+    )
+    .map_err(|e| format!("migrate_drop_legacy_mark: {e}"))?;
   Ok(())
 }
 
@@ -137,22 +214,6 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
       PRAGMA journal_mode=WAL;
       PRAGMA foreign_keys=ON;
       PRAGMA synchronous=NORMAL;
-
-      CREATE TABLE IF NOT EXISTS download_sources (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        name        TEXT    NOT NULL,
-        base_url    TEXT    NOT NULL UNIQUE,
-        status      TEXT    NOT NULL DEFAULT 'active',
-        created_at  TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS games (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        title        TEXT    NOT NULL,
-        install_path TEXT    NOT NULL,
-        is_favorite  INTEGER NOT NULL DEFAULT 0,
-        created_at   TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
 
       CREATE TABLE IF NOT EXISTS download_jobs (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,27 +228,6 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
         error_msg        TEXT,
         created_at       TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at       TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS collections (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        name       TEXT    NOT NULL UNIQUE,
-        created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS collection_games (
-        collection_id INTEGER NOT NULL,
-        game_id       INTEGER NOT NULL,
-        PRIMARY KEY (collection_id, game_id),
-        FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
-        FOREIGN KEY (game_id)       REFERENCES games(id)       ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS download_source_changes (
-        game_id    INTEGER PRIMARY KEY,
-        new_count  INTEGER NOT NULL DEFAULT 0,
-        updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS hydra_download_sources (

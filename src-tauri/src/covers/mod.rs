@@ -4,10 +4,11 @@ mod steam_index;
 pub use precache::{
   attach_cover_urls_to_games, bulk_resolve_catalog_covers_from_index, get_cover_cache_stats,
   get_cover_precache_status, resolve_cover_url, resolve_covers_for_titles, retry_unresolved_covers,
-  start_cover_precache, stop_cover_precache, CoverPrecacheState, maybe_start_cover_precache,
+  start_cover_precache, stop_cover_precache, CoverPrecacheState,
 };
 pub use steam_index::{
-  get_steam_app_index_status, maybe_refresh_steam_app_index, refresh_steam_app_index,
+  get_steam_app_index_status, lookup_steam_app_id_local, maybe_refresh_steam_app_index,
+  refresh_steam_app_index,
 };
 
 use crate::db::open_database_connection;

@@ -22,7 +22,7 @@ Arquivo: `src-tauri/tauri.conf.json`
 | Campo | Valor atual |
 |-------|-------------|
 | `productName` | MyLauncher |
-| `identifier` | com.tauri.dev |
+| `identifier` | com.mylauncher.app |
 | `devUrl` | http://localhost:5173 |
 | Janela | 1094×816, redimensionável |
 

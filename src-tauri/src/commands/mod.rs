@@ -4,7 +4,12 @@ mod system;
 pub use sources::*;
 pub use system::*;
 
-pub use crate::catalog::search_game_catalog;
+pub use crate::catalog::{
+  add_to_collection, check_catalog_changes, create_collection, delete_collection,
+  get_game_detail, list_collection_entries, list_collections, list_favorite_catalog_entries,
+  remove_from_collection, rename_collection, resolve_game_genres_batch, search_game_catalog,
+  toggle_favorite_catalog_entry,
+};
 pub use crate::covers::{
   ensure_game_cover_cached,   get_cover_cache_stats, get_cover_precache_status,
   invalidate_game_cover_local, list_game_covers, resolve_covers_for_titles, resolve_game_cover_url,

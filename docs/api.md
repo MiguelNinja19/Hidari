@@ -57,16 +57,7 @@ Preferir estes comandos em vez dos `enqueue_job` / `list_jobs` legados internos.
 | `sidecar_open_job_folder` | `queueApi` | Abre pasta do job |
 | `sidecar_launch_job` | `queueApi` | Lança executável do jogo |
 | `sidecar_status` | `queueApi` | Estado do sidecar (`running`, `port`) |
-| `extract_job_archive` | `queueApi` | Extração manual de um job |
-
-### Fila legada (SQLite interno)
-
-| Comando | Descrição |
-|---------|-----------|
-| `enqueue_job` | Enfileira no gestor interno |
-| `list_jobs` | Lista jobs internos |
-| `pause_job` / `resume_job` / `cancel_job` | Controlo de job |
-| `clear_completed_jobs` | Remove concluídos/cancelados/falhados do sidecar e da base local; devolve IDs removidos |
+| `clear_completed_jobs` | `queueApi` | Remove concluídos/cancelados/falhados do sidecar e da base local |
 
 ## Capas (Steam)
 

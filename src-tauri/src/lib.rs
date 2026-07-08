@@ -17,19 +17,27 @@ mod title;
 use commands::*;
 use queue::startup_queue_recovery;
 use sidecar::{
-  pause_all_active_sidecar_jobs, spawn_download_engine, spawn_extraction_watcher,
+  emit_deep_link_event, pause_all_active_sidecar_jobs, spawn_download_engine, spawn_extraction_watcher,
   spawn_sidecar_progress_watcher,
 };
 use state::{ExtractionState, SidecarState};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WindowEvent};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   load_env_from_cwd();
 
   tauri::Builder::default()
+    .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+      for arg in argv {
+        if arg.starts_with("mylauncher://") {
+          let _ = emit_deep_link_event(app, &arg);
+        }
+      }
+    }))
     .manage(SidecarState::default())
     .manage(ExtractionState::default())
     .manage(covers::CoverPrecacheState::default())
@@ -44,6 +52,16 @@ pub fn run() {
       }
       app.handle().plugin(tauri_plugin_notification::init())?;
       app.handle().plugin(tauri_plugin_dialog::init())?;
+      #[cfg(desktop)]
+      {
+        app.handle().plugin(tauri_plugin_deep_link::init())?;
+        let handle = app.handle().clone();
+        app.deep_link().on_open_url(move |event| {
+          for url in event.urls() {
+            let _ = emit_deep_link_event(&handle, url.as_ref());
+          }
+        });
+      }
       let _ = crate::db::init_database_pool(app.handle());
       if let (Ok(conn), Ok(covers_dir)) = (
         crate::db::open_database_connection(app.handle()),
@@ -109,8 +127,16 @@ pub fn run() {
       Ok(())
     })
     .on_window_event(|window, event| {
-      if let WindowEvent::CloseRequested { .. } = event {
+      if let WindowEvent::CloseRequested { api, .. } = event {
         let app_handle = window.app_handle().clone();
+        let minimize = crate::db::open_database_connection(window.app_handle())
+          .map(|conn| crate::db::read_app_setting_bool(&conn, "minimize_to_tray", false))
+          .unwrap_or(false);
+        if minimize {
+          api.prevent_close();
+          let _ = window.hide();
+          return;
+        }
         tauri::async_runtime::spawn(async move {
           if let Err(error) = pause_all_active_sidecar_jobs(app_handle).await {
             log::warn!("could_not_pause_jobs_on_close: {error}");
@@ -129,6 +155,18 @@ pub fn run() {
       remove_download_source,
       search_download_options,
       search_game_catalog,
+      resolve_game_genres_batch,
+      get_game_detail,
+      toggle_favorite_catalog_entry,
+      list_favorite_catalog_entries,
+      create_collection,
+      rename_collection,
+      delete_collection,
+      list_collections,
+      add_to_collection,
+      remove_from_collection,
+      list_collection_entries,
+      check_catalog_changes,
       set_default_download_path,
       get_default_download_path,
       set_seed_torrents_enabled,
@@ -138,10 +176,7 @@ pub fn run() {
       get_disk_free_bytes_for_path,
       scan_default_download_path,
       delete_local_library_item,
-      test_download_source,
-      get_download_sources_changes,
       sync_download_sources,
-      check_download_sources_changes,
       clear_completed_jobs,
       sidecar_enqueue_job,
       sidecar_list_jobs,

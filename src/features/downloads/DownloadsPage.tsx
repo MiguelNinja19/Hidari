@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import { CatalogCover } from '../../shared/components/CatalogCover'
 import { DownloadsEmpty } from './DownloadsEmpty'
 import { PageNotice } from '../../shared/components/PageNotice'
+import { formatUserError } from '../../shared/utils/formatUserError'
 import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
 import { Button } from '../../shared/components/ui/Button'
 import { formatDownloadError } from '../../shared/utils/downloadErrors'
@@ -8,6 +10,7 @@ import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { ResolvedCover } from '../covers/useGameCovers'
 import { useDownloadClock } from './useDownloadClock'
+import { resolveJobVerificationStatus } from '../../shared/utils/jobVerification'
 
 type DownloadsPageProps = {
   jobs: DownloadJob[]
@@ -100,12 +103,6 @@ function buildJobSections(jobs: DownloadJob[]) {
   return sections
 }
 
-function queueSummary(count: number): string {
-  if (count === 0) return 'Fila vazia'
-  if (count === 1) return '1 download na fila'
-  return `${count} downloads na fila`
-}
-
 export function DownloadsPage({
   jobs,
   queueLoading,
@@ -128,7 +125,15 @@ export function DownloadsPage({
   resolveCover,
   invalidateLocalCover,
 }: DownloadsPageProps) {
+  const [queueErrorDismissed, setQueueErrorDismissed] = useState(false)
   const downloadNow = useDownloadClock(jobs)
+  const displayQueueError =
+    queueError && !queueErrorDismissed ? formatUserError(queueError) : null
+
+  useEffect(() => {
+    setQueueErrorDismissed(false)
+  }, [queueError])
+
   const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
   const sections = buildJobSections(activeJobs)
   const canPauseAll = activeJobs.some((job) =>
@@ -159,6 +164,7 @@ export function DownloadsPage({
     const canCancel =
       job.status !== 'cancelled' && !['completed', 'extracted'].includes(job.status)
     const showFolder = job.destPath.trim().length > 0
+    const verificationStatus = resolveJobVerificationStatus(job)
 
     return (
       <li key={job.id} className="download-row">
@@ -178,7 +184,21 @@ export function DownloadsPage({
             <strong className="download-row__title" title={job.title}>
               {cleanTitleForDisplay(job.title)}
             </strong>
-            <span className="download-row__percent">{formatProgressPercent(job)}</span>
+            <div className="download-row__top-meta">
+              {verificationStatus ? (
+                <span
+                  className={`download-row__verify-badge download-row__verify-badge--${verificationStatus}`}
+                  title={
+                    verificationStatus === 'verified'
+                      ? 'Download verificado'
+                      : 'Falha na verificação do download'
+                  }
+                >
+                  {verificationStatus === 'verified' ? 'Verificado' : 'Verificação falhou'}
+                </span>
+              ) : null}
+              <span className="download-row__percent">{formatProgressPercent(job)}</span>
+            </div>
           </div>
 
           <div
@@ -235,36 +255,35 @@ export function DownloadsPage({
 
   return (
     <section className="downloads-page">
-      <header className="downloads-page__header">
-        <div className="downloads-page__heading">
-          <p className="downloads-page__tag">Downloads</p>
-          <p className="downloads-page__summary">{queueSummary(activeJobs.length)}</p>
+      {canPauseAll || canClearCompleted ? (
+        <div className="downloads-page__actions">
+          {canPauseAll ? (
+            <button
+              className="btn btn-outline btn--compact downloads-toolbar__btn"
+              type="button"
+              onClick={() => void onPauseAll()}
+            >
+              Pausar todos
+            </button>
+          ) : null}
+          {canClearCompleted ? (
+            <button
+              className="btn btn-outline btn--compact downloads-toolbar__btn"
+              type="button"
+              onClick={() => void onClearCompleted()}
+            >
+              Limpar concluídos
+            </button>
+          ) : null}
         </div>
-        {canPauseAll || canClearCompleted ? (
-          <div className="downloads-page__actions">
-            {canPauseAll ? (
-              <button
-                className="btn btn-outline btn--compact downloads-toolbar__btn"
-                type="button"
-                onClick={() => void onPauseAll()}
-              >
-                Pausar todos
-              </button>
-            ) : null}
-            {canClearCompleted ? (
-              <button
-                className="btn btn-outline btn--compact downloads-toolbar__btn"
-                type="button"
-                onClick={() => void onClearCompleted()}
-              >
-                Limpar concluídos
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-      </header>
+      ) : null}
 
-      {queueError ? <PageNotice error={queueError} /> : null}
+      {displayQueueError ? (
+        <PageNotice
+          error={displayQueueError}
+          onDismiss={() => setQueueErrorDismissed(true)}
+        />
+      ) : null}
 
       {sections.length > 0 ? (
         <div className="downloads-page__sections">

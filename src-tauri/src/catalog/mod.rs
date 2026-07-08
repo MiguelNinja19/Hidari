@@ -1,4 +1,4 @@
-use crate::dto::{CatalogGameDto, EmbeddedCatalogEntry, SearchCatalogPayload};
+use crate::dto::{CatalogGameDto, EmbeddedCatalogEntry, ResolvedGenreDto, ResolveGenresBatchPayload, SearchCatalogPayload};
 use crate::db::{get_disabled_hydra_source_ids_from_conn, open_database_connection};
 use crate::sources::list_hydra_sources;
 use crate::title;
@@ -9,6 +9,17 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
+
+pub mod favorites;
+pub mod game_detail;
+pub mod steam_details;
+
+pub use favorites::{
+  add_to_collection, check_catalog_changes, create_collection, delete_collection,
+  list_collection_entries, list_collections, list_favorite_catalog_entries, record_catalog_snapshot,
+  remove_from_collection, rename_collection, toggle_favorite_catalog_entry,
+};
+pub use game_detail::get_game_detail;
 
 const EMBEDDED_CATALOG_JSON: &str = include_str!("../../resources/embedded_catalog.json");
 
@@ -384,11 +395,154 @@ pub async fn search_catalog_from_sources(
 ) -> Result<Vec<CatalogGameDto>, String> {
   let app = app.clone();
   let query = query.to_string();
-  tokio::task::spawn_blocking(move || {
-    search_catalog_from_sources_sync(&app, &query, offset, limit, attach_covers)
+  let mut games = tokio::task::spawn_blocking({
+    let app = app.clone();
+    let query = query.clone();
+    move || search_catalog_from_sources_sync(&app, &query, offset, limit, attach_covers)
   })
   .await
-  .map_err(|error| format!("search_catalog_task: {error}"))?
+  .map_err(|error| format!("search_catalog_task: {error}"))??;
+
+  enrich_catalog_genres(&app, &mut games).await;
+  Ok(games)
+}
+
+pub(crate) fn looks_like_source_label(genre: &str) -> bool {
+  let value = genre.trim().to_lowercase();
+  if value.is_empty() {
+    return true;
+  }
+  [
+    "fitgirl",
+    "repack",
+    "dodi",
+    "elamigos",
+    "online-fix",
+    "steam",
+    "catálogo",
+    "catalogo",
+  ]
+  .iter()
+  .any(|hint| value.contains(hint))
+}
+
+fn looks_like_game_genres(genre: &str) -> bool {
+  let value = genre.trim();
+  if value.is_empty() || looks_like_source_label(value) {
+    return false;
+  }
+  if value.contains(',') {
+    return true;
+  }
+  let lower = value.to_lowercase();
+  [
+    "ação",
+    "action",
+    "aventura",
+    "adventure",
+    "rpg",
+    "terror",
+    "horror",
+    "indie",
+    "simula",
+    "estrat",
+    "fps",
+    "casual",
+    "sobreviv",
+    "survival",
+    "corrida",
+    "racing",
+    "esporte",
+    "sports",
+    "puzzle",
+    "plataforma",
+    "platform",
+    "roguelike",
+  ]
+  .iter()
+  .any(|hint| lower.contains(hint))
+}
+
+async fn enrich_catalog_genres(app: &AppHandle, games: &mut [CatalogGameDto]) {
+  let mut pending: Vec<usize> = games
+    .iter()
+    .enumerate()
+    .filter(|(_, game)| !looks_like_game_genres(&game.genre))
+    .map(|(index, _)| index)
+    .collect();
+
+  while !pending.is_empty() {
+    let batch: Vec<usize> = pending.drain(..pending.len().min(4)).collect();
+    let mut handles = Vec::with_capacity(batch.len());
+    for index in batch {
+      let title = games[index].title.clone();
+      let app = app.clone();
+      handles.push(tokio::spawn(async move {
+        let genres = steam_details::resolve_steam_details_for_app(&app, &title)
+          .await
+          .map(|details| details.genres)
+          .unwrap_or_default();
+        (index, genres)
+      }));
+    }
+
+    for handle in handles {
+      let Ok((index, genres)) = handle.await else {
+        continue;
+      };
+      if genres.is_empty() {
+        games[index].genre.clear();
+      } else {
+        games[index].genre = genres.join(", ");
+      }
+    }
+  }
+}
+
+fn resolve_catalog_genre(conn: &Connection, title: &str) -> String {
+  if let Some(genres) = steam_details::cached_genres_for_title(conn, title) {
+    return genres.join(", ");
+  }
+  String::new()
+}
+
+#[tauri::command]
+pub async fn resolve_game_genres_batch(
+  app: AppHandle,
+  payload: ResolveGenresBatchPayload,
+) -> Result<Vec<ResolvedGenreDto>, String> {
+  let titles: Vec<String> = payload
+    .titles
+    .into_iter()
+    .map(|title| title.trim().to_string())
+    .filter(|title| !title.is_empty())
+    .take(32)
+    .collect();
+
+  let mut out = Vec::with_capacity(titles.len());
+  let mut pending = titles;
+  while !pending.is_empty() {
+    let batch: Vec<String> = pending.drain(..pending.len().min(4)).collect();
+    let mut handles = Vec::with_capacity(batch.len());
+    for title in batch {
+      let app = app.clone();
+      handles.push(tokio::spawn(async move {
+        let genre = match steam_details::resolve_steam_details_for_app(&app, &title).await {
+          Some(details) if !details.genres.is_empty() => details.genres.join(", "),
+          _ => String::new(),
+        };
+        ResolvedGenreDto { title, genre }
+      }));
+    }
+
+    for handle in handles {
+      if let Ok(item) = handle.await {
+        out.push(item);
+      }
+    }
+  }
+
+  Ok(out)
 }
 
 fn search_catalog_from_sources_sync(
@@ -418,14 +572,17 @@ fn search_catalog_from_sources_sync(
 
   let mut games = hits
     .into_iter()
-    .map(|hit| CatalogGameDto {
-      id: format!("source:{}", stable_embedded_id(&hit.group_key)),
-      title: hit.title,
-      genre: hit.source_name,
-      cover_url: None,
-      local_cover_path: None,
-      source: "source".to_string(),
-      option_count: (hit.option_count > 1).then_some(hit.option_count as u32),
+    .map(|hit| {
+      let genre = resolve_catalog_genre(&conn, &hit.title);
+      CatalogGameDto {
+        id: format!("source:{}", stable_embedded_id(&hit.group_key)),
+        title: hit.title,
+        genre,
+        cover_url: None,
+        local_cover_path: None,
+        source: "source".to_string(),
+        option_count: (hit.option_count > 1).then_some(hit.option_count as u32),
+      }
     })
     .collect::<Vec<_>>();
 
@@ -457,12 +614,12 @@ pub async fn search_game_catalog(app: AppHandle, payload: SearchCatalogPayload) 
   let mut seen: HashSet<String> = merged.iter().map(|g| g.title.to_lowercase()).collect();
 
   let include_steam = payload.include_steam.unwrap_or(true);
-  if !include_steam {
+  let conn = open_database_connection(&app)?;
+  let offline = crate::db::read_app_setting_bool(&conn, "offline_mode", false);
+  if !include_steam || offline {
     let out: Vec<CatalogGameDto> = merged.into_iter().take(56).collect();
     return Ok(out);
   }
-
-  let conn = open_database_connection(&app)?;
 
   let steam_chunk = if let Some(cached) = steam_cache_get(&conn, &query_norm) {
     cached

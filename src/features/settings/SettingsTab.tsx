@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { open, ask } from '@tauri-apps/plugin-dialog'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
+import { useAppSettings } from '../../app/context/AppSettingsContext'
+import { useAppVersion } from '../../app/hooks/useAppVersion'
 import {
   addSource,
   deleteSource,
@@ -13,6 +15,7 @@ import { useCoverPrecache } from '../covers/useCoverPrecache'
 import { useSteamAppIndex } from '../covers/useSteamAppIndex'
 import { SettingsPage } from './SettingsPage'
 import { SETTING_KEY, speedKeyToBps } from '../../shared/config/appSettings'
+import { formatUserError } from '../../shared/utils/formatUserError'
 import { formatSize } from '../../shared/utils/formatters'
 
 function canAddSourceInput(value: string): boolean {
@@ -21,41 +24,28 @@ function canAddSourceInput(value: string): boolean {
 }
 
 type SettingsTabProps = {
-  defaultDownloadPath: string
-  setDefaultDownloadPath: (path: string) => void
-  installOrganization: string
-  setInstallOrganization: (path: string) => void
-  afterInstallAction: string
-  setAfterInstallAction: (path: string) => void
-  removeTemporaryFiles: boolean
-  setRemoveTemporaryFiles: (v: boolean) => void
-  seedTorrentsEnabled: boolean
-  setSeedTorrentsEnabled: (v: boolean) => void
-  downloadSpeedLimit: string
-  setDownloadSpeedLimit: (v: string) => void
-  disabledSourceIds: string[]
-  setDisabledSourceIds: (ids: string[]) => void
   onRefreshCovers: () => void
 }
 
-export function SettingsTab({
-  defaultDownloadPath,
-  setDefaultDownloadPath,
-  installOrganization,
-  setInstallOrganization,
-  afterInstallAction,
-  setAfterInstallAction,
-  removeTemporaryFiles,
-  setRemoveTemporaryFiles,
-  seedTorrentsEnabled,
-  setSeedTorrentsEnabled,
-  downloadSpeedLimit,
-  setDownloadSpeedLimit,
-  disabledSourceIds,
-  setDisabledSourceIds,
-  onRefreshCovers,
-}: SettingsTabProps) {
+export function SettingsTab({ onRefreshCovers }: SettingsTabProps) {
   const dispatch = useAppDispatch()
+  const appVersion = useAppVersion()
+  const {
+    defaultDownloadPath,
+    setDefaultDownloadPath,
+    installOrganization,
+    setInstallOrganization,
+    afterInstallAction,
+    setAfterInstallAction,
+    removeTemporaryFiles,
+    setRemoveTemporaryFiles,
+    seedTorrentsEnabled,
+    setSeedTorrentsEnabled,
+    downloadSpeedLimit,
+    setDownloadSpeedLimit,
+    disabledSourceIds,
+    setDisabledSourceIds,
+  } = useAppSettings()
   const sources = useAppSelector((state) => state.sources.items)
   const sourcesLoading = useAppSelector((state) => state.sources.loading)
   const sourcesError = useAppSelector((state) => state.sources.error)
@@ -162,9 +152,7 @@ export function SettingsTab({
       const bytes = await sourcesApi.getDiskFreeBytesForPath(path)
       setDiskFreeBytes(bytes)
     } catch (error) {
-      setSettingsError(
-        error instanceof Error ? error.message : 'Falha ao salvar configurações de instalação.',
-      )
+      setSettingsError(formatUserError(error, 'Falha ao salvar configurações de instalação.'))
     }
   }
 
@@ -194,9 +182,7 @@ export function SettingsTab({
       await sourcesApi.setAppSetting(SETTING_KEY.removeTempFiles, next ? '1' : '0')
     } catch (error) {
       setRemoveTemporaryFiles(!next)
-      setSettingsError(
-        error instanceof Error ? error.message : 'Falha ao salvar opção de arquivos temporários.',
-      )
+      setSettingsError(formatUserError(error, 'Falha ao salvar opção de arquivos temporários.'))
     }
   }
 
@@ -205,9 +191,7 @@ export function SettingsTab({
     try {
       await sourcesApi.setAppSetting(SETTING_KEY.downloadSpeedLimitBps, String(speedKeyToBps(value)))
     } catch (error) {
-      setSettingsError(
-        error instanceof Error ? error.message : 'Falha ao salvar limite de velocidade.',
-      )
+      setSettingsError(formatUserError(error, 'Falha ao salvar limite de velocidade.'))
     }
   }
 
@@ -219,9 +203,7 @@ export function SettingsTab({
     setDisabledSourceIds(next)
     void sourcesApi.setAppSetting(SETTING_KEY.disabledHydraSourceIds, JSON.stringify(next)).catch(
       (error) => {
-        setSettingsError(
-          error instanceof Error ? error.message : 'Falha ao salvar fontes ativas.',
-        )
+        setSettingsError(formatUserError(error, 'Falha ao salvar fontes ativas.'))
       },
     )
   }
@@ -232,9 +214,7 @@ export function SettingsTab({
       await sourcesApi.setSeedTorrentsEnabled(enabled)
     } catch (error) {
       setSeedTorrentsEnabled(!enabled)
-      setSettingsError(
-        error instanceof Error ? error.message : 'Falha ao salvar preferência de semeadura.',
-      )
+      setSettingsError(formatUserError(error, 'Falha ao salvar preferência de semeadura.'))
     }
   }
 
@@ -298,6 +278,7 @@ export function SettingsTab({
       onRefreshSteamAppIndex={async () => {
         await steamAppIndex.refreshIndex()
       }}
+      appVersion={appVersion}
     />
   )
 }

@@ -26,10 +26,22 @@ export const CATALOG_SEARCH_DEBOUNCE_MS = 400
 export const CATALOG_SEARCH_MIN_CHARS = 3
 
 /** Debounce de capas em falta na biblioteca (ms). */
-export const LIBRARY_COVER_LOOKUP_DEBOUNCE_MS = 500
+export const LIBRARY_COVER_LOOKUP_DEBOUNCE_MS = 2000
+
+/** Atraso antes de carregar a fila no arranque (deixa a UI respirar). */
+export const STARTUP_JOBS_DEFER_MS = 1800
+
+/** Pausa entre lotes de inspeção de pastas da biblioteca (ms). */
+export const LIBRARY_INSPECT_BATCH_PAUSE_MS = 24
+
+/** Tamanho do lote de inspeção de pastas (menor = UI mais fluida). */
+export const LIBRARY_INSPECT_BATCH_SIZE = 4
 
 /** Intervalo de watch após abrir instalador (ms). */
 export const INSTALL_WATCH_INTERVAL_MS = 2000
 
 /** Máximo de ticks do watch de instalação (~3 min). */
 export const INSTALL_WATCH_MAX_TICKS = 90
+
+/** Intervalo para verificar novidades no catálogo (ms). */
+export const CATALOG_CHANGES_POLL_MS = 5 * 60 * 1000

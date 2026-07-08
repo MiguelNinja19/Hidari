@@ -5,13 +5,8 @@ pub use hydra::*;
 pub use hydralinks::*;
 
 use crate::config;
-use crate::db::open_database_connection;
-use crate::dto::{
-  DownloadOptionDto, HydraSourceDto, SourceEntry, SourceOptionItem, SourceSearchResponse,
-};
-use rusqlite::{params, Connection};
+use crate::dto::{DownloadOptionDto, HydraSourceDto};
 use tauri::AppHandle;
-use tokio::time::Duration;
 use url::Url;
 
 pub fn validate_source_url(value: &str) -> Result<(), String> {
@@ -75,131 +70,6 @@ pub fn enrich_magnet_url(raw: &str) -> String {
     enriched.push_str(&percent_encode_tracker(tracker));
   }
   enriched
-}
-pub fn load_sources(conn: &Connection) -> Result<Vec<SourceEntry>, String> {
-  let mut stmt = conn
-    .prepare("SELECT id, name, base_url FROM download_sources ORDER BY id ASC")
-    .map_err(|error| format!("could_not_prepare_sources_query: {error}"))?;
-  let result = stmt
-    .query_map([], |row| {
-      Ok(SourceEntry {
-        id: row.get(0)?,
-        name: row.get(1)?,
-        base_url: row.get(2)?,
-      })
-    })
-    .map_err(|error| format!("could_not_query_sources: {error}"))?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|error| format!("could_not_map_sources: {error}"));
-  result
-}
-
-pub fn load_source_by_id(conn: &Connection, id: i64) -> Result<SourceEntry, String> {
-  conn
-    .query_row(
-      "SELECT id, name, base_url FROM download_sources WHERE id = ?1",
-      params![id],
-      |row| {
-        Ok(SourceEntry {
-          id: row.get(0)?,
-          name: row.get(1)?,
-          base_url: row.get(2)?,
-        })
-      },
-    )
-    .map_err(|error| format!("could_not_load_source_by_id: {error}"))
-}
-
-pub fn set_source_status(app: &AppHandle, source_id: i64, status: &str) {
-  if let Ok(conn) = open_database_connection(app) {
-    let _ = conn.execute(
-      "UPDATE download_sources SET status = ?1 WHERE id = ?2",
-      params![status, source_id],
-    );
-  }
-}
-pub async fn fetch_options_from_sources(
-  app: &AppHandle,
-  game_id: i64,
-  game_title: &str,
-  sources: &[SourceEntry],
-) -> Vec<DownloadOptionDto> {
-  let client = reqwest::Client::builder()
-    .timeout(Duration::from_secs(12))
-    .build()
-    .unwrap_or_else(|_| reqwest::Client::new());
-
-  let mut options: Vec<DownloadOptionDto> = Vec::new();
-
-  for source in sources {
-    let base = source.base_url.trim_end_matches('/');
-    let response = client
-      .get(format!("{base}/search"))
-      .query(&[
-        ("query", game_title.to_string()),
-        ("gameId", game_id.to_string()),
-      ])
-      .send()
-      .await;
-
-    let resp = match response {
-      Ok(resp) => resp,
-      Err(_) => {
-        set_source_status(app, source.id, "failed");
-        continue;
-      }
-    };
-
-    if !resp.status().is_success() {
-      set_source_status(app, source.id, "failed");
-      continue;
-    }
-
-    let parsed_items: Vec<SourceOptionItem> = match resp.json::<Vec<SourceOptionItem>>().await {
-      Ok(list) => list,
-      Err(_) => {
-        // tenta o formato { options: [...] } como fallback
-        let fallback = client
-          .get(format!("{base}/search"))
-          .query(&[
-            ("query", game_title.to_string()),
-            ("gameId", game_id.to_string()),
-          ])
-          .send()
-          .await;
-        let Ok(fallback_resp) = fallback else {
-          set_source_status(app, source.id, "failed");
-          continue;
-        };
-        match fallback_resp.json::<SourceSearchResponse>().await {
-          Ok(wrapper) => wrapper.options,
-          Err(_) => {
-            set_source_status(app, source.id, "failed");
-            continue;
-          }
-        }
-      }
-    };
-
-    set_source_status(app, source.id, "active");
-    for item in parsed_items {
-      let title = item
-        .title
-        .clone()
-        .unwrap_or_else(|| format!("{} ({})", game_title, source.name));
-      options.push(DownloadOptionDto {
-        source_id: source.id.to_string(),
-        source_name: source.name.clone(),
-        title,
-        download_type: item.download_type.unwrap_or_else(|| "http".to_string()),
-        url: item.url,
-        quality: item.quality.unwrap_or_else(|| "standard".to_string()),
-        cover_url: None,
-      });
-    }
-  }
-
-  options
 }
 
 pub async fn search_download_options_from_local_sources(

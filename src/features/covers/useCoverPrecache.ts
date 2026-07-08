@@ -52,8 +52,8 @@ export function useCoverPrecache({ onProgress }: UseCoverPrecacheOptions = {}) {
     void listen<CoverPrecacheStatus>('cover-precache-progress', (event) => {
       if (cancelled) return
       setStatus(event.payload)
-      onProgress?.()
       if (!event.payload.running) {
+        onProgress?.()
         void refreshStats()
       }
     }).then((unlisten) => () => {
@@ -64,14 +64,6 @@ export function useCoverPrecache({ onProgress }: UseCoverPrecacheOptions = {}) {
       cancelled = true
     }
   }, [onProgress, refreshStats])
-
-  useEffect(() => {
-    if (!status.running) return
-    const timer = window.setInterval(() => {
-      void refreshStatus()
-    }, 4000)
-    return () => window.clearInterval(timer)
-  }, [status.running, refreshStatus])
 
   const startPrecache = useCallback(async () => {
     const next = await sourcesApi.startCoverPrecache()

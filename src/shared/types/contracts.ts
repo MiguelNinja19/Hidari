@@ -70,6 +70,8 @@ export type DownloadJob = {
   etaSeconds?: number
   seedEnabled?: boolean
   errorMsg: string | null
+  /** Estado da extração/verificação (ex.: verified, verify_failed). */
+  extractionStatus?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -127,7 +129,14 @@ export type JobProgressEvent = {
 
 export type ExtractStatusEvent = {
   jobId: string
-  status: 'extracting' | 'extracted' | 'failed' | 'skipped' | string
+  status:
+    | 'extracting'
+    | 'extracted'
+    | 'failed'
+    | 'skipped'
+    | 'verified'
+    | 'verify_failed'
+    | string
   message?: string | null
 }
 
@@ -143,6 +152,79 @@ export type DownloadOption = {
   downloadType: 'http' | 'torrent' | string
   url: string
   quality: string
+  coverUrl?: string | null
+}
+
+export type DeepLinkPayload = {
+  url: string
+  gameId?: string | null
+  action?: string | null
+  searchQuery?: string | null
+  groupKey?: string | null
+  title?: string | null
+}
+
+export type GetGameDetailInput = {
+  groupKey?: string
+  title?: string
+}
+
+export type GameDetail = {
+  game: CatalogGame
+  synopsis?: string | null
+  screenshots: string[]
+  trailerUrl?: string | null
+  trailerThumbnail?: string | null
+  steamAppId?: number | null
+  downloads: DownloadOption[]
+  inLibrary: boolean
+}
+
+export type FavoriteEntry = {
+  catalogKey: string
+  title: string
+  addedAt: string
+}
+
+export type ToggleFavoriteInput = {
+  catalogKey: string
+  title: string
+}
+
+export type CatalogChange = {
+  sourceId: string
+  sourceName: string
+  newCount: number
+}
+
+export type Collection = {
+  id: string
+  name: string
+  entryCount: number
+}
+
+export type CollectionEntry = {
+  catalogKey: string
+  title: string
+}
+
+export type CreateCollectionInput = {
+  name: string
+}
+
+export type RenameCollectionInput = {
+  id: string
+  name: string
+}
+
+export type CollectionIdInput = {
+  id: string
+}
+
+export type CollectionEntryInput = {
+  collectionId: string
+  catalogKey: string
+  title: string
 }
 
 export type SearchDownloadOptionsInput = {
@@ -173,6 +255,15 @@ export type SearchCatalogInput = {
   limit?: number
   /** false = pesquisa rápida sem resolver capas no backend */
   attachCovers?: boolean
+}
+
+export type ResolvedGenre = {
+  title: string
+  genre: string
+}
+
+export type ResolveGenresBatchInput = {
+  titles: string[]
 }
 
 export type InspectLibraryPathInput = {

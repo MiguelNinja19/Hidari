@@ -1,0 +1,81 @@
+{
+  "nav": {
+    "discover": "Explorar",
+    "favorites": "Favoritos",
+    "downloads": "Downloads",
+    "library": "Biblioteca",
+    "settings": "Configurações"
+  },
+  "common": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "play": "Jogar",
+    "install": "Instalar",
+    "resume": "Retomar",
+    "pause": "Pausar",
+    "search": "Pesquisar",
+    "close": "Fechar",
+    "back": "Voltar",
+    "confirm": "Confirmar",
+    "loading": "Carregando…",
+    "retry": "Tentar novamente",
+    "openFolder": "Pasta",
+    "extract": "Extrair",
+    "exploreCatalog": "Explorar catálogo",
+    "catalog": "Catálogo",
+    "download": "Baixar"
+  },
+  "library": {
+    "filterPlaceholder": "Filtrar biblioteca…",
+    "sortTitleAsc": "Título A–Z",
+    "sortTitleDesc": "Título Z–A",
+    "emptyTitle": "Biblioteca vazia",
+    "emptyDescription": "Baixe jogos no catálogo ou importe uma pasta existente.",
+    "noResultsTitle": "Sem resultados",
+    "noResultsDescription": "Nenhum jogo corresponde ao filtro atual."
+  },
+  "favorites": {
+    "title": "Favoritos",
+    "subtitle": "Jogos que você marcou com estrela no catálogo.",
+    "openDetails": "Ver detalhes",
+    "remove": "Remover",
+    "emptyTitle": "Sem favoritos",
+    "emptyDescription": "Abra um jogo no catálogo e clique em Favoritar para salvá-lo aqui."
+  },
+  "gameDetail": {
+    "back": "Voltar",
+    "favorite": "Favoritar",
+    "favorited": "Favorito",
+    "loading": "Carregando detalhes",
+    "inLibrary": "Na biblioteca",
+    "noSynopsis": "Sem sinopse disponível para este título.",
+    "trailer": "Trailer",
+    "downloadsTitle": "Downloads disponíveis",
+    "noDownloads": "Nenhum download encontrado. Verifique as fontes ativas em Configurações.",
+    "notFound": "Jogo não encontrado no catálogo."
+  },
+  "discover": {
+    "searchPlaceholder": "Nome do jogo (mín. 2 letras)…",
+    "searchPlaceholderNoSources": "Importe uma fonte em Configurações…",
+    "searching": "Pesquisando",
+    "viewDetails": "Ver detalhes",
+    "loadMore": "Carregar mais",
+    "loadingMore": "Carregando…",
+    "noResultsTitle": "Sem resultados",
+    "noResultsDescription": "Não encontramos jogos para \"{{query}}\". Tente outro nome ou verifique as fontes ativas.",
+    "loadingOptions": "Carregando opções",
+    "downloadModalEyebrow": "Download"
+  },
+  "downloads": {
+    "verified": "Verificado",
+    "verifyFailed": "Verificação falhou",
+    "sidecarOnline": "Motor online",
+    "sidecarOffline": "Motor offline"
+  },
+  "settings": {
+    "title": "Configurações",
+    "subtitle": "Catálogo, pasta de instalação, downloads e capas.",
+    "version": "Versão {{version}}"
+  }
+}

@@ -1,5 +1,5 @@
 use crate::config;
-use crate::dto::{HydraChangesResponseItem, HydraSourceDto};
+use crate::dto::HydraSourceDto;
 use super::hydralinks::display_name_for_source_url;
 use rusqlite::{params, Connection};
 use serde::Deserialize;
@@ -148,54 +148,6 @@ pub async fn hydra_refresh_download_source_meta(
   } else {
     hydra_register_download_source(catalog_url).await
   }
-}
-
-pub async fn hydra_check_download_sources_changes(
-  source_ids: &[String],
-  games: &[(i64, String)],
-) -> Result<Vec<(i64, i64)>, String> {
-  let client = hydra_http_client()?;
-  let since = "1970-01-01T00:00:00.000Z".to_string();
-  let response = client
-    .post(format!("{}/download-sources/changes", hydra_api_base_url()))
-    .json(&serde_json::json!({
-      "downloadSourceIds": source_ids,
-      "games": games
-        .iter()
-        .map(|(id, _)| serde_json::json!({ "shop": "custom", "objectId": id.to_string() }))
-        .collect::<Vec<_>>(),
-      "since": since
-    }))
-    .send()
-    .await
-    .map_err(|error| format!("hydra_changes_request_failed: {error}"))?;
-
-  if !response.status().is_success() {
-    return Ok(Vec::new());
-  }
-
-  let parsed = response
-    .json::<Vec<HydraChangesResponseItem>>()
-    .await
-    .map_err(|error| format!("hydra_changes_parse_failed: {error}"))?;
-
-  let mut mapped: Vec<(i64, i64)> = Vec::new();
-  for item in parsed {
-    if item.shop != "custom" {
-      continue;
-    }
-    if let Ok(game_id) = item.object_id.parse::<i64>() {
-      mapped.push((game_id, item.new_download_options_count));
-    }
-  }
-
-  for (game_id, _) in games {
-    if !mapped.iter().any(|(id, _)| id == game_id) {
-      mapped.push((*game_id, 0));
-    }
-  }
-
-  Ok(mapped)
 }
 
 pub fn upsert_hydra_source(conn: &Connection, source: &HydraSourceDto) -> Result<(), String> {

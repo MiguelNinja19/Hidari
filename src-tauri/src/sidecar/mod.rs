@@ -3,7 +3,7 @@ mod extraction;
 mod commands;
 
 pub use commands::{
-  open_deep_link, open_local_path, remove_job_from_library,
+  emit_deep_link_event, open_deep_link, open_local_path, remove_job_from_library,
   sidecar_cancel_job, sidecar_enqueue_job, sidecar_launch_job, sidecar_list_jobs,
   sidecar_open_job_folder, sidecar_pause_job, sidecar_resume_job, sidecar_status,
 };
@@ -12,5 +12,6 @@ pub use engine::{
   spawn_download_engine, spawn_sidecar_progress_watcher,
 };
 pub use extraction::{
-  emit_extract_status, extract_job_archive, process_job_post_download, spawn_extraction_watcher,
+  emit_extract_status, extract_job_archive, process_job_extraction, process_job_post_download,
+  spawn_extraction_watcher, verify_download_payload,
 };

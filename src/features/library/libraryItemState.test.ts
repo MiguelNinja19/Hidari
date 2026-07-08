@@ -6,6 +6,7 @@ import {
   isPlayableLibraryItem,
   itemAwaitingInstall,
   showInstallAction,
+  showLocateInstallAction,
   showPlayAction,
 } from './libraryItemState'
 
@@ -88,6 +89,17 @@ describe('libraryItemState', () => {
     expect(isPlayableLibraryItem(item, [job], pathState)).toBe(true)
     expect(showPlayAction(item, [job], pathState)).toBe(true)
     expect(showInstallAction(item, [job], pathState)).toBe(false)
+  })
+
+  it('não mostra localizar pasta antes da verificação do disco', () => {
+    const item: LibraryEntry = {
+      id: 'folder-cuphead',
+      title: 'Cuphead',
+      status: 'installed',
+      destPath: 'C:\\Games\\Cuphead',
+      kind: 'folder',
+    }
+    expect(showLocateInstallAction(item, [], emptyPathState)).toBe(false)
   })
 
   it('não mostra instalar durante download activo', () => {

@@ -23,6 +23,11 @@ export const getPathState = (
   ctx?: { jobId?: string; title?: string },
 ) => pathStateByKey[pathStateKey(path, ctx)]
 
+export const isPathStateResolved = (
+  item: LibraryEntry,
+  pathStateByKey: Record<string, LibraryPathState>,
+) => getPathState(item.destPath, pathStateByKey, itemPathCtx(item)) !== undefined
+
 export const jobPathCtx = (job: DownloadJob) => ({ jobId: job.id, title: job.title })
 
 export const itemPathCtx = (item: LibraryEntry) => ({
@@ -137,6 +142,7 @@ export const showLocateInstallAction = (
   jobs: DownloadJob[],
   pathStateByKey: Record<string, LibraryPathState>,
 ) => {
+  if (!isPathStateResolved(item, pathStateByKey)) return false
   if (showPlayAction(item, jobs, pathStateByKey)) return false
   if (itemAwaitingInstall(item, jobs, pathStateByKey)) return false
   if (item.kind === 'job' && item.job && !isJobFinished(item.job)) return false
@@ -157,6 +163,16 @@ export function libraryStatusMeta(
   pathStateByKey: Record<string, LibraryPathState>,
 ): { label: string; tone: string } {
   const state = getPathState(item.destPath, pathStateByKey, itemPathCtx(item))
+  const resolved = state !== undefined
+
+  if (!resolved) {
+    if (item.kind === 'folder') {
+      return { label: 'A verificar…', tone: 'idle' }
+    }
+    if (item.kind === 'job' && item.job && isJobFinished(item.job)) {
+      return { label: 'A verificar…', tone: 'idle' }
+    }
+  }
 
   if (itemAwaitingInstall(item, jobs, pathStateByKey)) {
     if (state?.needsExtraction) {

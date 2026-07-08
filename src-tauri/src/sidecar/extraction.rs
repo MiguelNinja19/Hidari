@@ -1,6 +1,6 @@
 use super::engine::{ensure_sidecar_running, fetch_sidecar_job, resolve_job_folder};
 use crate::archive;
-use crate::config::SEVEN_ZIP_BINARY;
+use crate::config::{MIN_DOWNLOAD_VERIFY_BYTES, SEVEN_ZIP_BINARY};
 use crate::db::{
   get_extraction_status, open_database_connection, read_app_setting, read_app_setting_bool,
   upsert_extraction_log,
@@ -258,6 +258,57 @@ pub fn finalize_job_if_playable(
   Ok(true)
 }
 
+fn is_valid_download_extension(path: &Path) -> bool {
+  if archive::is_archive_extension(path) {
+    return true;
+  }
+  path.extension()
+    .and_then(|ext| ext.to_str())
+    .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "exe" | "msi" | "iso" | "bin"))
+    .unwrap_or(false)
+}
+
+fn find_primary_download_file(dest_path: &str) -> Option<PathBuf> {
+  if let Some(archive) = archive::find_job_archive(dest_path) {
+    return Some(archive);
+  }
+  let folder = resolve_job_folder(dest_path);
+  if !folder.is_dir() {
+    return None;
+  }
+  let mut best: Option<(u64, PathBuf)> = None;
+  if let Ok(entries) = std::fs::read_dir(&folder) {
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if !path.is_file() || !is_valid_download_extension(&path) {
+        continue;
+      }
+      let size = entry.metadata().ok().map(|m| m.len()).unwrap_or(0);
+      if best.as_ref().map(|(best_size, _)| size > *best_size).unwrap_or(true) {
+        best = Some((size, path));
+      }
+    }
+  }
+  best.map(|(_, path)| path)
+}
+
+pub fn verify_download_payload(dest_path: &str) -> Result<PathBuf, String> {
+  let file = find_primary_download_file(dest_path)
+    .ok_or_else(|| "verify_no_file: nenhum ficheiro válido encontrado na pasta do download".to_string())?;
+  if !file.is_file() {
+    return Err("verify_missing: ficheiro não existe".to_string());
+  }
+  let size = std::fs::metadata(&file)
+    .map_err(|error| format!("verify_stat: {error}"))?
+    .len();
+  if size < MIN_DOWNLOAD_VERIFY_BYTES {
+    return Err(format!(
+      "verify_too_small: ficheiro muito pequeno ({size} bytes, mínimo {MIN_DOWNLOAD_VERIFY_BYTES})"
+    ));
+  }
+  Ok(file)
+}
+
 pub async fn process_job_post_download(
   app: AppHandle,
   job_id: String,
@@ -273,6 +324,26 @@ pub async fn process_job_post_download(
     return Ok(());
   }
   drop(conn);
+
+  match verify_download_payload(&dest_path) {
+    Ok(file) => {
+      let conn = open_database_connection(&app)?;
+      upsert_extraction_log(
+        &conn,
+        &job_id,
+        "verified",
+        Some(&file.to_string_lossy()),
+        None,
+        None,
+      )?;
+    }
+    Err(message) => {
+      let conn = open_database_connection(&app)?;
+      upsert_extraction_log(&conn, &job_id, "verify_failed", None, None, Some(&message))?;
+      emit_extract_status(&app, &job_id, "verify_failed", Some(message.clone()));
+      return Err(message);
+    }
+  }
 
   if finalize_job_if_playable(&app, &job_id, &title, &dest_path)? {
     return Ok(());
@@ -295,7 +366,6 @@ pub async fn process_job_post_download(
   )
 }
 
-#[allow(dead_code)]
 pub async fn process_job_extraction(
   app: AppHandle,
   job_id: String,

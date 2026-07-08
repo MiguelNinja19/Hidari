@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
 import type { FormEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { APP_LOCALE } from '../../shared/config/locale'
+import { InlineAlert } from '../../shared/components/InlineAlert'
 import type { Source, SteamAppIndexStatus } from '../../shared/types/contracts'
 
 type SettingsPageProps = {
@@ -52,6 +54,7 @@ type SettingsPageProps = {
   steamAppIndexStatus: SteamAppIndexStatus | null
   steamAppIndexRefreshing: boolean
   onRefreshSteamAppIndex: () => Promise<void>
+  appVersion: string | null
 }
 
 function formatGameCount(count: number): string {
@@ -119,10 +122,12 @@ export function SettingsPage({
   steamAppIndexStatus,
   steamAppIndexRefreshing,
   onRefreshSteamAppIndex,
+  appVersion,
   setDefaultDownloadPath,
   setInstallOrganization,
   setAfterInstallAction,
 }: SettingsPageProps) {
+  const { t } = useTranslation()
   const isManagingSources =
     deletingSourceId !== null || syncingSourceId !== null || syncingAllSources
 
@@ -142,6 +147,18 @@ export function SettingsPage({
 
   return (
     <section className="settings-page">
+      <header className="settings-page__header page-header">
+        <div className="settings-page__header-row">
+          <div className="settings-page__header-copy">
+            <h1 className="page-header__title settings-page__title">{t('settings.title')}</h1>
+            <p className="page-header__desc settings-page__desc">{t('settings.subtitle')}</p>
+          </div>
+          <p className="settings-page__version">
+            {appVersion ? t('settings.version', { version: appVersion }) : t('settings.version', { version: '—' })}
+          </p>
+        </div>
+      </header>
+
       <div className="settings-stack">
         <section
           id="settings-catalog"
@@ -194,27 +211,38 @@ export function SettingsPage({
           <div className="settings-block__body">
             <div className="settings-import-panel settings-import-panel--primary">
               {sourcesError ? (
-                <p className="settings-alert settings-alert--error" role="alert">
+                <InlineAlert className="settings-block__alert" variant="error">
                   {sourcesError}
-                </p>
+                </InlineAlert>
               ) : null}
               {sourcesNotice ? (
-                <p className="settings-alert settings-alert--success" role="status">
+                <InlineAlert className="settings-block__alert" variant="info">
                   {sourcesNotice}
-                </p>
+                </InlineAlert>
               ) : null}
 
               <form onSubmit={handleAddSource} className="settings-import-form settings-import-form--inline">
                 <button
-                  className="btn btn-outline settings-import-form__pick"
+                  className={`settings-file-slot settings-import-form__pick${
+                    selectedFileName ? ' settings-file-slot--filled' : ''
+                  }`}
                   type="button"
                   disabled={addingSource}
                   onClick={() => void onSelectSourceFile()}
                 >
-                  {selectedFileName ? selectedFileName : 'Escolher arquivo .json'}
+                  <span className="settings-file-slot__label">Arquivo .json</span>
+                  <span
+                    className={
+                      selectedFileName
+                        ? 'settings-file-slot__name'
+                        : 'settings-file-slot__placeholder'
+                    }
+                  >
+                    {selectedFileName ?? 'Escolher arquivo do catálogo'}
+                  </span>
                 </button>
                 <button
-                  className="btn btn-primary btn--compact"
+                  className="btn btn-primary"
                   type="submit"
                   disabled={!canSubmitSource || addingSource}
                 >
@@ -224,9 +252,12 @@ export function SettingsPage({
             </div>
 
             {sources.length === 0 && !sourcesLoading ? (
-              <p className="settings-block__hint settings-block__hint--center">
-                Ainda sem catálogo — escolha um arquivo acima para começar.
-              </p>
+              <div className="settings-empty">
+                <p className="settings-empty__title">Sem catálogo</p>
+                <p className="settings-empty__text">
+                  Escolha um arquivo .json acima para pesquisar jogos em Explorar.
+                </p>
+              </div>
             ) : (
               <div className="settings-source-table-wrap">
                 <ul className="settings-source-table" role="list">
@@ -247,51 +278,67 @@ export function SettingsPage({
                   {sources.map((source) => {
                     const enabled = isSourceEnabled(source.id)
                     const fileName = fileLabelFromPath(source.url)
+                    const gameCount =
+                      source.downloadCount > 0 ? formatGameCount(source.downloadCount) : '—'
                     return (
                       <li
                         key={source.id}
                         className={`settings-source-row${enabled ? '' : ' settings-source-row--off'}`}
                       >
                         <div className="settings-source-table__col settings-source-table__col--name">
-                          <strong className="settings-source-row__name">{source.name}</strong>
-                          <span className="settings-source-row__file" title={source.url}>
-                            {fileName}
+                          <div className="settings-source-row__main">
+                            <strong className="settings-source-row__name">{source.name}</strong>
+                            <span className="settings-source-row__file" title={source.url}>
+                              {fileName}
+                            </span>
+                          </div>
+                          <span
+                            className={`settings-source-row__badge${
+                              enabled ? ' settings-source-row__badge--on' : ''
+                            }`}
+                          >
+                            {enabled ? 'Ativa' : 'Inativa'}
                           </span>
                         </div>
-                        <span className="settings-source-table__col settings-source-table__col--count">
-                          {source.downloadCount > 0
-                            ? formatGameCount(source.downloadCount)
-                            : '—'}
-                        </span>
-                        <span className="settings-source-table__col settings-source-table__col--on">
+                        <div
+                          className="settings-source-table__col settings-source-table__col--count"
+                          data-label="Jogos"
+                        >
+                          <span className="settings-source-row__count">{gameCount}</span>
+                        </div>
+                        <div className="settings-source-table__col settings-source-table__col--on">
                           <button
                             type="button"
                             className={enabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
                             disabled={isManagingSources}
                             aria-pressed={enabled}
-                            aria-label={enabled ? `Desativar ${source.name}` : `Ativar ${source.name}`}
+                            aria-label={
+                              enabled ? `Desativar ${source.name}` : `Ativar ${source.name}`
+                            }
                             onClick={() => handleToggleSource(source.id)}
                           />
-                        </span>
-                        <span className="settings-source-table__col settings-source-table__col--actions">
-                          <button
-                            type="button"
-                            className="btn btn-outline btn--compact"
-                            disabled={isManagingSources}
-                            onClick={() => void onSyncSource(source.id)}
-                          >
-                            {syncingSourceId === source.id ? '…' : 'Atualizar'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger btn--compact"
-                            disabled={isManagingSources}
-                            aria-label={`Excluir ${source.name}`}
-                            onClick={() => void onDeleteSource(source.id, source.name)}
-                          >
-                            {deletingSourceId === source.id ? '…' : 'Excluir'}
-                          </button>
-                        </span>
+                        </div>
+                        <div className="settings-source-table__col settings-source-table__col--actions">
+                          <div className="settings-source-actions" role="group" aria-label={`Ações de ${source.name}`}>
+                            <button
+                              type="button"
+                              className="btn btn-outline btn--compact settings-source-actions__btn"
+                              disabled={isManagingSources}
+                              onClick={() => void onSyncSource(source.id)}
+                            >
+                              {syncingSourceId === source.id ? '…' : 'Atual.'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-danger btn--compact settings-source-actions__btn"
+                              disabled={isManagingSources}
+                              aria-label={`Excluir ${source.name}`}
+                              onClick={() => void onDeleteSource(source.id, source.name)}
+                            >
+                              {deletingSourceId === source.id ? '…' : 'Excluir'}
+                            </button>
+                          </div>
+                        </div>
                       </li>
                     )
                   })}
@@ -301,7 +348,8 @@ export function SettingsPage({
           </div>
         </section>
 
-        <section id="settings-folder" className="settings-block">
+        <div className="settings-stack__row">
+          <section id="settings-folder" className="settings-block">
           <header className="settings-block__head">
             <div className="settings-block__head-copy">
               <h2 className="settings-block__title">Pasta de instalação</h2>
@@ -362,7 +410,9 @@ export function SettingsPage({
 
           <footer className="settings-block__footer">
             {savePathError ? (
-              <p className="settings-block__error">{savePathError}</p>
+              <InlineAlert className="settings-block__alert" variant="error">
+                {savePathError}
+              </InlineAlert>
             ) : (
               <span className="settings-block__footer-spacer" aria-hidden="true" />
             )}
@@ -374,9 +424,9 @@ export function SettingsPage({
               Guardar pasta
             </button>
           </footer>
-        </section>
+          </section>
 
-        <section id="settings-downloads" className="settings-block">
+          <section id="settings-downloads" className="settings-block">
           <header className="settings-block__head">
             <div className="settings-block__head-copy">
               <h2 className="settings-block__title">Downloads</h2>
@@ -425,7 +475,8 @@ export function SettingsPage({
               />
             </div>
           </div>
-        </section>
+          </section>
+        </div>
 
         <section id="settings-covers" className="settings-block settings-block--wide">
           <header className="settings-block__head settings-block__head--stack">
@@ -433,7 +484,7 @@ export function SettingsPage({
               <div className="settings-block__head-copy">
                 <h2 className="settings-block__title">Capas</h2>
                 <p className="settings-block__desc">
-                  Imagens via Steam — pré-baixadas em segundo plano.
+                  Carregam sob demanda ao navegar. Use Pré-baixar para guardar em disco.
                 </p>
               </div>
               <div className="settings-block__head-actions">

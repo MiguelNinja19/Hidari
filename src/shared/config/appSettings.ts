@@ -4,7 +4,16 @@ export const SETTING_KEY = {
   removeTempFiles: 'remove_temp_files',
   downloadSpeedLimitBps: 'download_speed_limit_bps',
   disabledHydraSourceIds: 'disabled_hydra_source_ids',
+  librarySort: 'library_sort',
 } as const
+
+export const LIBRARY_SORT_OPTIONS = ['title-asc', 'title-desc'] as const
+export type LibrarySort = (typeof LIBRARY_SORT_OPTIONS)[number]
+
+export function parseLibrarySort(value: string | null | undefined): LibrarySort {
+  if (value === 'title-desc') return value
+  return 'title-asc'
+}
 
 export const INSTALL_ORGANIZATION_DEFAULT = 'separate-folder'
 export const AFTER_INSTALL_ACTION_DEFAULT = 'ask'

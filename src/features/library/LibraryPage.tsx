@@ -1,9 +1,10 @@
+import { useTranslation } from 'react-i18next'
 import { CatalogCover } from '../../shared/components/CatalogCover'
 import { EmptyState } from '../../shared/components/EmptyState'
-import { GameTileSkeleton } from '../../shared/components/GameTile'
-import { GameTile, type GameTileAction } from '../../shared/components/GameTile'
+import { LibraryGameCard, LibraryGameCardSkeleton } from './LibraryGameCard'
 import { PageNotice } from '../../shared/components/PageNotice'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
+import { LibrarySortToggle } from './LibrarySortToggle'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import { resolveDeletePath } from '../../shared/utils/archive'
 import type { LibraryEntry } from './types'
@@ -15,10 +16,11 @@ import {
 } from './LibraryController'
 import type { LibraryControllerValue } from './LibraryController'
 
-type LibraryAction = GameTileAction
+import type { GameTileAction } from '../../shared/components/GameTile'
+
 function libraryStatusLine(
   status: { label: string; tone: string },
-  primary: LibraryAction | null,
+  primary: GameTileAction | null,
 ): string | null {
   if (status.tone === 'ready' || status.tone === 'waiting') return null
   if (primary?.id === 'play' || primary?.id === 'install') return null
@@ -42,6 +44,7 @@ function buildLibraryActions(
     canPlay: boolean
     canInstall: boolean
     canLocate: boolean
+    pathStatePending: boolean
     canDelete: boolean
     needsExtraction: boolean
     playBusyId: string | null
@@ -55,8 +58,8 @@ function buildLibraryActions(
     onOpenLocalPath: (path: string) => Promise<void>
     setActiveTabDownloads: () => void
   },
-): { primary: LibraryAction | null; secondary: LibraryAction[] } {
-  const secondary: LibraryAction[] = []
+): { primary: GameTileAction | null; secondary: GameTileAction[] } {
+  const secondary: GameTileAction[] = []
 
   const addOpenFolder = () => {
     secondary.push({
@@ -167,6 +170,20 @@ function buildLibraryActions(
     }
   }
 
+  if (ctx.pathStatePending) {
+    return {
+      primary: {
+        id: 'pending',
+        label: 'A verificar…',
+        title: 'A verificar se o jogo está instalado',
+        variant: 'primary',
+        disabled: true,
+        onClick: () => {},
+      },
+      secondary: [],
+    }
+  }
+
   if (ctx.canLocate) {
     addOpenFolder()
     if (ctx.canDelete) addDelete()
@@ -204,17 +221,21 @@ function buildLibraryActions(
 }
 
 export function LibraryPage() {
+  const { t } = useTranslation()
   const {
-    libraryItems,
+    filteredEntries,
     libraryLoading,
     pathStateByKey,
     libraryFilter,
+    librarySort,
     playBusyId,
     installBusyId,
     savePathError,
-    actionMessage,
+    clearSavePathError,
     setLibraryFilter,
+    setLibrarySort,
     onGoDownloads,
+    onGoDiscover,
     resolveCover,
     invalidateLocalCover,
     handlePlayLibraryItem,
@@ -228,12 +249,15 @@ export function LibraryPage() {
     showPlayAction,
     showInstallAction,
     showLocateInstallAction,
+    isPathStateResolved,
     hasManualInstallRoot,
     isLibraryInstalled,
   } = useLibraryItemHelpers()
   const onResumeItem = useLibraryResumeItem()
   const onOpenLocalPath = useOpenLocalPath()
   const hasActiveFilter = libraryFilter.trim().length > 0
+  const showEmptyLibrary =
+    !libraryLoading && filteredEntries.length === 0 && !hasActiveFilter
 
   return (
     <section className="library-page">
@@ -241,35 +265,37 @@ export function LibraryPage() {
         <SearchInput
           className="library-toolbar__search browse-search browse-search--bar"
           value={libraryFilter}
-          placeholder="Filtrar biblioteca…"
+          placeholder={t('library.filterPlaceholder')}
+          searchFocusId="library"
           onChange={setLibraryFilter}
         />
+        <div className="library-toolbar__sort">
+          <LibrarySortToggle value={librarySort} onChange={setLibrarySort} />
+        </div>
       </header>
 
-      {(savePathError?.trim() || actionMessage?.trim()) ? (
-        <PageNotice
-          error={savePathError?.trim() || null}
-          message={actionMessage?.trim() || null}
-        />
+      {savePathError?.trim() ? (
+        <PageNotice error={savePathError.trim()} onDismiss={clearSavePathError} />
       ) : null}
 
       {libraryLoading ? (
         <ul className="library-grid library-grid--skeleton" aria-hidden="true">
           {Array.from({ length: 8 }, (_, index) => (
-            <GameTileSkeleton key={index} />
+            <LibraryGameCardSkeleton key={index} />
           ))}
         </ul>
       ) : null}
 
-      {!libraryLoading && libraryItems.length > 0 ? (
+      {!libraryLoading && filteredEntries.length > 0 ? (
         <ul className="library-grid">
-          {libraryItems.map((item) => {
+          {filteredEntries.map((item) => {
             const status = libraryStatusMeta(item)
             const cover = resolveCover(item.title)
             const key = busyKey(item)
             const canPlay = showPlayAction(item)
             const canInstall = showInstallAction(item)
             const canLocate = showLocateInstallAction(item)
+            const pathStatePending = !isPathStateResolved(item)
             const canDelete = isLibraryInstalled(item) || item.kind === 'folder'
             const manualRoot = hasManualInstallRoot(item)
             const pathState = pathStateByKey[itemPathStateKey(item)]
@@ -280,6 +306,7 @@ export function LibraryPage() {
               canPlay,
               canInstall,
               canLocate,
+              pathStatePending,
               canDelete,
               needsExtraction,
               playBusyId,
@@ -297,9 +324,8 @@ export function LibraryPage() {
             const statusLine = libraryStatusLine(status, primary)
 
             return (
-              <li key={item.id}>
-                <GameTile
-                  variant="library"
+              <li key={item.id} className="library-grid__item">
+                <LibraryGameCard
                   title={cleanTitleForDisplay(item.title)}
                   titleAttr={[
                     cleanTitleForDisplay(item.title),
@@ -308,6 +334,7 @@ export function LibraryPage() {
                   ]
                     .filter(Boolean)
                     .join(' · ')}
+                  metaLine={statusLine}
                   cover={
                     <CatalogCover
                       title={item.title}
@@ -320,7 +347,6 @@ export function LibraryPage() {
                   }
                   primaryAction={primary}
                   secondaryActions={secondary}
-                  statusLine={statusLine}
                 />
               </li>
             )
@@ -328,10 +354,18 @@ export function LibraryPage() {
         </ul>
       ) : null}
 
-      {!libraryLoading && libraryItems.length === 0 && hasActiveFilter ? (
+      {showEmptyLibrary ? (
         <EmptyState
-          title="Sem resultados"
-          description="Nenhum jogo corresponde ao filtro atual."
+          title={t('library.emptyTitle')}
+          description={t('library.emptyDescription')}
+          action={{ label: t('common.exploreCatalog'), onClick: onGoDiscover }}
+        />
+      ) : null}
+
+      {!libraryLoading && filteredEntries.length === 0 && hasActiveFilter ? (
+        <EmptyState
+          title={t('library.noResultsTitle')}
+          description={t('library.noResultsDescription')}
         />
       ) : null}
     </section>

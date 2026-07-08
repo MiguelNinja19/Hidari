@@ -1,24 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppDispatch, useAppSelector } from './app/hooks'
-import { useAppBootstrap } from './app/hooks/useAppBootstrap'
+import { useAppSettings } from './app/context/AppSettingsContext'
+import { useNavigation } from './app/context/NavigationContext'
+import { useDeepLinkNavigation } from './app/hooks/useDeepLinkNavigation'
+import { useCatalogChangeNotifications } from './app/hooks/useCatalogChangeNotifications'
 import { useDownloadNotifications } from './app/hooks/useDownloadNotifications'
 import { useJobPolling } from './app/hooks/useJobPolling'
+import { useKeyboardShortcuts } from './app/hooks/useKeyboardShortcuts'
+import { useAppUpdater } from './app/hooks/useAppUpdater'
 import { enqueueJob } from './features/queue/queueSlice'
 import { sourcesApi } from './shared/api/tauri/sourcesApi'
-import { tauriClient } from './shared/api/tauri/client'
 import { useGameCovers } from './features/covers/useGameCovers'
 import { AppShell } from './layout/AppShell'
-import type { NavTab } from './layout/types'
 import { DiscoverPage } from './features/discover/DiscoverPage'
 import { useDiscoverCatalog } from './features/discover/useDiscoverCatalog'
+import { useFavorites } from './features/favorites/useFavorites'
+import { FavoritesPage } from './features/favorites/FavoritesPage'
 import { DownloadsTab } from './features/downloads/DownloadsTab'
 import { LibraryTab } from './features/library/LibraryTab'
 import { SettingsTab } from './features/settings/SettingsTab'
-import {
-  AFTER_INSTALL_ACTION_DEFAULT,
-  INSTALL_ORGANIZATION_DEFAULT,
-} from './shared/config/appSettings'
-import './App.css'
+import { catalogGameGroupKey } from './shared/utils/normalizeTitleKey'
+import { formatUserError } from './shared/utils/formatUserError'
+import type { FavoriteEntry } from './shared/types/contracts'
+import './styles/index.css'
 
 function App() {
   const dispatch = useAppDispatch()
@@ -28,17 +32,25 @@ function App() {
   const queueLoading = useAppSelector((state) => state.queue.loading)
   const queueError = useAppSelector((state) => state.queue.error)
 
-  const [activeTab, setActiveTab] = useState<NavTab>('discover')
+  const {
+    activeTab,
+    setActiveTab,
+    navigateDiscover,
+    navigateDownloads,
+  } = useNavigation()
+
+  const {
+    defaultDownloadPath,
+    disabledSourceIds,
+  } = useAppSettings()
+
   const [discoverSearch, setDiscoverSearch] = useState('')
-  const [defaultDownloadPath, setDefaultDownloadPath] = useState('')
   const [downloadsBooting, setDownloadsBooting] = useState(false)
-  const [seedTorrentsEnabled, setSeedTorrentsEnabled] = useState(true)
-  const [removeTemporaryFiles, setRemoveTemporaryFiles] = useState(true)
-  const [downloadSpeedLimit, setDownloadSpeedLimit] = useState('ilimitado')
-  const [installOrganization, setInstallOrganization] = useState(INSTALL_ORGANIZATION_DEFAULT)
-  const [afterInstallAction, setAfterInstallAction] = useState(AFTER_INSTALL_ACTION_DEFAULT)
-  const [disabledSourceIds, setDisabledSourceIds] = useState<string[]>([])
+  const [favoriteBusy, setFavoriteBusy] = useState(false)
   const refreshLibraryScanRef = useRef<((options?: { background?: boolean }) => void) | null>(null)
+
+  useAppUpdater()
+  useKeyboardShortcuts({ activeTab, setActiveTab })
 
   const activeDownloadsCount = useMemo(
     () =>
@@ -55,21 +67,76 @@ function App() {
 
   const isSourceEnabled = (sourceId: string) => !disabledSourceIds.includes(sourceId)
 
-  useAppBootstrap({
-    setDefaultDownloadPath,
-    setSeedTorrentsEnabled,
-    setInstallOrganization,
-    setAfterInstallAction,
-    setRemoveTemporaryFiles,
-    setDownloadSpeedLimit,
-    setDisabledSourceIds,
-  })
-
   const discover = useDiscoverCatalog({
     discoverSearch,
     enabledSourcesCount,
     defaultDownloadPath,
   })
+
+  const favorites = useFavorites()
+
+  const detailCatalogKey = useMemo(() => {
+    const title = discover.gameDetail?.game.title ?? discover.selectedGame?.title
+    return title ? catalogGameGroupKey(title) : ''
+  }, [discover.gameDetail, discover.selectedGame])
+
+  const detailIsFavorite = detailCatalogKey ? favorites.isFavorite(detailCatalogKey) : false
+
+  const handleToggleDetailFavorite = useCallback(async () => {
+    const title = discover.gameDetail?.game.title ?? discover.selectedGame?.title
+    if (!title || !detailCatalogKey) return
+    setFavoriteBusy(true)
+    try {
+      await favorites.toggleFavorite(detailCatalogKey, title)
+    } catch (error) {
+      discover.setDiscoverError(
+        error instanceof Error ? error.message : 'Falha ao atualizar favorito.',
+      )
+    } finally {
+      setFavoriteBusy(false)
+    }
+  }, [detailCatalogKey, discover, favorites])
+
+  const handleOpenFavorite = useCallback(
+    (entry: FavoriteEntry) => {
+      setActiveTab('discover')
+      discover.openGameDetail({ groupKey: entry.catalogKey, title: entry.title })
+    },
+    [discover, setActiveTab],
+  )
+
+  useEffect(() => {
+    if (activeTab === 'favorites') {
+      void favorites.refresh()
+    }
+  }, [activeTab, favorites.refresh])
+
+  useDeepLinkNavigation({
+    onNavigateDiscover: navigateDiscover,
+    setDiscoverSearch,
+    openGameDetail: discover.openGameDetail,
+  })
+
+  const coverCatalogGames = useMemo(() => {
+    const games = discover.gameDetail?.game
+      ? [...discover.catalogGames, discover.gameDetail.game]
+      : [...discover.catalogGames]
+
+    for (const entry of favorites.favorites) {
+      if (!games.some((game) => game.title === entry.title)) {
+        games.push({
+          id: `fav:${entry.catalogKey}`,
+          title: entry.title,
+          genre: '',
+          coverUrl: null,
+          localCoverPath: null,
+          source: 'source',
+        })
+      }
+    }
+
+    return games
+  }, [discover.catalogGames, discover.gameDetail, favorites.favorites])
 
   const {
     resolveCover,
@@ -78,32 +145,10 @@ function App() {
     syncJobCovers,
     resolveCoversBatch,
     invalidateLocalCover,
-  } = useGameCovers(discover.catalogGames)
+  } = useGameCovers(coverCatalogGames)
 
   useDownloadNotifications(jobs)
-
-  useEffect(() => {
-    let unlisten: (() => void) | undefined
-    void tauriClient.listenDeepLink(() => {
-      setActiveTab('discover')
-    }).then((fn) => {
-      unlisten = fn
-    })
-    return () => {
-      unlisten?.()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (activeTab !== 'discover' || discover.catalogLoading) return
-    const missing = discover.catalogGames
-      .filter((game) => !game.coverUrl?.trim() && !game.localCoverPath?.trim())
-      .map((game) => game.title)
-      .slice(0, 12)
-    if (missing.length > 0) {
-      resolveCoversBatch(missing)
-    }
-  }, [activeTab, discover.catalogLoading, discover.catalogGames, resolveCoversBatch])
+  useCatalogChangeNotifications(sources.length > 0)
 
   useJobPolling({
     activeTab,
@@ -147,10 +192,11 @@ function App() {
       ).unwrap()
       if (resolvedCover) refreshCovers()
       discover.closeDiscoverPicker()
+      discover.closeGameDetail()
       setActiveTab('downloads')
     } catch (error) {
       discover.setDiscoverError(
-        error instanceof Error ? error.message : 'Falha ao adicionar o download à fila.',
+        formatUserError(error, 'Falha ao adicionar o download à fila.'),
       )
     } finally {
       discover.setDiscoverBusy(null)
@@ -162,13 +208,22 @@ function App() {
       case 'discover':
         return (
           <DiscoverPage
+            view={discover.view}
+            gameDetail={discover.gameDetail}
+            detailLoading={discover.detailLoading}
+            detailError={discover.detailError}
+            isFavorite={detailIsFavorite}
+            favoriteBusy={favoriteBusy}
+            onToggleFavorite={() => void handleToggleDetailFavorite()}
+            catalogError={discover.catalogError}
+            discoverError={discover.discoverError}
+            clearCatalogError={() => discover.setCatalogError('')}
+            clearDiscoverError={() => discover.setDiscoverError('')}
             discoverSearch={discoverSearch}
             catalogLoading={discover.catalogLoading}
             catalogLoadingMore={discover.catalogLoadingMore}
             catalogHasMore={discover.catalogHasMore}
             loadMoreCatalog={discover.loadMoreCatalog}
-            discoverError={discover.discoverError}
-            catalogError={discover.catalogError}
             displayCatalogSource={discover.displayCatalogSource}
             discoverPickGame={discover.discoverPickGame}
             discoverPickLoading={discover.discoverPickLoading}
@@ -181,11 +236,26 @@ function App() {
             isSourceEnabled={isSourceEnabled}
             setDiscoverSearch={setDiscoverSearch}
             onGoSettings={() => setActiveTab('settings')}
-            openDiscoverPicker={discover.openDiscoverPicker}
+            openGameDetail={(game) => discover.openGameDetail({ title: game.title })}
+            closeGameDetail={discover.closeGameDetail}
             closeDiscoverPicker={discover.closeDiscoverPicker}
             handleEnqueueFromDiscover={handleEnqueueFromDiscover}
             resolveCover={resolveCover}
             warmCover={warmCover}
+            onNeedsCover={(title) => resolveCoversBatch([title])}
+            invalidateLocalCover={invalidateLocalCover}
+          />
+        )
+      case 'favorites':
+        return (
+          <FavoritesPage
+            favorites={favorites.favorites}
+            catalogGames={coverCatalogGames}
+            loading={favorites.loading}
+            onOpenFavorite={handleOpenFavorite}
+            warmCover={warmCover}
+            resolveCoversBatch={resolveCoversBatch}
+            resolveCover={resolveCover}
             invalidateLocalCover={invalidateLocalCover}
           />
         )
@@ -195,8 +265,8 @@ function App() {
             jobs={jobs}
             defaultDownloadPath={defaultDownloadPath}
             dispatch={dispatch}
-            onGoDiscover={() => setActiveTab('discover')}
-            onGoDownloads={() => setActiveTab('downloads')}
+            onGoDiscover={navigateDiscover}
+            onGoDownloads={navigateDownloads}
             onRegisterRefreshScan={(fn) => {
               refreshLibraryScanRef.current = fn
             }}
@@ -212,31 +282,13 @@ function App() {
             queueLoading={queueLoading}
             queueError={queueError}
             downloadsBooting={downloadsBooting}
-            onGoDiscover={() => setActiveTab('discover')}
+            onGoDiscover={navigateDiscover}
             resolveCover={resolveCover}
             invalidateLocalCover={invalidateLocalCover}
           />
         )
       case 'settings':
-        return (
-          <SettingsTab
-            defaultDownloadPath={defaultDownloadPath}
-            setDefaultDownloadPath={setDefaultDownloadPath}
-            installOrganization={installOrganization}
-            setInstallOrganization={setInstallOrganization}
-            afterInstallAction={afterInstallAction}
-            setAfterInstallAction={setAfterInstallAction}
-            removeTemporaryFiles={removeTemporaryFiles}
-            setRemoveTemporaryFiles={setRemoveTemporaryFiles}
-            seedTorrentsEnabled={seedTorrentsEnabled}
-            setSeedTorrentsEnabled={setSeedTorrentsEnabled}
-            downloadSpeedLimit={downloadSpeedLimit}
-            setDownloadSpeedLimit={setDownloadSpeedLimit}
-            disabledSourceIds={disabledSourceIds}
-            setDisabledSourceIds={setDisabledSourceIds}
-            onRefreshCovers={refreshCovers}
-          />
-        )
+        return <SettingsTab onRefreshCovers={refreshCovers} />
       default:
         return null
     }

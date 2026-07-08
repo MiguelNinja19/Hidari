@@ -8,6 +8,8 @@ type SearchInputProps = {
   disabled?: boolean
   onClick?: () => void
   trailing?: ReactNode
+  /** Identificador da aba para atalho Ctrl+F (data-search-focus). */
+  searchFocusId?: string
   onChange: (value: string) => void
 }
 
@@ -19,6 +21,7 @@ export function SearchInput({
   disabled,
   onClick,
   trailing,
+  searchFocusId,
   onChange,
 }: SearchInputProps) {
   return (
@@ -36,6 +39,7 @@ export function SearchInput({
         value={value}
         disabled={disabled}
         onClick={onClick}
+        data-search-focus={searchFocusId}
         onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
         autoComplete="off"
         spellCheck={false}

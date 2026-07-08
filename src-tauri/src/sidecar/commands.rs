@@ -7,7 +7,9 @@ use crate::dto::{
 };
 use crate::launch;
 use crate::launch_errors;
-use crate::library::roots::{launch_extra_roots, open_path_in_shell};
+use crate::library::roots::{
+  launch_extra_roots, open_path_in_shell, read_library_launch_exe, upsert_library_launch_exe,
+};
 use crate::sources::{enrich_magnet_url, validate_job_url};
 use crate::state::SidecarState;
 use rusqlite::params;
@@ -236,13 +238,17 @@ pub async fn sidecar_open_job_folder(app: AppHandle, id: String) -> Result<(), S
 #[tauri::command]
 pub async fn sidecar_launch_job(app: AppHandle, id: String) -> Result<String, String> {
   let job = fetch_sidecar_job(&app, &id).await?;
+  let conn = open_database_connection(&app)?;
+  let cached_exe = read_library_launch_exe(&conn, &job.dest_path, &job.title);
   let extra_roots = launch_extra_roots(&app, &job.title, &job.dest_path, Some(&id));
   let launched = launch::resolve_and_launch_game_with_extra_roots(
     &job.title,
     &job.dest_path,
     &extra_roots,
+    cached_exe.as_deref(),
   )
   .map_err(|error| launch_errors::map_launch_user_error(&error, &job.dest_path))?;
+  let _ = upsert_library_launch_exe(&conn, &job.dest_path, &job.title, &launched);
   Ok(launched.to_string_lossy().to_string())
 }
 
@@ -269,9 +275,19 @@ pub fn open_local_path(path: String) -> Result<(), String> {
 pub fn emit_deep_link_event(app: &AppHandle, url: &str) -> Result<(), String> {
   let parsed = Url::parse(url).map_err(|error| format!("invalid_deep_link: {error}"))?;
   let action = Some(parsed.path().trim_start_matches('/').to_string()).filter(|value| !value.is_empty());
-  let game_id = parsed
-    .query_pairs()
-    .find_map(|(key, value)| if key == "gameId" { Some(value.to_string()) } else { None });
+  let mut game_id = None;
+  let mut search_query = None;
+  let mut group_key = None;
+  let mut title = None;
+  for (key, value) in parsed.query_pairs() {
+    match key.as_ref() {
+      "gameId" => game_id = Some(value.to_string()),
+      "q" => search_query = Some(value.to_string()),
+      "groupKey" => group_key = Some(value.to_string()),
+      "title" => title = Some(value.to_string()),
+      _ => {}
+    }
+  }
 
   app
     .emit(
@@ -280,6 +296,9 @@ pub fn emit_deep_link_event(app: &AppHandle, url: &str) -> Result<(), String> {
         url: url.to_string(),
         game_id,
         action,
+        search_query,
+        group_key,
+        title,
       },
     )
     .map_err(|error| format!("could_not_emit_deep_link_event: {error}"))

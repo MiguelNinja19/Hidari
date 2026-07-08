@@ -159,6 +159,104 @@ pub struct CatalogGameDto {
   pub option_count: Option<u32>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetGameDetailPayload {
+  pub group_key: Option<String>,
+  pub title: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameDetailDto {
+  pub game: CatalogGameDto,
+  pub synopsis: Option<String>,
+  pub screenshots: Vec<String>,
+  pub trailer_url: Option<String>,
+  pub trailer_thumbnail: Option<String>,
+  pub steam_app_id: Option<u32>,
+  pub downloads: Vec<DownloadOptionDto>,
+  pub in_library: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveGenresBatchPayload {
+  pub titles: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedGenreDto {
+  pub title: String,
+  pub genre: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToggleFavoritePayload {
+  pub catalog_key: String,
+  pub title: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteCatalogEntryDto {
+  pub catalog_key: String,
+  pub title: String,
+  pub added_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateCollectionPayload {
+  pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameCollectionPayload {
+  pub id: String,
+  pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionIdPayload {
+  pub id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionEntryPayload {
+  pub collection_id: String,
+  pub catalog_key: String,
+  pub title: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionDto {
+  pub id: String,
+  pub name: String,
+  pub entry_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionEntryDto {
+  pub catalog_key: String,
+  pub title: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogChangeDto {
+  pub source_id: String,
+  pub source_name: String,
+  pub new_count: i64,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedCoverBatchItem {
@@ -250,6 +348,9 @@ pub struct DeepLinkEventPayload {
   pub url: String,
   pub game_id: Option<String>,
   pub action: Option<String>,
+  pub search_query: Option<String>,
+  pub group_key: Option<String>,
+  pub title: Option<String>,
 }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

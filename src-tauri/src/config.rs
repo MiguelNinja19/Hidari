@@ -16,6 +16,9 @@ pub const DOWNLOAD_ENGINE_BINARY: &str = "download-engine.exe";
 pub const ARIA2_BINARY: &str = "aria2c.exe";
 pub const SEVEN_ZIP_BINARY: &str = "7z.exe";
 
+/// Tamanho mínimo aceite para ficheiro principal após download (1 MiB).
+pub const MIN_DOWNLOAD_VERIFY_BYTES: u64 = 1_048_576;
+
 pub fn download_engine_binary_name() -> &'static str {
   if cfg!(target_os = "windows") {
     DOWNLOAD_ENGINE_BINARY

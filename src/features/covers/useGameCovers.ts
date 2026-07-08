@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import type { CatalogGame, DownloadJob, GameCover } from '../../shared/types/contracts'
+import type { CatalogGame, CoverPrecacheStatus, DownloadJob, GameCover } from '../../shared/types/contracts'
 import { coverTitleKey, coverTitleKeyCandidates, normalizeTitleKey } from '../../shared/utils/normalizeTitleKey'
+import { scheduleDeferred } from '../../shared/utils/scheduleDeferred'
 
 export type CoverStatus = 'idle' | 'loading' | 'cached' | 'error'
 
@@ -134,30 +135,25 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
   }, [refreshCovers])
 
   useEffect(() => {
-    void sourcesApi.listGameCovers().then((rows) => {
-      setSavedCovers((prev) => {
-        const map = { ...prev }
-        for (const row of rows) {
-          map[row.titleKey] = row
-        }
-        return map
+    const cancel = scheduleDeferred(() => {
+      void sourcesApi.listGameCovers().then((rows) => {
+        setSavedCovers((prev) => {
+          const map = { ...prev }
+          for (const row of rows) {
+            map[row.titleKey] = row
+          }
+          return map
+        })
       })
-    })
+    }, 300)
+    return cancel
   }, [])
 
   useEffect(() => {
-    refreshCovers()
-    return () => {
-      if (refreshTimerRef.current != null) {
-        window.clearTimeout(refreshTimerRef.current)
-      }
-    }
-  }, [refreshCovers])
-
-  useEffect(() => {
     let cancelled = false
-    void listen('cover-precache-progress', () => {
-      if (!cancelled) refreshCoversRef.current()
+    void listen<CoverPrecacheStatus>('cover-precache-progress', (event) => {
+      if (cancelled || event.payload.running) return
+      refreshCoversRef.current()
     }).then((unlisten) => () => {
       cancelled = true
       void unlisten()

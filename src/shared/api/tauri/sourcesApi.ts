@@ -1,12 +1,23 @@
 import { tauriClient } from './client'
 import type {
   AddSourceInput,
+  CatalogChange,
   CatalogGame,
+  Collection,
+  CollectionEntry,
+  CollectionEntryInput,
+  CollectionIdInput,
+  CreateCollectionInput,
   DownloadOption,
+  FavoriteEntry,
   GameCover,
-  GameSourceChange,
+  GameDetail,
+  GetGameDetailInput,
   LibraryPathState,
   LocalLibraryItem,
+  ResolveGenresBatchInput,
+  ResolvedGenre,
+  RenameCollectionInput,
   SearchCatalogInput,
   SearchDownloadOptionsInput,
   Source,
@@ -14,6 +25,7 @@ import type {
   SyncLocalSourceResult,
   CoverPrecacheStatus,
   SteamAppIndexStatus,
+  ToggleFavoriteInput,
 } from '../../types/contracts'
 
 export const sourcesApi = {
@@ -28,12 +40,34 @@ export const sourcesApi = {
     tauriClient.invoke<SyncAllLocalSourcesResult>('sync_all_local_source_catalogs'),
   removeSource: (id: string) =>
     tauriClient.invoke<void>('remove_download_source', { payload: { id } }),
-  getDownloadSourcesChanges: () =>
-    tauriClient.invoke<GameSourceChange[]>('check_download_sources_changes'),
   searchDownloadOptions: (payload: SearchDownloadOptionsInput) =>
     tauriClient.invoke<DownloadOption[]>('search_download_options', { payload }),
   searchGameCatalog: (payload: SearchCatalogInput) =>
     tauriClient.invoke<CatalogGame[]>('search_game_catalog', { payload }),
+  resolveGameGenresBatch: (payload: ResolveGenresBatchInput) =>
+    tauriClient.invoke<ResolvedGenre[]>('resolve_game_genres_batch', { payload }),
+  getGameDetail: (payload: GetGameDetailInput) =>
+    tauriClient.invoke<GameDetail>('get_game_detail', { payload }),
+  toggleFavorite: (payload: ToggleFavoriteInput) =>
+    tauriClient.invoke<boolean>('toggle_favorite_catalog_entry', { payload }),
+  listFavorites: () =>
+    tauriClient.invoke<FavoriteEntry[]>('list_favorite_catalog_entries'),
+  checkCatalogChanges: () =>
+    tauriClient.invoke<CatalogChange[]>('check_catalog_changes'),
+  createCollection: (payload: CreateCollectionInput) =>
+    tauriClient.invoke<Collection>('create_collection', { payload }),
+  renameCollection: (payload: RenameCollectionInput) =>
+    tauriClient.invoke<void>('rename_collection', { payload }),
+  deleteCollection: (payload: CollectionIdInput) =>
+    tauriClient.invoke<void>('delete_collection', { payload }),
+  listCollections: () => tauriClient.invoke<Collection[]>('list_collections'),
+  addToCollection: (payload: CollectionEntryInput) =>
+    tauriClient.invoke<void>('add_to_collection', { payload }),
+  removeFromCollection: (payload: CollectionEntryInput) =>
+    tauriClient.invoke<void>('remove_from_collection', { payload }),
+  listCollectionEntries: (payload: CollectionIdInput) =>
+    tauriClient.invoke<CollectionEntry[]>('list_collection_entries', { payload }),
+  openDeepLink: (url: string) => tauriClient.invoke<void>('open_deep_link', { url }),
   setDefaultDownloadPath: (path: string) =>
     tauriClient.invoke<void>('set_default_download_path', { payload: { path } }),
   getDefaultDownloadPath: () =>

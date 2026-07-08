@@ -108,6 +108,11 @@ export function coverTitleKeyCandidates(title: string): string[] {
   return keys
 }
 
+/** Chave de agrupamento do catálogo (espelha `catalog_game_group_key` no backend). */
+export function catalogGameGroupKey(title: string): string {
+  return normalizeTitleKey(extractCatalogBaseTitle(title))
+}
+
 /** Chave para agrupar o mesmo jogo na biblioteca (ex.: Terraria vs Terraria v1.4.5). */
 export function libraryGameKey(title: string): string {
   let cleaned = cleanTitleForDisplay(title)

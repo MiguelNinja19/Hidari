@@ -6,9 +6,17 @@ import {
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { simplifySourceSearchQuery } from '../../shared/utils/titleMatching'
 import { cleanTitleForCover } from '../../shared/utils/normalizeTitleKey'
-import type { CatalogGame, DownloadOption } from '../../shared/types/contracts'
+import { formatUserError } from '../../shared/utils/formatUserError'
+import type { CatalogGame, DownloadOption, GameDetail, GetGameDetailInput } from '../../shared/types/contracts'
 
 const DISCOVER_PAGE_SIZE = 24
+
+export type DiscoverView = 'grid' | 'detail'
+
+export type SelectedGameRef = {
+  groupKey?: string
+  title: string
+}
 
 const isDownloadableOption = (option: DownloadOption) =>
   option.downloadType === 'torrent' ||
@@ -36,6 +44,11 @@ export function useDiscoverCatalog({
   const [discoverPickOptions, setDiscoverPickOptions] = useState<DownloadOption[]>([])
   const [discoverPickLoading, setDiscoverPickLoading] = useState(false)
   const [discoverPickError, setDiscoverPickError] = useState<string | null>(null)
+  const [view, setView] = useState<DiscoverView>('grid')
+  const [selectedGame, setSelectedGame] = useState<SelectedGameRef | null>(null)
+  const [gameDetail, setGameDetail] = useState<GameDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState('')
 
   const displayCatalogSource = useMemo(() => {
     const q = discoverSearch.trim()
@@ -99,9 +112,7 @@ export function useDiscoverCatalog({
             discoverSearch.trim() === requestQuery
           ) {
             setCatalogError(
-              error instanceof Error
-                ? error.message
-                : 'Falha ao pesquisar nas fontes. Tente novamente.',
+              formatUserError(error, 'Falha ao pesquisar nas fontes. Tente novamente.'),
             )
           }
         } finally {
@@ -145,11 +156,7 @@ export function useDiscoverCatalog({
       setCatalogHasMore(rows.length > DISCOVER_PAGE_SIZE)
       setCatalogGames((prev) => [...prev, ...rows.slice(0, DISCOVER_PAGE_SIZE)])
     } catch (error) {
-      setCatalogError(
-        error instanceof Error
-          ? error.message
-          : 'Falha ao carregar mais resultados. Tente novamente.',
-      )
+      setCatalogError(formatUserError(error, 'Falha ao carregar mais resultados. Tente novamente.'))
     } finally {
       setCatalogLoadingMore(false)
     }
@@ -160,6 +167,55 @@ export function useDiscoverCatalog({
     setDiscoverPickOptions([])
     setDiscoverPickError(null)
     setDiscoverPickLoading(false)
+  }, [])
+
+  const closeGameDetail = useCallback(() => {
+    setView('grid')
+    setSelectedGame(null)
+    setGameDetail(null)
+    setDetailLoading(false)
+    setDetailError('')
+  }, [])
+
+  const openGameDetail = useCallback((input: GetGameDetailInput) => {
+    const groupKey = input.groupKey?.trim()
+    const title = input.title?.trim()
+    if (!groupKey && !title) return
+
+    setDiscoverError('')
+    setView('detail')
+    setSelectedGame({
+      groupKey: groupKey || undefined,
+      title: title ?? '',
+    })
+    setGameDetail(null)
+    setDetailError('')
+    setDetailLoading(true)
+
+    void (async () => {
+      try {
+        const detail = await sourcesApi.getGameDetail({
+          groupKey: groupKey || undefined,
+          title: title || undefined,
+        })
+        setGameDetail(detail)
+        if (detail.game.genre.trim()) {
+          setCatalogGames((prev) =>
+            prev.map((game) =>
+              game.title === detail.game.title ? { ...game, genre: detail.game.genre } : game,
+            ),
+          )
+        }
+        setSelectedGame({
+          groupKey: groupKey || undefined,
+          title: detail.game.title,
+        })
+      } catch (error) {
+        setDetailError(formatUserError(error, 'Não foi possível carregar os detalhes do jogo.'))
+      } finally {
+        setDetailLoading(false)
+      }
+    })()
   }, [])
 
   const openDiscoverPicker = useCallback(
@@ -224,7 +280,21 @@ export function useDiscoverCatalog({
     return () => window.removeEventListener('keydown', onKey)
   }, [discoverPickGame, closeDiscoverPicker])
 
+  useEffect(() => {
+    if (view !== 'detail') return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeGameDetail()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [view, closeGameDetail])
+
   return {
+    view,
+    selectedGame,
+    gameDetail,
+    detailLoading,
+    detailError,
     catalogGames,
     catalogLoading,
     catalogLoadingMore,
@@ -232,6 +302,7 @@ export function useDiscoverCatalog({
     loadMoreCatalog,
     catalogError,
     discoverError,
+    setCatalogError,
     setDiscoverError,
     discoverBusy,
     setDiscoverBusy,
@@ -242,5 +313,7 @@ export function useDiscoverCatalog({
     displayCatalogSource,
     closeDiscoverPicker,
     openDiscoverPicker,
+    openGameDetail,
+    closeGameDetail,
   }
 }

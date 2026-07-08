@@ -1,14 +1,26 @@
+import { InlineAlert } from './InlineAlert'
+
 type PageNoticeProps = {
   error?: string | null
   message?: string | null
+  onDismiss?: () => void
+  className?: string
 }
 
-export function PageNotice({ error, message }: PageNoticeProps) {
+export function PageNotice({ error, message, onDismiss, className }: PageNoticeProps) {
   if (error?.trim()) {
-    return <p className="page-notice page-notice--error">{error.trim()}</p>
+    return (
+      <InlineAlert variant="error" onDismiss={onDismiss} className={className}>
+        {error.trim()}
+      </InlineAlert>
+    )
   }
   if (message?.trim()) {
-    return <p className="page-notice">{message.trim()}</p>
+    return (
+      <InlineAlert variant="info" onDismiss={onDismiss} className={className}>
+        {message.trim()}
+      </InlineAlert>
+    )
   }
   return null
 }

@@ -1,0 +1,263 @@
+@media (max-width: 1024px) {
+  .nova-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    min-height: auto;
+    position: static;
+    border-right: none;
+    border-bottom: var(--border-width) solid var(--sidebar-edge);
+  }
+
+  .sidebar__logo {
+    padding-bottom: 0;
+    border-bottom: none;
+    margin-right: auto;
+    width: auto;
+  }
+
+  .sidebar__nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: var(--space-2);
+  }
+
+  .sidebar-link {
+    flex: 1;
+    min-width: calc(50% - var(--space-2));
+    justify-content: center;
+  }
+
+  .page-hero {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .browse-toolbar__controls {
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .downloads-page__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .downloads-page__actions {
+    justify-content: flex-end;
+  }
+
+  .downloads-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .downloads-toolbar__actions {
+    justify-content: flex-end;
+  }
+
+  .page-toolbar {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
+  .page-toolbar__filters {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .page-toolbar__filters .chip {
+    flex: 1;
+    text-align: center;
+  }
+
+  .library-grid {
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: 12px;
+  }
+
+  .library-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .library-toolbar__filters {
+    width: 100%;
+  }
+
+  .library-toolbar__filters .chip {
+    flex: 1;
+    text-align: center;
+  }
+
+  .settings-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-stack__row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-block--wide {
+    grid-column: auto;
+  }
+
+  .settings-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-sources {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-sources--cards {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-source-table__head {
+    display: none;
+  }
+
+  .settings-source-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name on"
+      "count actions";
+    gap: 8px 10px;
+    padding: 10px 12px;
+  }
+
+  .settings-source-table__col--name {
+    grid-area: name;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .settings-source-row__badge {
+    display: none;
+  }
+
+  .settings-source-table__col--count {
+    grid-area: count;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-align: left;
+  }
+
+  .settings-source-table__col--count::before {
+    content: attr(data-label);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .settings-source-row__count {
+    font-size: 0.75rem;
+  }
+
+  .settings-source-table__col--on {
+    grid-area: on;
+    justify-content: flex-end;
+    align-self: start;
+  }
+
+  .settings-source-table__col--actions {
+    grid-area: actions;
+    justify-content: flex-end;
+    align-self: end;
+  }
+
+  .settings-source-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .settings-source-actions__btn {
+    flex: 1;
+    max-width: 5.5rem;
+  }
+
+  .settings-import-form__actions {
+    justify-content: stretch;
+  }
+
+  .settings-import-form__actions .btn {
+    flex: 1;
+  }
+
+  .settings-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-nav {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .settings-nav__link {
+    flex-shrink: 0;
+  }
+
+  .settings-import-form--inline {
+    flex-direction: column;
+  }
+
+  .settings-import-form--inline .btn {
+    width: 100%;
+  }
+
+  .settings-source-table__col--actions .btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .download-row {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .download-row__actions {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .download-row__primary {
+    min-width: 0;
+  }
+
+  .download-item {
+    grid-template-columns: 1fr;
+  }
+
+  .download-item__aside {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .game-detail__hero {
+    grid-template-columns: 1fr;
+  }
+
+  .game-detail__cover {
+    max-width: 160px;
+  }
+}

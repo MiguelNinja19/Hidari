@@ -147,12 +147,21 @@ const queueSlice = createSlice({
       const jobId = String(rawJobId)
       const job = state.jobs.find((j) => String(j.id) === jobId)
       if (!job) return
+      if (status === 'verified' || status === 'verify_failed') {
+        job.extractionStatus = status
+        if (status === 'verify_failed') {
+          job.status = status
+          if (message) job.errorMsg = message
+        }
+        return
+      }
       if (status === 'skipped') {
         job.status = 'completed'
         job.progress = 100
         return
       }
       job.status = status
+      job.extractionStatus = status
       if (status === 'extracted') job.progress = 100
       if (status === 'failed' && message) job.errorMsg = message
     },
