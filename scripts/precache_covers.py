@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Pré-cache rápido de capas — compatível com o launcher Tauri (MyLauncher).
+Pré-cache rápido de capas — compatível com o launcher Tauri (Hidari).
 
 Grava em:
   - %APPDATA%/com.tauri.dev/covers/*.jpg
@@ -509,7 +509,7 @@ def download_cover_bytes(cover_url: str, timeout: float = 20.0) -> bytes | None:
         seen.add(url)
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "MyLauncher/1.0", "Accept": "image/*"},
+            headers={"User-Agent": "Hidari/1.0", "Accept": "image/*"},
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -689,7 +689,7 @@ def process_item(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Pré-cache de capas para o MyLauncher")
+    parser = argparse.ArgumentParser(description="Pré-cache de capas para o Hidari")
     parser.add_argument(
         "--db",
         type=Path,

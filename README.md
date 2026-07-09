@@ -1,4 +1,4 @@
-# MyLauncher (Hydrax)
+# Hidari
 
 Launcher desktop para descoberta, download e gestão de jogos — **Tauri 2** + **React** + **TypeScript** + **SQLite**.
 

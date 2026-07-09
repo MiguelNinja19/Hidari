@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "MyLauncher",
+  "productName": "Hidari",
   "version": "0.1.0",
   "identifier": "com.mylauncher.app",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MyLauncher",
+        "title": "Hidari",
         "width": 1094,
         "height": 816,
         "resizable": true,
@@ -28,7 +28,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["mylauncher"]
+        "schemes": ["hidari", "mylauncher"]
       }
     },
     "updater": {

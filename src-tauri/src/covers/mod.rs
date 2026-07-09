@@ -362,7 +362,7 @@ pub async fn download_and_cache_cover(
 
   let client = reqwest::Client::builder()
     .timeout(Duration::from_secs(20))
-    .user_agent("MyLauncher/1.0")
+    .user_agent("Hidari/1.0")
     .build()
     .map_err(|e| format!("could_not_create_http_client: {e}"))?;
 

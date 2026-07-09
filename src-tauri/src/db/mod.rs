@@ -194,6 +194,21 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
       )
       .map_err(|e| format!("migrate_api_source_id: {e}"))?;
   }
+  let has_remote_url = conn
+    .prepare("PRAGMA table_info(hydra_download_sources)")
+    .map_err(|e| format!("migrate_pragma_hds_remote: {e}"))?
+    .query_map([], |row| row.get::<_, String>(1))
+    .map_err(|e| format!("migrate_pragma_hds_remote_map: {e}"))?
+    .filter_map(Result::ok)
+    .any(|name| name == "remote_url");
+  if !has_remote_url {
+    conn
+      .execute(
+        "ALTER TABLE hydra_download_sources ADD COLUMN remote_url TEXT",
+        [],
+      )
+      .map_err(|e| format!("migrate_remote_url: {e}"))?;
+  }
   conn
     .execute_batch(
       "CREATE TABLE IF NOT EXISTS cover_precache_skip (

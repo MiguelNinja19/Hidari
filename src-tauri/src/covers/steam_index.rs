@@ -70,7 +70,7 @@ fn is_noise_app_name(name: &str) -> bool {
 fn steam_http_client() -> Result<reqwest::Client, String> {
   reqwest::Client::builder()
     .timeout(Duration::from_secs(120))
-    .user_agent("MyLauncher/1.0")
+    .user_agent("Hidari/1.0")
     .build()
     .map_err(|e| format!("could_not_create_steam_index_client: {e}"))
 }

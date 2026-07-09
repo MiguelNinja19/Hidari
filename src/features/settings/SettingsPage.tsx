@@ -12,6 +12,9 @@ type SettingsPageProps = {
   seedTorrentsEnabled: boolean
   downloadSpeedLimit: string
   addingSource: boolean
+  sourceUrlInput: string
+  setSourceUrlInput: (value: string) => void
+  onAddSourceByUrl: () => Promise<void>
   isSourceEnabled: (sourceId: string) => boolean
   setDefaultDownloadPath: (value: string) => void
   setInstallOrganization: (value: string) => void
@@ -47,6 +50,9 @@ export function SettingsPage({
   seedTorrentsEnabled,
   downloadSpeedLimit,
   addingSource,
+  sourceUrlInput,
+  setSourceUrlInput,
+  onAddSourceByUrl,
   isSourceEnabled,
   handleSelectDefaultPath,
   handleSaveInstallSettings,
@@ -200,7 +206,9 @@ export function SettingsPage({
           <header className="settings-block__head">
             <div className="settings-block__head-copy">
               <h2 className="settings-block__title">Catálogo</h2>
-              <p className="settings-block__desc">Importe um arquivo .json para pesquisar jogos.</p>
+              <p className="settings-block__desc">
+                Cole a URL oficial do hydralinks ou importe um arquivo .json local.
+              </p>
             </div>
             <div className="settings-block__head-actions">
               <button
@@ -225,8 +233,39 @@ export function SettingsPage({
           </header>
 
           <div className="settings-block__body">
+            <label className="settings-field settings-field--stack">
+              <span>URL do catálogo</span>
+              <div className="settings-inline">
+                <input
+                  className="settings-input"
+                  type="url"
+                  placeholder="https://hydralinks.cloud/sources/fitgirl.json"
+                  value={sourceUrlInput}
+                  disabled={addingSource}
+                  onChange={(event) => setSourceUrlInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void onAddSourceByUrl()
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn--compact"
+                  disabled={addingSource || !sourceUrlInput.trim()}
+                  onClick={() => void onAddSourceByUrl()}
+                >
+                  {addingSource ? 'Adicionando…' : 'Adicionar'}
+                </button>
+              </div>
+            </label>
+
             {sources.length === 0 && !sourcesLoading ? (
-              <p className="settings-block__hint">Nenhuma fonte importada ainda. Clique em Importar.</p>
+              <p className="settings-block__hint">
+                Nenhuma fonte ainda. Cole uma URL acima ou clique em Importar para escolher um .json
+                local.
+              </p>
             ) : (
               <div className="settings-source-table-wrap">
                 <ul className="settings-source-table settings-source-table--simple" role="list">

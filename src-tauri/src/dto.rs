@@ -81,6 +81,8 @@ pub struct HydraSourceDto {
   pub fingerprint: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub api_source_id: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub remote_url: Option<String>,
   pub created_at: String,
 }
 
@@ -109,7 +111,7 @@ pub struct GameSourceChangeDto {
   pub new_download_options_count: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadOptionDto {
   pub source_id: String,

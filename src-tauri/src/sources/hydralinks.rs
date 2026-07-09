@@ -10,7 +10,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 const MEMORY_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const SEARCH_RESULT_CACHE_TTL: Duration = Duration::from_secs(45);
@@ -354,6 +354,81 @@ pub fn is_local_catalog_path(value: &str) -> bool {
   let path = Path::new(trimmed);
   path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
     && (path.is_absolute() || trimmed.contains('\\') || trimmed.starts_with("./") || trimmed.starts_with("../"))
+}
+
+pub fn is_remote_catalog_url(value: &str) -> bool {
+  let trimmed = value.trim();
+  (trimmed.starts_with("http://") || trimmed.starts_with("https://"))
+    && is_json_catalog_source(trimmed)
+}
+
+/// Normaliza URLs oficiais do hydralinks (ex.: sem `/sources/`).
+pub fn normalize_remote_catalog_url(url: &str) -> Result<String, String> {
+  let trimmed = url.trim();
+  if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+    return Err(
+      "A URL deve começar com http:// ou https:// e apontar para um catálogo .json.".to_string(),
+    );
+  }
+  if !is_json_catalog_source(trimmed) {
+    return Err(
+      "Use uma URL de catálogo .json (ex.: https://hydralinks.cloud/sources/fitgirl.json)."
+        .to_string(),
+    );
+  }
+
+  let lower = trimmed.to_lowercase();
+  if lower.contains("hydralinks.cloud/") && !lower.contains("/sources/") {
+    if let Some(file_name) = Path::new(trimmed)
+      .file_name()
+      .and_then(|name| name.to_str())
+      .filter(|name| name.to_lowercase().ends_with(".json"))
+    {
+      return Ok(format!(
+        "{}/{}",
+        config::HYDRALINKS_SOURCES_BASE.trim_end_matches('/'),
+        file_name
+      ));
+    }
+  }
+
+  Ok(trimmed.to_string())
+}
+
+pub fn catalog_cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
+  app
+    .path()
+    .app_data_dir()
+    .map_err(|error| format!("Não foi possível resolver a pasta de dados da aplicação: {error}"))
+    .map(|dir| dir.join("catalogs"))
+}
+
+pub fn catalog_cache_path_for_remote_url(
+  app: &AppHandle,
+  remote_url: &str,
+) -> Result<PathBuf, String> {
+  let normalized = normalize_remote_catalog_url(remote_url)?;
+  let file_name = catalog_file_name_from_path(&normalized)?;
+  Ok(catalog_cache_dir(app)?.join(file_name))
+}
+
+pub fn resolve_remote_catalog_url(source: &HydraSourceDto) -> Option<String> {
+  source
+    .remote_url
+    .as_ref()
+    .map(|value| value.trim())
+    .filter(|value| !value.is_empty())
+    .map(str::to_string)
+    .or_else(|| hydralinks_remote_url_for_local_path(&source.url))
+}
+
+pub fn is_syncable_catalog_source(source: &HydraSourceDto) -> bool {
+  is_local_catalog_path(&source.url)
+    || resolve_remote_catalog_url(source).is_some()
+    || source
+      .api_source_id
+      .as_ref()
+      .is_some_and(|value| !value.is_empty())
 }
 
 fn resolve_local_catalog_path(value: &str) -> Option<PathBuf> {
@@ -731,17 +806,41 @@ fn catalog_file_name_from_path(local_path: &str) -> Result<String, String> {
     .ok_or_else(|| "Não foi possível determinar o nome do arquivo .json.".to_string())
 }
 
-/// URLs remotas para actualizar o ficheiro local (mirror GitHub, sem Cloudflare).
-pub fn catalog_update_urls_for_local_path(local_path: &str) -> Result<Vec<(&'static str, String)>, String> {
-  let file_name = catalog_file_name_from_path(local_path)?;
-  Ok(vec![(
-    "mirror GitHub",
-    format!(
+pub fn hydralinks_mirror_url_for_file(file_name: &str) -> Option<String> {
+  let template = std::env::var(config::HYDRALINKS_MIRROR_URL_ENV)
+    .ok()?
+    .trim()
+    .to_string();
+  if template.is_empty() {
+    return None;
+  }
+  if template.contains("{file}") {
+    Some(template.replace("{file}", file_name))
+  } else {
+    Some(format!(
       "{}/{}",
-      config::HYDRALINKS_GITHUB_MIRROR_BASE.trim_end_matches('/'),
+      template.trim_end_matches('/'),
       file_name
-    ),
-  )])
+    ))
+  }
+}
+
+fn catalog_fetch_candidates(source: &HydraSourceDto) -> Result<Vec<(String, String)>, String> {
+  let remote = resolve_remote_catalog_url(source).ok_or_else(|| {
+    "Não foi possível determinar a URL remota desta fonte.".to_string()
+  })?;
+  let normalized = normalize_remote_catalog_url(&remote)?;
+  let mut candidates = vec![("URL oficial".to_string(), normalized.clone())];
+
+  if let Ok(file_name) = catalog_file_name_from_path(&normalized) {
+    if let Some(mirror) = hydralinks_mirror_url_for_file(&file_name) {
+      if mirror != normalized {
+        candidates.push(("espelho configurado".to_string(), mirror));
+      }
+    }
+  }
+
+  Ok(candidates)
 }
 
 /// URL remota no hydralinks a partir do nome do ficheiro local (ex.: fitgirl.json).
@@ -758,14 +857,14 @@ pub fn hydralinks_remote_url_for_local_path(local_path: &str) -> Option<String> 
   ))
 }
 
-fn hydralinks_fetch_error(status: reqwest::StatusCode) -> String {
+fn remote_fetch_error(label: &str, status: reqwest::StatusCode) -> String {
   if status.as_u16() == 403 {
-    return "hydralinks.cloud bloqueou o pedido (Cloudflare 403)".to_string();
+    return format!("{label}: bloqueado (Cloudflare 403)");
   }
-  format!("hydralinks.cloud respondeu com HTTP {status}")
+  format!("{label}: HTTP {status}")
 }
 
-async fn fetch_remote_catalog_body(remote_url: &str) -> Result<String, String> {
+async fn fetch_remote_catalog_body(remote_url: &str, label: &str) -> Result<String, String> {
   let client = reqwest::Client::builder()
     .timeout(Duration::from_secs(90))
     .user_agent(
@@ -780,39 +879,45 @@ async fn fetch_remote_catalog_body(remote_url: &str) -> Result<String, String> {
     .header("Accept", "application/json, text/plain, */*")
     .send()
     .await
-    .map_err(|error| format!("Falha ao baixar: {error}"))?;
+    .map_err(|error| format!("{label}: falha ao baixar ({error})"))?;
 
   if !response.status().is_success() {
-    return Err(hydralinks_fetch_error(response.status()));
+    return Err(remote_fetch_error(label, response.status()));
   }
 
   response
     .text()
     .await
-    .map_err(|error| format!("Não foi possível ler a resposta: {error}"))
+    .map_err(|error| format!("{label}: não foi possível ler a resposta ({error})"))
 }
 
-async fn fetch_catalog_body_for_local_path(local_path: &str) -> Result<(String, String), String> {
-  let candidates = catalog_update_urls_for_local_path(local_path)?;
+async fn fetch_catalog_body_from_candidates(
+  candidates: &[(String, String)],
+) -> Result<(String, String), String> {
   let mut errors: Vec<String> = Vec::new();
 
   for (label, url) in candidates {
-    match fetch_remote_catalog_body(&url).await {
+    match fetch_remote_catalog_body(url, label).await {
       Ok(body) if looks_like_html_catalog(&body) => {
         errors.push(format!("{label}: resposta HTML inválida"));
       }
       Ok(body) => match parse_catalog_json(&body) {
-        Ok(_) => return Ok((body, label.to_string())),
+        Ok(_) => return Ok((body, label.clone())),
         Err(error) => errors.push(format!("{label}: {error}")),
       },
-      Err(error) => errors.push(format!("{label}: {error}")),
+      Err(error) => errors.push(error),
     }
   }
 
   Err(format!(
-    "Não foi possível atualizar o catálogo online. {}",
+    "Não foi possível baixar o catálogo online. {}",
     errors.join(" · ")
   ))
+}
+
+async fn fetch_catalog_body_for_source(source: &HydraSourceDto) -> Result<(String, String), String> {
+  let candidates = catalog_fetch_candidates(source)?;
+  fetch_catalog_body_from_candidates(&candidates).await
 }
 
 /// Resultado de sync: actualizado, já em dia, ou só offline.
@@ -823,78 +928,154 @@ pub enum SyncCatalogOutcome {
 }
 
 /// Descarrega o catálogo online, grava no ficheiro local e importa.
-/// A API Hydra verifica se há novidade (sem devolver JSON); o corpo vem do mirror GitHub.
+/// Prioridade: cache local → download inteligente → API Hydra (metadados).
 pub async fn sync_source_catalog_from_remote(
   app: &AppHandle,
   source: &HydraSourceDto,
 ) -> Result<(SyncCatalogOutcome, Option<super::hydra::HydraApiDownloadSource>), String> {
   let source_id = source.id.as_str();
-  let local_path = source.url.as_str();
-  let path = resolve_local_catalog_path_for_write(local_path)?;
-  let hydralinks_url = hydralinks_remote_url_for_local_path(local_path).ok_or_else(|| {
-    "Mantenha o nome original do arquivo (ex.: fitgirl.json) para atualizar via API Hydra."
-      .to_string()
-  })?;
+  let hydralinks_url = resolve_remote_catalog_url(source)
+    .or_else(|| source.remote_url.clone())
+    .or_else(|| hydralinks_remote_url_for_local_path(&source.url));
 
   let mut api_warning: Option<String> = None;
-  let api_meta = match super::hydra::hydra_refresh_download_source_meta(
-    &hydralinks_url,
-    source.api_source_id.as_deref(),
-    source.fingerprint.as_deref(),
-  )
-  .await
-  {
-    Ok(meta) => Some(meta),
-    Err(error) => {
-      api_warning = Some(error);
-      None
+  let api_meta = if let Some(ref catalog_url) = hydralinks_url {
+    match super::hydra::hydra_refresh_download_source_meta(
+      catalog_url,
+      source.api_source_id.as_deref(),
+      source.fingerprint.as_deref(),
+    )
+    .await
+    {
+      Ok(meta) => Some(meta),
+      Err(error) => {
+        api_warning = Some(error);
+        None
+      }
     }
+  } else {
+    None
   };
 
-  if let Some(ref meta) = api_meta {
+  if hydralinks_url.is_some() {
+    if let Ok(local_path) = resolve_local_catalog_path_for_write(&source.url) {
+      match fetch_catalog_body_for_source(source).await {
+        Ok((body, _label)) => {
+          if let (Some(meta), Ok(conn)) = (&api_meta, open_database_connection(app)) {
+            let unchanged_fp = source
+              .fingerprint
+              .as_deref()
+              .filter(|value| super::hydra::is_catalog_content_fingerprint(value))
+              .is_some_and(|stored| meta.fingerprint.as_deref() == Some(stored));
+            let unchanged_hash =
+              stored_payload_hash(&conn, source_id).as_deref() == Some(payload_hash(&body).as_str());
+            if unchanged_fp && unchanged_hash && has_local_catalog(app, source_id) {
+              let count = conn
+                .query_row(
+                  "SELECT COUNT(*) FROM hydra_catalog_entries WHERE source_id = ?1",
+                  params![source_id],
+                  |row| row.get::<_, i64>(0),
+                )
+                .unwrap_or(meta.download_count)
+                .max(0) as usize;
+              return Ok((SyncCatalogOutcome::Unchanged(count), api_meta.clone()));
+            }
+          }
+          return apply_downloaded_catalog_body(
+            app,
+            source_id,
+            source.url.as_str(),
+            &local_path,
+            &body,
+            api_meta,
+          );
+        }
+        Err(download_error) => {
+          if has_local_catalog(app, source_id) {
+            let detail = match api_warning {
+              Some(api) => format!("API Hydra: {api} · Download: {download_error}"),
+              None => download_error,
+            };
+            return download_catalog_fallback(app, source_id, Some(detail));
+          }
+        }
+      }
+    }
+  }
+
+  if let Some(meta) = api_meta {
+    let count = meta.download_count.max(0) as usize;
     let unchanged = source
       .fingerprint
       .as_deref()
       .filter(|value| super::hydra::is_catalog_content_fingerprint(value))
       .is_some_and(|stored| meta.fingerprint.as_deref() == Some(stored));
-    if unchanged && has_local_catalog(app, source_id) {
-      let count = if let Ok(conn) = open_database_connection(app) {
-        conn
-          .query_row(
-            "SELECT COUNT(*) FROM hydra_catalog_entries WHERE source_id = ?1",
-            params![source_id],
-            |row| row.get::<_, i64>(0),
-          )
-          .unwrap_or(meta.download_count)
-          .max(0) as usize
-      } else {
-        meta.download_count.max(0) as usize
-      };
-      return Ok((SyncCatalogOutcome::Unchanged(count), api_meta.clone()));
-    }
+    let outcome = if unchanged {
+      SyncCatalogOutcome::Unchanged(count)
+    } else {
+      SyncCatalogOutcome::Updated(count)
+    };
+    return Ok((outcome, Some(meta)));
   }
 
-  match fetch_catalog_body_for_local_path(local_path).await {
-    Ok((body, _label)) => apply_downloaded_catalog_body(
+  Err(api_warning.unwrap_or_else(|| {
+    "Não foi possível atualizar: sem catálogo local e sem conexão com a API Hydra.".to_string()
+  }))
+}
+
+/// Baixa catálogo remoto: prioriza JSON local; API Hydra é complementar.
+pub async fn import_source_catalog_from_remote_url(
+  app: &AppHandle,
+  source_id: &str,
+  remote_url: &str,
+  cache_path: &str,
+) -> Result<(usize, Option<super::hydra::HydraApiDownloadSource>), String> {
+  let normalized_remote = normalize_remote_catalog_url(remote_url)?;
+  let path = resolve_local_catalog_path_for_write(cache_path)?;
+
+  let temp_source = HydraSourceDto {
+    id: source_id.to_string(),
+    name: display_name_for_source_url(&normalized_remote),
+    url: cache_path.trim().to_string(),
+    status: "MATCHED".to_string(),
+    download_count: 0,
+    fingerprint: None,
+    api_source_id: None,
+    remote_url: Some(normalized_remote.clone()),
+    created_at: String::new(),
+  };
+
+  let json_result = fetch_catalog_body_for_source(&temp_source).await;
+  let api_meta = super::hydra::hydra_refresh_download_source_meta(&normalized_remote, None, None)
+    .await
+    .ok();
+
+  if let Ok((body, _label)) = json_result {
+    let outcome = apply_downloaded_catalog_body(
       app,
       source_id,
-      local_path,
+      cache_path,
       &path,
       &body,
-      api_meta,
-    ),
-    Err(mirror_error) => {
-      let detail = match api_warning {
-        Some(api) => format!("API Hydra: {api} · Mirror: {mirror_error}"),
-        None => mirror_error,
-      };
-      if has_local_catalog(app, source_id) {
-        download_catalog_fallback(app, source_id, Some(detail))
-      } else {
-        Err(detail)
-      }
-    }
+      api_meta.clone(),
+    )?;
+    let count = match outcome.0 {
+      SyncCatalogOutcome::Updated(count) | SyncCatalogOutcome::Unchanged(count) => count,
+      SyncCatalogOutcome::OfflineOnly { count, .. } => count,
+    };
+    return Ok((count, outcome.1.or(api_meta)));
   }
+
+  if let Some(meta) = api_meta {
+    let count = meta.download_count.max(0) as usize;
+    return Ok((count, Some(meta)));
+  }
+
+  let download_error = json_result.err().unwrap_or_default();
+  Err(format!(
+    "{download_error} Configure HYDRALINKS_MIRROR_URL no .env, importe o .json manualmente, \
+ou tente novamente quando a API Hydra estiver disponível."
+  ))
 }
 
 fn download_catalog_fallback(
@@ -990,7 +1171,93 @@ pub fn has_local_catalog(app: &AppHandle, source_id: &str) -> bool {
   if read_memory_cache(source_id).is_some() {
     return true;
   }
-  read_catalog_from_db(app, source_id).is_some()
+  if read_catalog_from_db(app, source_id).is_some() {
+    return true;
+  }
+  if let Ok(conn) = open_database_connection(app) {
+    let count: i64 = conn
+      .query_row(
+        "SELECT COUNT(*) FROM hydra_catalog_entries WHERE source_id = ?1",
+        params![source_id],
+        |row| row.get(0),
+      )
+      .unwrap_or(0);
+    if count > 0 {
+      return true;
+    }
+  }
+  false
+}
+
+/// Acrescenta resultados da API Hydra ao índice local (cache incremental).
+pub fn append_catalog_download_options(
+  app: &AppHandle,
+  source_id: &str,
+  source_ref: &str,
+  options: &[DownloadOptionDto],
+) -> Result<usize, String> {
+  if options.is_empty() {
+    return Ok(0);
+  }
+
+  let conn = open_database_connection(app)?;
+  let mut stmt = conn
+    .prepare(
+      "INSERT INTO hydra_catalog_entries \
+       (source_id, title, title_norm, file_size, uris_json, group_key, display_title) \
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 \
+       WHERE NOT EXISTS ( \
+         SELECT 1 FROM hydra_catalog_entries \
+         WHERE source_id = ?1 AND title = ?2 AND uris_json = ?5 \
+       )",
+    )
+    .map_err(|error| format!("could_not_prepare_append_catalog: {error}"))?;
+
+  let mut inserted = 0usize;
+  for option in options {
+    let title_norm = normalize_match_text(&option.title);
+    if title_norm.is_empty() {
+      continue;
+    }
+    let uris_json =
+      serde_json::to_string(&[option.url.as_str()]).map_err(|e| format!("encode_uri: {e}"))?;
+    let group_key = crate::title::catalog_game_group_key(&option.title);
+    let display_title = crate::title::clean_title_for_matching(&option.title);
+    let quality = option.quality.trim();
+    let file_size = if quality.is_empty() || quality.starts_with("Link ") {
+      None
+    } else {
+      Some(quality.to_string())
+    };
+    let changed = stmt
+      .execute(params![
+        source_id,
+        option.title,
+        title_norm,
+        file_size,
+        uris_json,
+        group_key,
+        display_title,
+      ])
+      .map_err(|error| format!("could_not_append_catalog_entry: {error}"))?;
+    if changed > 0 {
+      inserted += 1;
+    }
+  }
+
+  if inserted > 0 {
+    let _ = conn.execute(
+      "INSERT INTO hydra_source_catalogs (source_id, source_url, payload_json, payload_hash, fetched_at) \
+       VALUES (?1, ?2, '{}', '', ?3) \
+       ON CONFLICT(source_id) DO UPDATE SET \
+         source_url = excluded.source_url, \
+         fetched_at = excluded.fetched_at",
+      params![source_id, source_ref, now_unix_ms()],
+    );
+    clear_catalog_search_cache();
+  }
+
+  Ok(inserted)
 }
 
 fn load_catalog_local(app: &AppHandle, source_id: &str) -> Option<HydraLinksCatalog> {
@@ -1204,6 +1471,54 @@ mod tests {
   }
 
   #[test]
+  fn detects_remote_catalog_urls() {
+    assert!(is_remote_catalog_url(
+      "https://hydralinks.cloud/sources/xatab.json"
+    ));
+    assert!(!is_remote_catalog_url(r"C:\catalogs\xatab.json"));
+  }
+
+  #[test]
+  fn normalizes_hydralinks_urls_without_sources_segment() {
+    assert_eq!(
+      normalize_remote_catalog_url("https://hydralinks.cloud/fitgirl.json").expect("normalized"),
+      "https://hydralinks.cloud/sources/fitgirl.json"
+    );
+  }
+
+  #[test]
+  fn builds_mirror_url_from_env_template() {
+    std::env::set_var(
+      "HYDRALINKS_MIRROR_URL",
+      "https://mirror.example/{file}",
+    );
+    assert_eq!(
+      hydralinks_mirror_url_for_file("fitgirl.json"),
+      Some("https://mirror.example/fitgirl.json".to_string())
+    );
+    std::env::remove_var("HYDRALINKS_MIRROR_URL");
+  }
+
+  #[test]
+  fn builds_catalog_fetch_candidates_uses_official_url_only() {
+    let source = HydraSourceDto {
+      id: "local_test".to_string(),
+      name: "FitGirl".to_string(),
+      url: r"C:\catalogs\fitgirl.json".to_string(),
+      status: "MATCHED".to_string(),
+      download_count: 0,
+      fingerprint: None,
+      api_source_id: None,
+      remote_url: Some("https://hydralinks.cloud/sources/fitgirl.json".to_string()),
+      created_at: "0".to_string(),
+    };
+    let candidates = catalog_fetch_candidates(&source).expect("candidates");
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].0, "URL oficial");
+    assert!(candidates[0].1.contains("hydralinks.cloud"));
+  }
+
+  #[test]
   fn detects_json_catalog_urls() {
     assert!(is_json_catalog_source(
       "https://hydralinks.cloud/sources/xatab.json"
@@ -1300,14 +1615,6 @@ mod tests {
     }"#;
     let catalog = parse_catalog_json(body).expect("snake");
     assert_eq!(catalog.downloads[0].file_size.as_deref(), Some("5 GB"));
-  }
-
-  #[test]
-  fn builds_catalog_update_urls_from_local_file() {
-    let urls = catalog_update_urls_for_local_path(r"C:\catalogs\fitgirl.json").expect("urls");
-    assert_eq!(urls.len(), 1);
-    assert!(urls[0].1.contains("raw.githubusercontent.com"));
-    assert!(urls[0].1.ends_with("/fitgirl.json"));
   }
 
   #[test]

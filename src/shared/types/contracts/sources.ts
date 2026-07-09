@@ -12,6 +12,7 @@ export type Source = {
   downloadCount: number
   fingerprint?: string
   apiSourceId?: string
+  remoteUrl?: string
   createdAt: string
 }
 

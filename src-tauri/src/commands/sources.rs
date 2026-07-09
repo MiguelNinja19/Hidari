@@ -1,9 +1,12 @@
 use crate::db::{get_disabled_hydra_source_ids_from_conn, open_database_connection};
 use crate::dto::*;
 use crate::sources::{
-  create_hydra_source, delete_source_catalog, get_hydra_source_by_id, import_source_catalog_from_file,
-  is_local_catalog_path, list_hydra_sources, persist_hydra_api_meta, search_download_options_from_local_sources,
-  sync_source_catalog_from_remote, upsert_hydra_source, validate_source_url, SyncCatalogOutcome,
+  catalog_cache_path_for_remote_url, create_hydra_source, create_hydra_source_from_remote,
+  delete_source_catalog, get_hydra_source_by_id, hydralinks_remote_url_for_local_path,
+  import_source_catalog_from_file, import_source_catalog_from_remote_url, is_local_catalog_path,
+  is_remote_catalog_url, is_syncable_catalog_source, list_hydra_sources, normalize_remote_catalog_url,
+  persist_hydra_api_meta, search_download_options_from_local_sources, sync_source_catalog_from_remote,
+  upsert_hydra_source, validate_source_url, SyncCatalogOutcome,
 };
 use rusqlite::params;
 use tauri::AppHandle;
@@ -43,19 +46,64 @@ pub async fn add_download_source(
   validate_source_url(&payload.url)?;
   let input = payload.url.trim();
 
-  if input.starts_with("http://") || input.starts_with("https://") {
-    return Err(
-      "Use \"Buscar\" para escolher um arquivo .json local (ex.: fitgirl.json).".to_string(),
-    );
+  if is_remote_catalog_url(input) {
+    let remote_url = normalize_remote_catalog_url(input)?;
+    let cache_path = catalog_cache_path_for_remote_url(&app, &remote_url)?;
+    let cache_path_str = cache_path.to_string_lossy().into_owned();
+    let source = create_hydra_source_from_remote(&remote_url, &cache_path_str);
+
+    let conn = open_database_connection(&app)?;
+    upsert_hydra_source(&conn, &source)?;
+    drop(conn);
+
+    let (download_count, api_meta) =
+      match import_source_catalog_from_remote_url(&app, &source.id, &remote_url, &cache_path_str).await
+      {
+        Ok(result) => result,
+        Err(error) => {
+          delete_source_catalog(&app, &source.id);
+          if let Ok(conn) = open_database_connection(&app) {
+            let _ = conn.execute(
+              "DELETE FROM hydra_download_sources WHERE id = ?1",
+              params![source.id],
+            );
+          }
+          return Err(error);
+        }
+      };
+
+    if let Some(api) = api_meta {
+      if let Ok(conn) = open_database_connection(&app) {
+        let _ = persist_hydra_api_meta(&conn, &source.id, &api);
+      }
+    }
+
+    if let Ok(conn) = open_database_connection(&app) {
+      let _ = conn.execute(
+        "UPDATE hydra_download_sources SET download_count = ?1 WHERE id = ?2",
+        params![download_count as i64, source.id],
+      );
+    }
+
+    let mut source = source;
+    source.download_count = download_count as i64;
+    if let Ok(n) = crate::covers::bulk_resolve_catalog_covers_from_index(&app) {
+      if n > 0 {
+        eprintln!("catalog_covers_resolved_on_import: {n}");
+      }
+    }
+    return Ok(source);
   }
 
   if !is_local_catalog_path(input) {
     return Err(
-      "Escolha um arquivo .json existente no disco com \"Buscar\".".to_string(),
+      "Cole uma URL de catálogo .json (ex.: hydralinks.cloud/sources/fitgirl.json) \
+ou escolha um arquivo local com \"Importar\".".to_string(),
     );
   }
 
-  let source = create_hydra_source(input, None);
+  let remote_url = hydralinks_remote_url_for_local_path(input);
+  let source = create_hydra_source(input, remote_url.as_deref());
   let conn = open_database_connection(&app)?;
   upsert_hydra_source(&conn, &source)?;
   drop(conn);
@@ -142,9 +190,9 @@ pub async fn sync_local_source_catalog(
   let source = get_hydra_source_by_id(&conn, &payload.id)?;
   drop(conn);
 
-  if !is_local_catalog_path(&source.url) {
+  if !is_syncable_catalog_source(&source) {
     return Err(
-      "Só é possível atualizar fontes importadas a partir de um arquivo .json local.".to_string(),
+      "Só é possível atualizar fontes com catálogo local ou URL remota configurada.".to_string(),
     );
   }
 
@@ -189,7 +237,7 @@ pub async fn sync_all_local_source_catalogs(
   let mut unchanged_count = 0usize;
 
   for source in sources {
-    if !is_local_catalog_path(&source.url) {
+    if !is_syncable_catalog_source(&source) {
       continue;
     }
 

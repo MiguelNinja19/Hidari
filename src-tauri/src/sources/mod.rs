@@ -93,28 +93,45 @@ pub async fn search_download_options_from_local_sources(
 ) -> Vec<DownloadOptionDto> {
   let app = app.clone();
   let query = query.to_string();
-  let active: Vec<HydraSourceDto> = sources
-    .iter()
-    .filter(|source| is_json_catalog_source(&source.url) || has_local_catalog(&app, &source.id))
-    .cloned()
-    .collect();
+  let mut local_active = Vec::new();
+  let mut api_active = Vec::new();
 
-  if active.is_empty() {
-    return Vec::new();
+  for source in sources {
+    if has_local_catalog(&app, &source.id) {
+      local_active.push(source.clone());
+      continue;
+    }
+    if source
+      .api_source_id
+      .as_ref()
+      .is_some_and(|value| !value.is_empty())
+    {
+      api_active.push(source.clone());
+    }
   }
 
-  if active.len() == 1 {
-    return search_json_catalog_source(&app, &active[0], &query);
+  let mut all = Vec::new();
+
+  if !api_active.is_empty() {
+    all.extend(hydra::search_download_options_via_api(&app, &api_active, &query).await);
+  }
+
+  if local_active.is_empty() {
+    return all;
+  }
+
+  if local_active.len() == 1 {
+    all.extend(search_json_catalog_source(&app, &local_active[0], &query));
+    return all;
   }
 
   let mut join_set = tokio::task::JoinSet::new();
-  for source in active {
+  for source in local_active {
     let app_bg = app.clone();
     let query_bg = query.clone();
     join_set.spawn_blocking(move || search_json_catalog_source(&app_bg, &source, &query_bg));
   }
 
-  let mut all = Vec::new();
   while let Some(result) = join_set.join_next().await {
     if let Ok(mut chunk) = result {
       all.append(&mut chunk);

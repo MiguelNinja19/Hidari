@@ -33,7 +33,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
       for arg in argv {
-        if arg.starts_with("mylauncher://") {
+        if arg.starts_with("hidari://") || arg.starts_with("mylauncher://") {
           let _ = emit_deep_link_event(app, &arg);
         }
       }

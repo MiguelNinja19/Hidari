@@ -197,7 +197,7 @@ pub fn steam_cache_put(conn: &Connection, query_norm: &str, games: &[CatalogGame
 pub async fn fetch_steam_catalog_games(search_term: &str) -> Result<Vec<CatalogGameDto>, String> {
   let client = reqwest::Client::builder()
     .timeout(Duration::from_secs(4))
-    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Hydra-Tauri-Launcher/1.0")
+    .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Hidari/1.0")
     .build()
     .map_err(|e| format!("steam_client_build: {e}"))?;
 
@@ -393,17 +393,62 @@ pub async fn search_catalog_from_sources(
   limit: usize,
   attach_covers: bool,
 ) -> Result<Vec<CatalogGameDto>, String> {
-  let app = app.clone();
-  let query = query.to_string();
-  let games = tokio::task::spawn_blocking({
-    let app = app.clone();
-    let query = query.clone();
-    move || search_catalog_from_sources_sync(&app, &query, offset, limit, attach_covers)
+  let app_bg = app.clone();
+  let query_bg = query.to_string();
+  let local_games = tokio::task::spawn_blocking({
+    let app = app_bg.clone();
+    let query = query_bg.clone();
+    move || search_catalog_from_sources_sync(&app, &query, offset, limit, false)
   })
   .await
   .map_err(|error| format!("search_catalog_task: {error}"))??;
 
-  Ok(games)
+  let conn = open_database_connection(app)?;
+  let hydra_sources = crate::sources::list_hydra_sources(&conn)?;
+  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
+  let api_sources: Vec<crate::dto::HydraSourceDto> = hydra_sources
+    .into_iter()
+    .filter(|source| !disabled.contains(&source.id))
+    .filter(|source| !crate::sources::has_local_catalog(app, &source.id))
+    .filter(|source| {
+      source
+        .api_source_id
+        .as_ref()
+        .is_some_and(|value| !value.is_empty())
+    })
+    .collect();
+  drop(conn);
+
+  let mut merged = local_games;
+  if !api_sources.is_empty() {
+    let api_games = crate::sources::search_catalog_games_via_api(
+      &api_sources,
+      &query_bg,
+      offset,
+      limit,
+    )
+    .await;
+    let mut seen: HashSet<String> = merged
+      .iter()
+      .map(|game| game.title.to_lowercase())
+      .collect();
+    for game in api_games {
+      let key = game.title.to_lowercase();
+      if seen.insert(key) {
+        merged.push(game);
+      }
+    }
+  }
+
+  if merged.len() > limit {
+    merged.truncate(limit);
+  }
+
+  if attach_covers {
+    crate::covers::attach_cover_urls_to_games(app, &mut merged);
+  }
+
+  Ok(merged)
 }
 
 pub(crate) fn looks_like_source_label(genre: &str) -> bool {

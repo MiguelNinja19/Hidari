@@ -1,4 +1,4 @@
-Binários do MyLauncher (gerados por npm run setup:binaries)
+Binários do Hidari (gerados por npm run setup:binaries)
 
 - 7za.exe / 7za.dll — extração de ZIP, 7Z, RAR (7-Zip extra, licença LGPL)
 - aria2c.exe — motor de download

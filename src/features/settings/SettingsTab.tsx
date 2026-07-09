@@ -41,6 +41,7 @@ export function SettingsTab() {
   const sourcesError = useAppSelector((state) => state.sources.error)
 
   const [addingSource, setAddingSource] = useState(false)
+  const [sourceUrlInput, setSourceUrlInput] = useState('')
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null)
   const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null)
   const [syncingAllSources, setSyncingAllSources] = useState(false)
@@ -67,6 +68,26 @@ export function SettingsTab() {
       cancelled = true
     }
   }, [defaultDownloadPath])
+
+  const handleAddSourceByUrl = async () => {
+    if (addingSource) return
+    const url = sourceUrlInput.trim()
+    if (!url) {
+      showError('Cole a URL do catálogo .json (ex.: hydralinks.cloud/sources/fitgirl.json).')
+      return
+    }
+
+    setAddingSource(true)
+    try {
+      const source = await dispatch(addSource({ url })).unwrap()
+      setSourceUrlInput('')
+      showSuccess(`${source.downloadCount.toLocaleString(APP_LOCALE)} jogos adicionados.`)
+    } catch (error) {
+      showError(formatUserError(error, 'Falha ao adicionar a fonte pela URL.'))
+    } finally {
+      setAddingSource(false)
+    }
+  }
 
   const handleImportSource = async () => {
     if (addingSource) return
@@ -217,6 +238,9 @@ export function SettingsTab() {
       seedTorrentsEnabled={seedTorrentsEnabled}
       downloadSpeedLimit={downloadSpeedLimit}
       addingSource={addingSource}
+      sourceUrlInput={sourceUrlInput}
+      setSourceUrlInput={setSourceUrlInput}
+      onAddSourceByUrl={handleAddSourceByUrl}
       isSourceEnabled={isSourceEnabled}
       setDefaultDownloadPath={setDefaultDownloadPath}
       setInstallOrganization={setInstallOrganization}
