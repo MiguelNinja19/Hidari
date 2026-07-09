@@ -162,6 +162,9 @@ pub struct CatalogGameDto {
   /// Número de repacks/variantes disponíveis para este jogo.
   #[serde(skip_serializing_if = "Option::is_none")]
   pub option_count: Option<u32>,
+  /// Chave estável do jogo no índice local (variantes/repacks do mesmo título).
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub group_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

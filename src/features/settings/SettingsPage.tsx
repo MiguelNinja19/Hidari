@@ -22,6 +22,7 @@ type SettingsPageProps = {
   handleSelectDefaultPath: () => Promise<void>
   handleSaveInstallSettings: () => Promise<void>
   onImportSource: () => Promise<void>
+  onOpenCatalogsFolder: () => Promise<void>
   onDeleteSource: (sourceId: string, sourceName: string) => Promise<void>
   onSyncSource: (sourceId: string, sourceName: string) => Promise<void>
   onSyncAllSources: () => Promise<void>
@@ -57,6 +58,7 @@ export function SettingsPage({
   handleSelectDefaultPath,
   handleSaveInstallSettings,
   onImportSource,
+  onOpenCatalogsFolder,
   onDeleteSource,
   onSyncSource,
   onSyncAllSources,
@@ -207,10 +209,19 @@ export function SettingsPage({
             <div className="settings-block__head-copy">
               <h2 className="settings-block__title">Catálogo</h2>
               <p className="settings-block__desc">
-                Cole a URL oficial do hydralinks ou importe um arquivo .json local.
+                Cole a URL oficial do hydralinks ou importe um arquivo .json local. Importações são
+                copiadas para a pasta interna — pode apagar o arquivo original depois.
               </p>
             </div>
             <div className="settings-block__head-actions">
+              <button
+                type="button"
+                className="btn btn-outline btn--compact"
+                disabled={addingSource}
+                onClick={() => void onOpenCatalogsFolder()}
+              >
+                Abrir pasta
+              </button>
               <button
                 type="button"
                 className="btn btn-primary btn--compact"

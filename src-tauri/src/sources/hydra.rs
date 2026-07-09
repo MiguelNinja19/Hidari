@@ -607,6 +607,7 @@ pub async fn search_catalog_games_via_api(
         local_cover_path: None,
         source: "hydra_api".to_string(),
         option_count: None,
+        group_key: None,
       }
     })
     .collect()

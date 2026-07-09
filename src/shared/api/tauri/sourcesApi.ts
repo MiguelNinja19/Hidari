@@ -40,6 +40,8 @@ export const sourcesApi = {
     tauriClient.invoke<SyncAllLocalSourcesResult>('sync_all_local_source_catalogs'),
   removeSource: (id: string) =>
     tauriClient.invoke<void>('remove_download_source', { payload: { id } }),
+  openCatalogsCacheFolder: () =>
+    tauriClient.invoke<string>('open_catalogs_cache_folder'),
   searchDownloadOptions: (payload: SearchDownloadOptionsInput) =>
     tauriClient.invoke<DownloadOption[]>('search_download_options', { payload }),
   searchGameCatalog: (payload: SearchCatalogInput) =>

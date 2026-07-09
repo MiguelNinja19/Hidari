@@ -1,12 +1,15 @@
 use crate::db::{get_disabled_hydra_source_ids_from_conn, open_database_connection};
 use crate::dto::*;
+use crate::library::roots::open_path_in_shell;
 use crate::sources::{
-  catalog_cache_path_for_remote_url, create_hydra_source, create_hydra_source_from_remote,
-  delete_source_catalog, get_hydra_source_by_id, hydralinks_remote_url_for_local_path,
-  import_source_catalog_from_file, import_source_catalog_from_remote_url, is_local_catalog_path,
-  is_remote_catalog_url, is_syncable_catalog_source, list_hydra_sources, normalize_remote_catalog_url,
-  persist_hydra_api_meta, search_download_options_from_local_sources, sync_source_catalog_from_remote,
-  upsert_hydra_source, validate_source_url, SyncCatalogOutcome,
+  catalog_cache_dir, catalog_cache_path_for_remote_url, create_hydra_source,
+  create_hydra_source_from_remote, delete_source_catalog, get_hydra_source_by_id,
+  hydralinks_remote_url_for_local_path, import_source_catalog_from_file,
+  import_source_catalog_from_remote_url, is_local_catalog_path, is_remote_catalog_url,
+  finalize_local_catalog_import, is_syncable_catalog_source, list_hydra_sources,
+  migrate_external_catalog_to_cache_if_needed, normalize_remote_catalog_url, persist_hydra_api_meta, search_download_options_from_local_sources,
+  stage_local_catalog_for_import, sync_source_catalog_from_remote, upsert_hydra_source,
+  validate_source_url, SyncCatalogOutcome,
 };
 use rusqlite::params;
 use tauri::AppHandle;
@@ -103,34 +106,31 @@ ou escolha um arquivo local com \"Importar\".".to_string(),
   }
 
   let remote_url = hydralinks_remote_url_for_local_path(input);
-  let source = create_hydra_source(input, remote_url.as_deref());
+  let staged = stage_local_catalog_for_import(&app, input)?;
+  let source = create_hydra_source(&staged.cache_path, remote_url.as_deref());
   let conn = open_database_connection(&app)?;
   upsert_hydra_source(&conn, &source)?;
   drop(conn);
 
-  let download_count = match import_source_catalog_from_file(&app, &source.id, input) {
-    Ok(count) => count,
-    Err(error) => {
-      delete_source_catalog(&app, &source.id);
-      if let Ok(conn) = open_database_connection(&app) {
-        let _ = conn.execute(
-          "DELETE FROM hydra_download_sources WHERE id = ?1",
-          params![source.id],
-        );
-      }
-      return Err(error);
+  if let Err(error) = finalize_local_catalog_import(&app, &source.id, &staged) {
+    delete_source_catalog(&app, &source.id);
+    if let Ok(conn) = open_database_connection(&app) {
+      let _ = conn.execute(
+        "DELETE FROM hydra_download_sources WHERE id = ?1",
+        params![source.id],
+      );
     }
-  };
-
-  if let Ok(conn) = open_database_connection(&app) {
-    let _ = conn.execute(
-      "UPDATE hydra_download_sources SET download_count = ?1 WHERE id = ?2",
-      params![download_count as i64, source.id],
-    );
+    return Err(error);
   }
 
   let mut source = source;
-  source.download_count = download_count as i64;
+  source.download_count = staged.count as i64;
+  if let Ok(conn) = open_database_connection(&app) {
+    let _ = conn.execute(
+      "UPDATE hydra_download_sources SET download_count = ?1 WHERE id = ?2",
+      params![staged.count as i64, source.id],
+    );
+  }
   if let Ok(n) = crate::covers::bulk_resolve_catalog_covers_from_index(&app) {
     if n > 0 {
       eprintln!("catalog_covers_resolved_on_import: {n}");
@@ -142,7 +142,16 @@ ou escolha um arquivo local com \"Importar\".".to_string(),
 #[tauri::command]
 pub fn get_download_sources(app: AppHandle) -> Result<Vec<HydraSourceDto>, String> {
   let conn = open_database_connection(&app)?;
-  list_hydra_sources(&conn)
+  let mut sources = list_hydra_sources(&conn)?;
+  drop(conn);
+
+  for source in &mut sources {
+    if let Ok(Some(cache_path)) = migrate_external_catalog_to_cache_if_needed(&app, source) {
+      source.url = cache_path;
+    }
+  }
+
+  Ok(sources)
 }
 
 #[tauri::command]
@@ -303,4 +312,13 @@ pub fn remove_download_source(app: AppHandle, payload: RemoveHydraSourcePayload)
     )
     .map_err(|error| format!("could_not_remove_hydra_source: {error}"))?;
   Ok(())
+}
+
+#[tauri::command]
+pub fn open_catalogs_cache_folder(app: AppHandle) -> Result<String, String> {
+  let dir = catalog_cache_dir(&app)?;
+  std::fs::create_dir_all(&dir)
+    .map_err(|error| format!("could_not_create_catalogs_folder: {error}"))?;
+  open_path_in_shell(&dir)?;
+  Ok(dir.to_string_lossy().into_owned())
 }

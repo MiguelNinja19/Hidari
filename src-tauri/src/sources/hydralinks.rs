@@ -412,6 +412,44 @@ pub fn catalog_cache_path_for_remote_url(
   Ok(catalog_cache_dir(app)?.join(file_name))
 }
 
+fn catalog_import_cache_path_in_dir(
+  cache_dir: &Path,
+  external_path: &Path,
+  body: &str,
+) -> Result<PathBuf, String> {
+  let file_name = external_path
+    .file_name()
+    .and_then(|name| name.to_str())
+    .ok_or_else(|| "Não foi possível determinar o nome do arquivo .json.".to_string())?;
+  let target = cache_dir.join(file_name);
+  let normalized_body = normalize_catalog_body(body);
+
+  if target.is_file() {
+    let existing = std::fs::read_to_string(&target).unwrap_or_default();
+    if normalize_catalog_body(&existing) == normalized_body {
+      return Ok(target);
+    }
+    let stem = Path::new(file_name)
+      .file_stem()
+      .and_then(|name| name.to_str())
+      .unwrap_or("catalog");
+    let suffix = &payload_hash(&normalized_body)[..8];
+    return Ok(cache_dir.join(format!("{stem}-{suffix}.json")));
+  }
+
+  Ok(target)
+}
+
+/// Destino em `AppData/.../catalogs/` para uma importação local (evita colisões).
+pub fn catalog_import_cache_path(
+  app: &AppHandle,
+  external_path: &Path,
+  body: &str,
+) -> Result<PathBuf, String> {
+  let cache_dir = catalog_cache_dir(app)?;
+  catalog_import_cache_path_in_dir(&cache_dir, external_path, body)
+}
+
 pub fn resolve_remote_catalog_url(source: &HydraSourceDto) -> Option<String> {
   source
     .remote_url
@@ -1149,12 +1187,19 @@ fn apply_downloaded_catalog_body(
   Ok((SyncCatalogOutcome::Updated(count), api_meta))
 }
 
-/// Importa catálogo a partir de um ficheiro .json local (sem aceder à internet).
-pub fn import_source_catalog_from_file(
+/// Dados preparados ao importar um .json externo (já copiado para `catalogs/`).
+pub(crate) struct StagedLocalCatalogImport {
+  pub cache_path: String,
+  pub body: String,
+  pub catalog: HydraLinksCatalog,
+  pub count: usize,
+}
+
+/// Lê o arquivo externo e copia-o para a pasta interna da aplicação.
+pub fn stage_local_catalog_for_import(
   app: &AppHandle,
-  source_id: &str,
   file_path: &str,
-) -> Result<usize, String> {
+) -> Result<StagedLocalCatalogImport, String> {
   let path = resolve_local_catalog_path(file_path).ok_or_else(|| {
     format!(
       "Arquivo não encontrado: {file_path}. Confirme que o caminho existe e termina em .json."
@@ -1162,9 +1207,95 @@ pub fn import_source_catalog_from_file(
   })?;
   let (catalog, body) = read_catalog_file(&path)?;
   let count = catalog.downloads.len();
-  write_catalog_to_db(app, source_id, file_path.trim(), &body, &catalog)?;
-  remember_in_memory(source_id, catalog);
-  Ok(count)
+  let cache_path = catalog_import_cache_path(app, &path, &body)?;
+  if let Some(parent) = cache_path.parent() {
+    std::fs::create_dir_all(parent)
+      .map_err(|error| format!("Não foi possível criar a pasta do catálogo: {error}"))?;
+  }
+  std::fs::write(&cache_path, &body)
+    .map_err(|error| format!("Não foi possível copiar o catálogo para a aplicação: {error}"))?;
+  Ok(StagedLocalCatalogImport {
+    cache_path: cache_path.to_string_lossy().into_owned(),
+    body,
+    catalog,
+    count,
+  })
+}
+
+pub fn finalize_local_catalog_import(
+  app: &AppHandle,
+  source_id: &str,
+  staged: &StagedLocalCatalogImport,
+) -> Result<(), String> {
+  write_catalog_to_db(
+    app,
+    source_id,
+    staged.cache_path.as_str(),
+    staged.body.as_str(),
+    &staged.catalog,
+  )?;
+  remember_in_memory(source_id, staged.catalog.clone());
+  Ok(())
+}
+
+/// Move catálogos antigos (caminho externo) para `catalogs/` da aplicação.
+pub fn migrate_external_catalog_to_cache_if_needed(
+  app: &AppHandle,
+  source: &HydraSourceDto,
+) -> Result<Option<String>, String> {
+  if !is_local_catalog_path(&source.url) {
+    return Ok(None);
+  }
+
+  let cache_root = catalog_cache_dir(app)?;
+  let path = PathBuf::from(source.url.trim());
+  if path.starts_with(&cache_root) {
+    return Ok(None);
+  }
+
+  let Some(external) = resolve_local_catalog_path(&source.url) else {
+    return Ok(None);
+  };
+
+  let body = std::fs::read_to_string(&external)
+    .map_err(|error| format!("Não foi possível ler o catálogo externo: {error}"))?;
+  let cache_path = catalog_import_cache_path(app, &external, &body)?;
+  if !cache_path.is_file() || cache_path != external {
+    if let Some(parent) = cache_path.parent() {
+      std::fs::create_dir_all(parent)
+        .map_err(|error| format!("Não foi possível criar a pasta do catálogo: {error}"))?;
+    }
+    std::fs::write(&cache_path, &body)
+      .map_err(|error| format!("Não foi possível copiar o catálogo para a aplicação: {error}"))?;
+  }
+
+  let cache_path_str = cache_path.to_string_lossy().into_owned();
+  let conn = open_database_connection(app)?;
+  conn
+    .execute(
+      "UPDATE hydra_download_sources SET url = ?1 WHERE id = ?2",
+      params![cache_path_str, source.id],
+    )
+    .map_err(|error| format!("could_not_migrate_catalog_path: {error}"))?;
+  conn
+    .execute(
+      "UPDATE hydra_source_catalogs SET source_url = ?1 WHERE source_id = ?2",
+      params![cache_path_str, source.id],
+    )
+    .ok();
+
+  Ok(Some(cache_path_str))
+}
+
+/// Importa catálogo a partir de um ficheiro .json externo: copia para `catalogs/` e grava no SQLite.
+pub fn import_source_catalog_from_file(
+  app: &AppHandle,
+  source_id: &str,
+  file_path: &str,
+) -> Result<(usize, String), String> {
+  let staged = stage_local_catalog_for_import(app, file_path)?;
+  finalize_local_catalog_import(app, source_id, &staged)?;
+  Ok((staged.count, staged.cache_path))
 }
 
 pub fn has_local_catalog(app: &AppHandle, source_id: &str) -> bool {
@@ -1362,6 +1493,101 @@ fn search_json_catalog_indexed(
 
     if seen_titles.len() >= MAX_TITLES_PER_SOURCE {
       return options;
+    }
+  }
+
+  options
+}
+
+/// Lista todas as opções de download indexadas para um jogo (mesmo group_key).
+pub fn list_download_options_for_group_key(
+  conn: &Connection,
+  sources: &[HydraSourceDto],
+  group_key: &str,
+) -> Vec<DownloadOptionDto> {
+  let group_key = group_key.trim();
+  if group_key.is_empty() || sources.is_empty() {
+    return Vec::new();
+  }
+
+  let placeholders = sources.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+  let sql = format!(
+    "SELECT hce.source_id, hce.title, hce.file_size, hce.uris_json \
+     FROM hydra_catalog_entries hce \
+     WHERE hce.group_key = ?1 AND hce.source_id IN ({placeholders}) \
+     ORDER BY hce.title COLLATE NOCASE"
+  );
+
+  let Ok(mut stmt) = conn.prepare(&sql) else {
+    return Vec::new();
+  };
+
+  let mut params: Vec<Box<dyn rusqlite::ToSql>> =
+    vec![Box::new(group_key.to_string()) as Box<dyn rusqlite::ToSql>];
+  for source in sources {
+    params.push(Box::new(source.id.clone()));
+  }
+  let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+  let source_names: HashMap<String, String> = sources
+    .iter()
+    .map(|source| (source.id.clone(), source.name.clone()))
+    .collect();
+
+  let rows = match stmt.query_map(param_refs.as_slice(), |row| {
+    Ok((
+      row.get::<_, String>(0)?,
+      row.get::<_, String>(1)?,
+      row.get::<_, Option<String>>(2)?,
+      row.get::<_, String>(3)?,
+    ))
+  }) {
+    Ok(rows) => rows,
+    Err(_) => return Vec::new(),
+  };
+
+  let mut options = Vec::new();
+  let mut seen_urls = HashSet::new();
+  let mut seen_titles = HashSet::new();
+
+  for row in rows.flatten() {
+    let (source_id, title, file_size, uris_json) = row;
+    let title_key = normalize_match_text(&title);
+    if title_key.is_empty() || !seen_titles.insert(title_key) {
+      continue;
+    }
+
+    let source_name = source_names
+      .get(&source_id)
+      .cloned()
+      .unwrap_or_else(|| "Catálogo".to_string());
+
+    let uris: Vec<String> = serde_json::from_str(&uris_json).unwrap_or_default();
+    for (idx, uri) in uris.iter().enumerate() {
+      let Some((download_type, mut url)) = classify_uri(uri) else {
+        continue;
+      };
+      if !seen_urls.insert(url.clone()) {
+        continue;
+      }
+      if download_type == "torrent" && url.to_ascii_lowercase().starts_with("magnet:?") {
+        url = super::enrich_magnet_url(&url);
+      }
+      let quality = file_size
+        .as_ref()
+        .map(|size| size.trim().to_string())
+        .filter(|size| !size.is_empty())
+        .unwrap_or_else(|| format!("Link {}", idx + 1));
+
+      options.push(DownloadOptionDto {
+        source_id: source_id.clone(),
+        source_name: source_name.clone(),
+        title: title.clone(),
+        download_type,
+        url,
+        quality,
+        cover_url: None,
+      });
     }
   }
 

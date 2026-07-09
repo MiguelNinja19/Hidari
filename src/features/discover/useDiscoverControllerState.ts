@@ -128,7 +128,10 @@ export function useDiscoverControllerState({
   const openGameDetail = useCallback(
     (input: GetGameDetailInput | CatalogGame) => {
       if ('source' in input) {
-        discover.openGameDetail({ title: input.title })
+        discover.openGameDetail({
+          groupKey: input.groupKey ?? undefined,
+          title: input.title,
+        })
         return
       }
       discover.openGameDetail(input)

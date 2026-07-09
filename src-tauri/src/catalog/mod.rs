@@ -129,6 +129,7 @@ pub fn embedded_entry_to_dto(entry: &EmbeddedCatalogEntry) -> CatalogGameDto {
     local_cover_path: None,
     source: "embedded".to_string(),
     option_count: None,
+    group_key: None,
   }
 }
 
@@ -248,6 +249,7 @@ pub async fn fetch_steam_catalog_games(search_term: &str) -> Result<Vec<CatalogG
       local_cover_path: None,
       source: "steam".to_string(),
       option_count: None,
+      group_key: None,
     });
   }
 
@@ -553,6 +555,7 @@ fn search_catalog_from_sources_sync(
         local_cover_path: None,
         source: "source".to_string(),
         option_count: (hit.option_count > 1).then_some(hit.option_count as u32),
+        group_key: Some(hit.group_key),
       }
     })
     .collect::<Vec<_>>();

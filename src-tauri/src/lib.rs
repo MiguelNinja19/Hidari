@@ -151,6 +151,7 @@ pub fn run() {
       sync_all_local_source_catalogs,
       get_download_sources,
       remove_download_source,
+      open_catalogs_cache_folder,
       search_download_options,
       search_game_catalog,
       resolve_game_genres_batch,

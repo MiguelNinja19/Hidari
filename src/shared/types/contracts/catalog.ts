@@ -8,6 +8,7 @@ export type CatalogGame = {
   localCoverPath?: string | null
   source: string
   optionCount?: number | null
+  groupKey?: string | null
 }
 
 export type SearchCatalogInput = {

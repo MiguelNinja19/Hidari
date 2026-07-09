@@ -148,6 +148,14 @@ export function SettingsTab() {
     }
   }
 
+  const handleOpenCatalogsFolder = async () => {
+    try {
+      await sourcesApi.openCatalogsCacheFolder()
+    } catch (error) {
+      showError(formatUserError(error, 'Não foi possível abrir a pasta de catálogos.'))
+    }
+  }
+
   const handleSaveInstallSettings = async () => {
     const path = defaultDownloadPath.trim()
     if (!path) {
@@ -248,6 +256,7 @@ export function SettingsTab() {
       handleSelectDefaultPath={handleSelectDefaultPath}
       handleSaveInstallSettings={handleSaveInstallSettings}
       onImportSource={handleImportSource}
+      onOpenCatalogsFolder={handleOpenCatalogsFolder}
       onDeleteSource={handleDeleteSource}
       onSyncSource={handleSyncSource}
       onSyncAllSources={handleSyncAllSources}
