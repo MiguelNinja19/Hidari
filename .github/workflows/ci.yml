@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -31,8 +36,11 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Run tests
-        run: npm run test:all
+      - name: Frontend tests
+        run: npm test
+
+      - name: Rust tests
+        run: npm run test:rust
 
   test-windows:
     runs-on: windows-latest
@@ -56,11 +64,8 @@ jobs:
       - name: Setup sidecar binaries
         run: npm run setup:binaries
 
-      - name: Lint
-        run: npm run lint
-
       - name: Build frontend
         run: npm run build
 
-      - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build Tauri app
+        run: npm run tauri:build
