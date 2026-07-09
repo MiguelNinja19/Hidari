@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { open, ask } from '@tauri-apps/plugin-dialog'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { useAppSettings } from '../../app/context/AppSettingsContext'
@@ -15,6 +15,8 @@ import { SettingsPage } from './SettingsPage'
 import { SETTING_KEY, speedKeyToBps } from '../../shared/config/appSettings'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { formatSize } from '../../shared/utils/formatters'
+import { useToast } from '../../shared/components/ToastProvider'
+import { useErrorToast } from '../../shared/hooks/useErrorToast'
 
 export function SettingsTab() {
   const dispatch = useAppDispatch()
@@ -42,21 +44,10 @@ export function SettingsTab() {
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null)
   const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null)
   const [syncingAllSources, setSyncingAllSources] = useState(false)
-  const [settingsError, setSettingsError] = useState('')
   const [diskFreeBytes, setDiskFreeBytes] = useState<number | null>(null)
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
-  const toastTimerRef = useRef<number | null>(null)
+  const { showError, showSuccess } = useToast()
 
-  const showToast = useCallback((message: string) => {
-    const trimmed = message.trim()
-    if (!trimmed) return
-    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-    setToastMessage(trimmed)
-    toastTimerRef.current = window.setTimeout(() => {
-      setToastMessage(null)
-      toastTimerRef.current = null
-    }, 3000)
-  }, [])
+  useErrorToast(sourcesError, 'Falha ao carregar fontes.')
 
   const isSourceEnabled = (sourceId: string) => !disabledSourceIds.includes(sourceId)
 
@@ -77,12 +68,6 @@ export function SettingsTab() {
     }
   }, [defaultDownloadPath])
 
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
-    }
-  }, [])
-
   const handleImportSource = async () => {
     if (addingSource) return
     const selected = await open({
@@ -94,9 +79,9 @@ export function SettingsTab() {
     setAddingSource(true)
     try {
       const source = await dispatch(addSource({ url: selected.trim() })).unwrap()
-      showToast(`${source.downloadCount.toLocaleString(APP_LOCALE)} jogos importados.`)
+      showSuccess(`${source.downloadCount.toLocaleString(APP_LOCALE)} jogos importados.`)
     } catch (error) {
-      setSettingsError(formatUserError(error, 'Falha ao importar a fonte.'))
+      showError(formatUserError(error, 'Falha ao importar a fonte.'))
     } finally {
       setAddingSource(false)
     }
@@ -124,7 +109,7 @@ export function SettingsTab() {
     setSyncingSourceId(sourceId)
     try {
       await dispatch(syncSource(sourceId)).unwrap()
-      showToast(`Fonte ${sourceName} atualizada`)
+      showSuccess(`Fonte ${sourceName} atualizada`)
     } finally {
       setSyncingSourceId(null)
     }
@@ -135,7 +120,7 @@ export function SettingsTab() {
     setSyncingAllSources(true)
     try {
       await dispatch(syncAllSources()).unwrap()
-      showToast('Todas as fontes atualizadas')
+      showSuccess('Todas as fontes atualizadas')
       await dispatch(fetchSources())
     } finally {
       setSyncingAllSources(false)
@@ -145,10 +130,9 @@ export function SettingsTab() {
   const handleSaveInstallSettings = async () => {
     const path = defaultDownloadPath.trim()
     if (!path) {
-      setSettingsError('Indique uma pasta de destino.')
+      showError('Indique uma pasta de destino.')
       return
     }
-    setSettingsError('')
     try {
       await sourcesApi.setDefaultDownloadPath(path)
       await sourcesApi.setAppSetting(SETTING_KEY.installOrganization, installOrganization)
@@ -156,12 +140,11 @@ export function SettingsTab() {
       const bytes = await sourcesApi.getDiskFreeBytesForPath(path)
       setDiskFreeBytes(bytes)
     } catch (error) {
-      setSettingsError(formatUserError(error, 'Falha ao salvar configurações de instalação.'))
+      showError(formatUserError(error, 'Falha ao salvar configurações de instalação.'))
     }
   }
 
   const handleSelectDefaultPath = async () => {
-    setSettingsError('')
     const selected = await open({
       directory: true,
       multiple: false,
@@ -175,7 +158,7 @@ export function SettingsTab() {
         const bytes = await sourcesApi.getDiskFreeBytesForPath(selected)
         setDiskFreeBytes(bytes)
       } catch {
-        setSettingsError('Não foi possível salvar a pasta. Execute com "npm run tauri:dev".')
+        showError('Não foi possível salvar a pasta. Execute com "npm run tauri:dev".')
       }
     }
   }
@@ -186,7 +169,7 @@ export function SettingsTab() {
       await sourcesApi.setAppSetting(SETTING_KEY.removeTempFiles, next ? '1' : '0')
     } catch (error) {
       setRemoveTemporaryFiles(!next)
-      setSettingsError(formatUserError(error, 'Falha ao salvar opção de arquivos temporários.'))
+      showError(formatUserError(error, 'Falha ao salvar opção de arquivos temporários.'))
     }
   }
 
@@ -195,7 +178,7 @@ export function SettingsTab() {
     try {
       await sourcesApi.setAppSetting(SETTING_KEY.downloadSpeedLimitBps, String(speedKeyToBps(value)))
     } catch (error) {
-      setSettingsError(formatUserError(error, 'Falha ao salvar limite de velocidade.'))
+      showError(formatUserError(error, 'Falha ao salvar limite de velocidade.'))
     }
   }
 
@@ -207,7 +190,7 @@ export function SettingsTab() {
     setDisabledSourceIds(next)
     void sourcesApi.setAppSetting(SETTING_KEY.disabledHydraSourceIds, JSON.stringify(next)).catch(
       (error) => {
-        setSettingsError(formatUserError(error, 'Falha ao salvar fontes ativas.'))
+        showError(formatUserError(error, 'Falha ao salvar fontes ativas.'))
       },
     )
   }
@@ -218,21 +201,18 @@ export function SettingsTab() {
       await sourcesApi.setSeedTorrentsEnabled(enabled)
     } catch (error) {
       setSeedTorrentsEnabled(!enabled)
-      setSettingsError(formatUserError(error, 'Falha ao salvar preferência de semeadura.'))
+      showError(formatUserError(error, 'Falha ao salvar preferência de semeadura.'))
     }
   }
 
   return (
     <SettingsPage
       defaultDownloadPath={defaultDownloadPath}
-      savePathError={settingsError}
-      toastMessage={toastMessage}
       diskFreeBytes={diskFreeBytes}
       installOrganization={installOrganization}
       afterInstallAction={afterInstallAction}
       sources={sources}
       sourcesLoading={sourcesLoading}
-      sourcesError={sourcesError}
       removeTemporaryFiles={removeTemporaryFiles}
       seedTorrentsEnabled={seedTorrentsEnabled}
       downloadSpeedLimit={downloadSpeedLimit}

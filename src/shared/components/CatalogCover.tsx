@@ -160,22 +160,19 @@ function CatalogCoverInner({
     const showError = status === 'error' || failed
     return (
       <div className="game-card__media">
-        {showError ? (
-          <div className="game-card__placeholder game-card__placeholder--error" aria-hidden="true">
-            <span>?</span>
-          </div>
-        ) : (
-          <div className="game-card__cover-skeleton" aria-hidden="true" />
-        )}
+        <div
+          className={`game-card__cover-empty${showError ? ' game-card__cover-empty--error' : ''}`}
+          aria-hidden="true"
+        >
+          {showError ? <span className="game-card__cover-empty-mark">?</span> : null}
+        </div>
       </div>
     )
   }
 
   return (
     <div className="game-card__media">
-      {!showSkeleton ? null : (
-        <div className="game-card__cover-skeleton" aria-hidden="true" />
-      )}
+      {!showSkeleton ? null : <div className="game-card__cover-empty" aria-hidden="true" />}
       <img
         className={`game-card__cover${showLoaded ? ' game-card__cover--loaded' : ''}${isCachedLocal ? ' game-card__cover--cached' : ''}`}
         src={activeSrc!}

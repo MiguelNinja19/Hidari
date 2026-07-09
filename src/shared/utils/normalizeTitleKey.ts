@@ -113,11 +113,74 @@ export function catalogGameGroupKey(title: string): string {
   return normalizeTitleKey(extractCatalogBaseTitle(title))
 }
 
-/** Chave para agrupar o mesmo jogo na biblioteca (ex.: Terraria vs Terraria v1.4.5). */
+/** Chaves possíveis para o mesmo jogo (repack, pasta, job). */
+export function libraryGameKeyCandidates(title: string): string[] {
+  const display = cleanTitleForDisplay(title)
+  const base = extractCatalogBaseTitle(display)
+  const baseNorm = normalizeTitleKey(base || '')
+  const fullNorm = normalizeTitleKey(display || title.trim())
+  const seen = new Set<string>()
+  const out: string[] = []
+  const push = (key: string) => {
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    out.push(key)
+  }
+
+  const baseTokens = baseNorm.split(/\s+/).filter((word) => word.length >= 4)
+  if (baseTokens.length === 1) {
+    push(baseTokens[0]!)
+  } else if (baseTokens.length >= 2) {
+    push(baseTokens.slice(0, 2).join(' '))
+  }
+
+  const fullTokens = fullNorm.split(/\s+/).filter((word) => word.length >= 4)
+  if (fullTokens.length >= 3) {
+    push(fullTokens.slice(-3).join(' '))
+  } else if (fullTokens.length === 2) {
+    push(fullTokens.join(' '))
+  } else if (fullTokens.length === 1) {
+    push(fullTokens[0]!)
+  }
+
+  if (out.length === 0 && fullNorm) {
+    push(fullNorm.split(/\s+/).slice(0, 3).join(' ') || fullNorm)
+  }
+  return out
+}
+
+export function libraryTitlesMatch(a: string, b: string): boolean {
+  const keysA = new Set(libraryGameKeyCandidates(a))
+  if (libraryGameKeyCandidates(b).some((key) => keysA.has(key))) return true
+  return libraryTitlePrefixMatch(a, b)
+}
+
+/** Abreviações de pasta (ex.: "Stardew") vs título completo do job/repack. */
+function libraryTitlePrefixMatch(a: string, b: string): boolean {
+  const baseA = normalizeTitleKey(extractCatalogBaseTitle(cleanTitleForDisplay(a)))
+  const baseB = normalizeTitleKey(extractCatalogBaseTitle(cleanTitleForDisplay(b)))
+  if (!baseA || !baseB) return false
+  if (baseA === baseB) return true
+
+  const tokensA = baseA.split(/\s+/).filter(Boolean)
+  const tokensB = baseB.split(/\s+/).filter(Boolean)
+  const [shorter, longer] =
+    tokensA.length <= tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA]
+
+  if (shorter.length === 0 || longer.length === 0) return false
+
+  const prefixMatches = shorter.every((token, index) => longer[index] === token)
+  if (!prefixMatches) return false
+
+  // Evita falsos positivos com palavras muito curtas ("The", "Of").
+  const significant = shorter.filter((token) => token.length >= 4)
+  if (significant.length === 0) {
+    return shorter.length === 1 && shorter[0]!.length >= 3
+  }
+  return true
+}
+
+/** Chave principal para agrupar o mesmo jogo na biblioteca. */
 export function libraryGameKey(title: string): string {
-  let cleaned = cleanTitleForDisplay(title)
-  cleaned = cleaned.replace(/\s*[-–:]\s*v?\d[\d.]*.*$/i, '').trim()
-  const key = normalizeTitleKey(cleaned || title)
-  const first = key.split(/\s+/)[0] ?? key
-  return first.length >= 3 ? first : key
+  return libraryGameKeyCandidates(title)[0] ?? normalizeTitleKey(title)
 }

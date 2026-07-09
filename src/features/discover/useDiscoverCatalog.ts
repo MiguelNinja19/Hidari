@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  CATALOG_SEARCH_DEBOUNCE_MS,
   CATALOG_SEARCH_MIN_CHARS,
 } from '../../shared/config/polling'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { simplifySourceSearchQuery } from '../../shared/utils/titleMatching'
 import { cleanTitleForCover } from '../../shared/utils/normalizeTitleKey'
 import { formatUserError } from '../../shared/utils/formatUserError'
+import { useToast } from '../../shared/components/ToastProvider'
 import type { CatalogGame, DownloadOption, GameDetail, GetGameDetailInput } from '../../shared/types/contracts'
 
 const DISCOVER_PAGE_SIZE = 24
@@ -33,12 +33,11 @@ export function useDiscoverCatalog({
   enabledSourcesCount,
   defaultDownloadPath,
 }: UseDiscoverCatalogArgs) {
+  const { showError } = useToast()
   const [catalogGames, setCatalogGames] = useState<CatalogGame[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogLoadingMore, setCatalogLoadingMore] = useState(false)
   const [catalogHasMore, setCatalogHasMore] = useState(false)
-  const [catalogError, setCatalogError] = useState('')
-  const [discoverError, setDiscoverError] = useState('')
   const [discoverBusy, setDiscoverBusy] = useState<string | null>(null)
   const [discoverPickGame, setDiscoverPickGame] = useState<CatalogGame | null>(null)
   const [discoverPickOptions, setDiscoverPickOptions] = useState<DownloadOption[]>([])
@@ -66,7 +65,6 @@ export function useDiscoverCatalog({
       setCatalogLoading(false)
       setCatalogLoadingMore(false)
       setCatalogHasMore(false)
-      setCatalogError('')
       return
     }
 
@@ -75,62 +73,54 @@ export function useDiscoverCatalog({
       setCatalogLoading(false)
       setCatalogLoadingMore(false)
       setCatalogHasMore(false)
-      setCatalogError('')
       return
     }
 
-    setCatalogError('')
+    const requestQuery = query
+    const requestId = ++searchRequestIdRef.current
+    setCatalogLoading(true)
 
-    const timer = window.setTimeout(() => {
-      const requestQuery = discoverSearch.trim()
-      const requestId = ++searchRequestIdRef.current
-      setCatalogLoading(true)
-
-      void (async () => {
-        try {
-          const rows = await sourcesApi.searchGameCatalog({
-            query: requestQuery,
-            includeSteam: false,
-            onlyWithSources: true,
-            attachCovers: false,
-            offset: 0,
-            limit: DISCOVER_PAGE_SIZE + 1,
-          })
-          if (
-            !cancelled &&
-            searchRequestIdRef.current === requestId &&
-            discoverSearch.trim() === requestQuery
-          ) {
-            setCatalogHasMore(rows.length > DISCOVER_PAGE_SIZE)
-            setCatalogGames(rows.slice(0, DISCOVER_PAGE_SIZE))
-            setCatalogError('')
-          }
-        } catch (error) {
-          if (
-            !cancelled &&
-            searchRequestIdRef.current === requestId &&
-            discoverSearch.trim() === requestQuery
-          ) {
-            setCatalogError(
-              formatUserError(error, 'Falha ao pesquisar nas fontes. Tente novamente.'),
-            )
-          }
-        } finally {
-          if (
-            !cancelled &&
-            searchRequestIdRef.current === requestId &&
-            discoverSearch.trim() === requestQuery
-          ) {
-            setCatalogLoading(false)
-          }
+    void (async () => {
+      try {
+        const rows = await sourcesApi.searchGameCatalog({
+          query: requestQuery,
+          includeSteam: false,
+          onlyWithSources: true,
+          attachCovers: false,
+          offset: 0,
+          limit: DISCOVER_PAGE_SIZE + 1,
+        })
+        if (
+          !cancelled &&
+          searchRequestIdRef.current === requestId &&
+          discoverSearch.trim() === requestQuery
+        ) {
+          setCatalogHasMore(rows.length > DISCOVER_PAGE_SIZE)
+          setCatalogGames(rows.slice(0, DISCOVER_PAGE_SIZE))
         }
-      })()
-    }, CATALOG_SEARCH_DEBOUNCE_MS)
+      } catch (error) {
+        if (
+          !cancelled &&
+          searchRequestIdRef.current === requestId &&
+          discoverSearch.trim() === requestQuery
+        ) {
+          showError(formatUserError(error, 'Falha ao pesquisar nas fontes. Tente novamente.'))
+        }
+      } finally {
+        if (
+          !cancelled &&
+          searchRequestIdRef.current === requestId &&
+          discoverSearch.trim() === requestQuery
+        ) {
+          setCatalogLoading(false)
+        }
+      }
+    })()
+
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
     }
-  }, [discoverSearch, enabledSourcesCount])
+  }, [discoverSearch, enabledSourcesCount, showError])
 
   const loadMoreCatalog = useCallback(async () => {
     const query = discoverSearch.trim()
@@ -156,11 +146,11 @@ export function useDiscoverCatalog({
       setCatalogHasMore(rows.length > DISCOVER_PAGE_SIZE)
       setCatalogGames((prev) => [...prev, ...rows.slice(0, DISCOVER_PAGE_SIZE)])
     } catch (error) {
-      setCatalogError(formatUserError(error, 'Falha ao carregar mais resultados. Tente novamente.'))
+      showError(formatUserError(error, 'Falha ao carregar mais resultados. Tente novamente.'))
     } finally {
       setCatalogLoadingMore(false)
     }
-  }, [catalogGames.length, catalogHasMore, catalogLoading, catalogLoadingMore, discoverSearch])
+  }, [catalogGames.length, catalogHasMore, catalogLoading, catalogLoadingMore, discoverSearch, showError])
 
   const closeDiscoverPicker = useCallback(() => {
     setDiscoverPickGame(null)
@@ -182,7 +172,6 @@ export function useDiscoverCatalog({
     const title = input.title?.trim()
     if (!groupKey && !title) return
 
-    setDiscoverError('')
     setView('detail')
     setSelectedGame({
       groupKey: groupKey || undefined,
@@ -211,16 +200,25 @@ export function useDiscoverCatalog({
           title: detail.game.title,
         })
       } catch (error) {
-        setDetailError(formatUserError(error, 'Não foi possível carregar os detalhes do jogo.'))
+        const message = formatUserError(error, 'Não foi possível carregar os detalhes do jogo.')
+        setDetailError(message)
+        showError(message)
       } finally {
         setDetailLoading(false)
       }
     })()
-  }, [])
+  }, [showError])
+
+  const reportPickError = useCallback(
+    (message: string) => {
+      setDiscoverPickError(message)
+      showError(message)
+    },
+    [showError],
+  )
 
   const openDiscoverPicker = useCallback(
     (game: CatalogGame) => {
-      setDiscoverError('')
       setDiscoverPickGame(game)
       setDiscoverPickOptions([])
       setDiscoverPickError(null)
@@ -228,9 +226,7 @@ export function useDiscoverCatalog({
 
       void (async () => {
         if (enabledSourcesCount === 0) {
-          setDiscoverPickError(
-            'Nenhuma fonte ativa. Ative pelo menos uma fonte em Configurações.',
-          )
+          reportPickError('Nenhuma fonte ativa. Ative pelo menos uma fonte em Configurações.')
           setDiscoverPickLoading(false)
           return
         }
@@ -238,9 +234,7 @@ export function useDiscoverCatalog({
         const hasPath =
           defaultDownloadPath.trim().length > 0 || (await sourcesApi.getDefaultDownloadPath())
         if (!hasPath) {
-          setDiscoverPickError(
-            'Defina a pasta de downloads em Configurações antes de baixar.',
-          )
+          reportPickError('Defina a pasta de downloads em Configurações antes de baixar.')
           setDiscoverPickLoading(false)
           return
         }
@@ -252,7 +246,7 @@ export function useDiscoverCatalog({
           const downloadable = rows.filter(isDownloadableOption)
           setDiscoverPickOptions(downloadable)
           if (downloadable.length === 0) {
-            setDiscoverPickError(
+            reportPickError(
               rows.length > 0
                 ? 'Foram encontradas opções, mas nenhum download válido. Tente outro jogo ou fonte.'
                 : 'Nenhum download encontrado para este título. Verifique as fontes ativas em Configurações.',
@@ -260,7 +254,7 @@ export function useDiscoverCatalog({
           }
         } catch {
           setDiscoverPickOptions([])
-          setDiscoverPickError(
+          reportPickError(
             'Não foi possível consultar as fontes. Verifique a conexão e tente novamente.',
           )
         } finally {
@@ -268,7 +262,7 @@ export function useDiscoverCatalog({
         }
       })()
     },
-    [defaultDownloadPath, enabledSourcesCount],
+    [defaultDownloadPath, enabledSourcesCount, reportPickError],
   )
 
   useEffect(() => {
@@ -300,10 +294,6 @@ export function useDiscoverCatalog({
     catalogLoadingMore,
     catalogHasMore,
     loadMoreCatalog,
-    catalogError,
-    discoverError,
-    setCatalogError,
-    setDiscoverError,
     discoverBusy,
     setDiscoverBusy,
     discoverPickGame,

@@ -173,7 +173,6 @@ textarea {
 
 .sidebar-link:hover:not(.sidebar-link--active) {
   color: var(--accent-primary);
-  border-color: var(--accent-primary);
   background: rgba(212, 255, 0, 0.05);
 }
 
@@ -185,7 +184,6 @@ textarea {
 
 .sidebar-link--active:hover {
   background: var(--accent-primary);
-  border-color: var(--accent-primary);
   color: var(--accent-text);
 }
 
@@ -716,6 +714,62 @@ select:focus {
   width: 100%;
 }
 
+.discover-search-inline {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  border: var(--border-width) solid var(--divider);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 1px var(--divider);
+}
+
+.discover-search-inline__field,
+.discover-search-inline .browse-search,
+.discover-search-inline .browse-search--bar {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.discover-search-inline .browse-search--bar .browse-search__input,
+.discover-search-inline__input {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.discover-search-inline .browse-search--bar .browse-search__input:hover:not(:disabled),
+.discover-search-inline .browse-search--bar .browse-search__input:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.discover-search-inline__btn {
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-width: 6.75rem;
+  margin: 0;
+  padding-inline: var(--space-4);
+  border: none;
+  border-left: var(--border-width) solid var(--divider);
+  border-radius: 0;
+  white-space: nowrap;
+}
+
+.discover-search-inline__btn-loader {
+  margin: 0 auto;
+}
+
 .game-tile__cta.btn-primary:hover:not(:disabled),
 .btn-flat.btn-primary:hover:not(:disabled) {
   background: var(--accent);
@@ -1116,24 +1170,61 @@ select:focus {
   animation: shimmer 1.6s ease-in-out infinite;
 }
 
-.game-card__placeholder {
+.page-center-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  background: #0a0a0a;
-  font-family: var(--display);
-  font-size: 1.25rem;
-  font-weight: 800;
-  color: rgba(212, 255, 0, 0.32);
-  letter-spacing: -0.04em;
-  text-transform: uppercase;
+  min-height: min(52vh, 420px);
+  padding: 2.5rem 1.5rem;
 }
 
-.game-card__placeholder--error {
-  color: var(--text-muted, #6b7280);
-  font-size: 1.4rem;
+.page-center-spinner__icon {
+  color: rgba(212, 255, 0, 0.9);
 }
+
+.game-card__cover-empty {
+  position: absolute;
+  inset: 0;
+  background: #0a0a0e;
+}
+
+.game-card__cover-empty--error {
+  display: grid;
+  place-items: center;
+}
+
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.spinner__icon {
+  display: block;
+  animation: spinner-rotate 0.75s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner__icon {
+    animation-duration: 1.4s;
+  }
+}
+
+.game-card__cover-empty-mark {
+  font-family: var(--display);
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-muted, #6b7280);
+}
+
 
 .game-card__hitbox {
   position: absolute;
@@ -1298,7 +1389,7 @@ select:focus {
 }
 
 .pick-modal__cover .game-card__media,
-.pick-modal__cover .game-card__placeholder {
+.pick-modal__cover .game-card__cover-empty {
   position: absolute;
   inset: 0;
 }
@@ -1431,6 +1522,21 @@ select:focus {
   background: var(--accent-primary);
   min-width: 68px;
   text-align: center;
+  cursor: pointer;
+  transition:
+    background var(--hover-dur) ease,
+    border-color var(--hover-dur) ease;
+}
+
+.pick-modal__option-action:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.pick-modal__option-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .pick-modal__hint {
@@ -1471,12 +1577,6 @@ select:focus {
   color: var(--text-main);
   font-family: var(--sans);
   text-align: left;
-  cursor: pointer;
-}
-
-.pick-modal__option:disabled {
-  opacity: 0.55;
-  cursor: wait;
 }
 
 .pick-modal__option-variant {
@@ -1656,31 +1756,6 @@ select:focus {
   background: #000;
 }
 
-.favorites-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.favorites-page__header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.favorites-page__title {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.favorites-page__subtitle {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 0.875rem;
-}
-
 .game-detail__downloads {
   display: flex;
   flex-direction: column;
@@ -1728,20 +1803,6 @@ select:focus {
   color: var(--text-main);
   font-family: var(--sans);
   text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--hover-dur) ease,
-    background var(--hover-dur) ease;
-}
-
-.game-detail__option:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  background: rgba(212, 255, 0, 0.04);
-}
-
-.game-detail__option:disabled {
-  opacity: 0.55;
-  cursor: wait;
 }
 
 .game-detail__option-variant {
@@ -1789,6 +1850,21 @@ select:focus {
   background: var(--accent-primary);
   min-width: 68px;
   text-align: center;
+  cursor: pointer;
+  transition:
+    background var(--hover-dur) ease,
+    border-color var(--hover-dur) ease;
+}
+
+.game-detail__option-action:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.game-detail__option-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 /* legacy pick-sheet / discover-modal (unused) */
@@ -2238,7 +2314,7 @@ select:focus {
 }
 
 .download-row__thumb .game-card__media,
-.download-row__thumb .game-card__placeholder {
+.download-row__thumb .game-card__cover-empty {
   position: absolute;
   inset: 0;
 }
@@ -2385,7 +2461,7 @@ select:focus {
 }
 
 .download-item__thumb .game-card__media,
-.download-item__thumb .game-card__placeholder {
+.download-item__thumb .game-card__cover-empty {
   position: absolute;
   inset: 0;
 }
@@ -2587,12 +2663,12 @@ select:focus {
 }
 
 .game-tile__cover .game-card__media,
-.game-tile__cover .game-card__placeholder {
+.game-tile__cover .game-card__cover-empty {
   position: absolute;
   inset: 0;
 }
 
-.game-tile__cover .game-card__placeholder {
+.game-tile__cover .game-card__cover-empty {
   background:
     linear-gradient(165deg, rgba(212, 255, 0, 0.07) 0%, transparent 52%),
     repeating-linear-gradient(

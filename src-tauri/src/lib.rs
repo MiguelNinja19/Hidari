@@ -17,7 +17,7 @@ mod title;
 use commands::*;
 use queue::startup_queue_recovery;
 use sidecar::{
-  emit_deep_link_event, pause_all_active_sidecar_jobs, spawn_download_engine, spawn_extraction_watcher,
+  emit_deep_link_event, graceful_app_quit, spawn_download_engine, spawn_extraction_watcher,
   spawn_sidecar_progress_watcher,
 };
 use state::{ExtractionState, SidecarState};
@@ -62,7 +62,7 @@ pub fn run() {
           }
         });
       }
-      let _ = crate::db::init_database_pool(app.handle());
+      crate::db::init_database_pool(app.handle())?;
       if let (Ok(conn), Ok(covers_dir)) = (
         crate::db::open_database_connection(app.handle()),
         crate::covers::covers_dir_for_app(app.handle()),
@@ -82,6 +82,7 @@ pub fn run() {
       spawn_download_engine(app.handle().clone());
       spawn_sidecar_progress_watcher(app.handle().clone());
       spawn_extraction_watcher(app.handle().clone());
+      crate::library::watcher::spawn_download_folder_watcher(app.handle().clone());
 
       covers::maybe_refresh_steam_app_index(app.handle());
 
@@ -107,7 +108,7 @@ pub fn run() {
               let _ = window.hide();
             }
           }
-          "tray_quit" => app.exit(0),
+          "tray_quit" => graceful_app_quit(app.clone()),
           _ => {}
         })
         .on_tray_icon_event(move |_tray, event| {
@@ -137,11 +138,8 @@ pub fn run() {
           let _ = window.hide();
           return;
         }
-        tauri::async_runtime::spawn(async move {
-          if let Err(error) = pause_all_active_sidecar_jobs(app_handle).await {
-            log::warn!("could_not_pause_jobs_on_close: {error}");
-          }
-        });
+        api.prevent_close();
+        graceful_app_quit(app_handle);
       }
     })
     .invoke_handler(tauri::generate_handler![

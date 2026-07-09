@@ -1,5 +1,6 @@
 import type { DownloadJob } from '../types/contracts'
 import { formatEta, formatSize, formatSpeed, jobStatusLabel, showEtaForJob } from './formatters'
+import { jobNeedsExtraction } from './jobExtraction'
 import { isTorrentMetadataPhase } from './jobProgress'
 
 export function downloadRowDetail(job: DownloadJob, downloadNow: number): string {
@@ -24,6 +25,18 @@ export function downloadRowDetail(job: DownloadJob, downloadNow: number): string
       parts.push(eta)
     }
     return parts.length > 0 ? parts.join(' · ') : 'Transferindo'
+  }
+
+  if (job.status === 'extracting') {
+    return 'Extraindo arquivos…'
+  }
+
+  if ((job.status === 'completed' || job.status === 'seeding') && jobNeedsExtraction(job)) {
+    return 'Preparando arquivos…'
+  }
+
+  if (job.status === 'completed' && job.extractionStatus === 'skipped') {
+    return 'Pronto para instalar'
   }
 
   return jobStatusLabel(job)

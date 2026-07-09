@@ -19,17 +19,14 @@ export const PENDING_INSTALL_POLL_MS = 6000
 /** Intervalo de reconciliação lenta quando eventos de progresso estão ativos (ms). */
 export const POLL_RECONCILE_MS = 30000
 
-/** Debounce da pesquisa no catálogo (ms). */
-export const CATALOG_SEARCH_DEBOUNCE_MS = 400
-
 /** Mínimo de caracteres para pesquisar nas fontes. */
-export const CATALOG_SEARCH_MIN_CHARS = 3
+export const CATALOG_SEARCH_MIN_CHARS = 2
 
 /** Debounce de capas em falta na biblioteca (ms). */
-export const LIBRARY_COVER_LOOKUP_DEBOUNCE_MS = 2000
+export const LIBRARY_COVER_LOOKUP_DEBOUNCE_MS = 0
 
 /** Atraso antes de carregar a fila no arranque (deixa a UI respirar). */
-export const STARTUP_JOBS_DEFER_MS = 1800
+export const STARTUP_JOBS_DEFER_MS = 0
 
 /** Pausa entre lotes de inspeção de pastas da biblioteca (ms). */
 export const LIBRARY_INSPECT_BATCH_PAUSE_MS = 24

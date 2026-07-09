@@ -2,59 +2,89 @@
 
 ## Pré-requisitos
 
-| Ferramenta | Versão mínima | Notas |
-|------------|---------------|-------|
-| [Node.js](https://nodejs.org/) | 18+ | Usado pelo frontend (Vite) e CLI do Tauri |
-| [Rust](https://www.rust-lang.org/tools/install) | 1.77+ | Backend nativo em `src-tauri/` |
-| Windows SDK | — | Necessário no Windows para compilar o Tauri |
+| Ferramenta | Versão | Notas |
+|------------|--------|-------|
+| [Node.js](https://nodejs.org/) | 18+ | Frontend (Vite) e CLI Tauri |
+| [Rust](https://www.rust-lang.org/tools/install) | 1.77+ | Backend em `src-tauri/` |
+| Windows SDK | — | Obrigatório no Windows |
 
-No Windows, instale também as dependências indicadas na [documentação oficial do Tauri](https://v2.tauri.app/start/prerequisites/).
+Ver também [pré-requisitos Tauri v2](https://v2.tauri.app/start/prerequisites/).
 
 ## Instalação
-
-Na raiz do repositório:
 
 ```bash
 npm install
 ```
 
-O script `postinstall` (`npm run setup:binaries`) baixa automaticamente o **7-Zip** (7za.exe + 7za.dll) e copia `aria2c.exe` e `download-engine.exe` para `src-tauri/binaries/`. Sem isto, downloads podem funcionar mas a **extração automática** falha.
+O `postinstall` executa `npm run setup:binaries`:
 
-Na primeira execução, o Tauri pode compilar dependências Rust — isso demora alguns minutos.
+- **7-Zip** (`7za.exe`, `7za.dll`) — extração automática
+- **aria2c.exe** e **download-engine.exe** → `src-tauri/binaries/`
+
+Na primeira execução, o Rust compila dependências (pode demorar alguns minutos).
 
 ## Comandos
 
 | Comando | Descrição |
 |---------|-----------|
-| `npm run tauri:dev` | **Recomendado.** Abre a janela desktop com hot reload do React |
-| `npm run dev` | Só o frontend no browser (`http://localhost:5173`) — APIs Tauri indisponíveis |
-| `npm run tauri:build` | Gera o instalador/executável de produção |
-| `npm run build` | Compila apenas o frontend para `dist/` |
-| `npm run lint` | Verifica o código com ESLint |
-| `npm run test` | Testes unitários (Vitest) |
-| `npm run setup:binaries` | Baixa 7-Zip e sincroniza binários nativos |
-| `npm run preview` | Pré-visualiza o build estático do Vite |
+| `npm run tauri:dev` | **Recomendado** — app desktop + hot reload |
+| `npm run dev` | Só browser — **sem** APIs Tauri |
+| `npm run tauri:build` | Instalador / executável de produção |
+| `npm run build` | Só frontend → `dist/` |
+| `npm run test` | Vitest |
+| `npm run lint` | ESLint |
+| `npm run setup:binaries` | Re-download de binários nativos |
+
+## Fluxo do utilizador
+
+1. **Configurações** — pasta de downloads + importar fonte `.json` (Hydra)
+2. **Explorar** — pesquisar jogo → escolher versão/torrent → enfileirar
+3. **Downloads** — acompanhar progresso; pós-download é **automático**
+4. **Biblioteca** — **Instalar** (setup) → **Jogar**
+
+### O que esperar em cada fase
+
+| Fase | Onde | O que vês |
+|------|------|-----------|
+| A transferir | Downloads | Barra de progresso, velocidade |
+| A 100% | Downloads | "Preparando arquivos…" (segundos) |
+| Pronto | Downloads / Biblioteca | "Pronto para instalar" ou botão **Instalar** |
+| Instalado | Biblioteca | **Jogar** |
+
+Erros aparecem como **toast** no canto superior direito (não bloqueiam a página).
 
 ## Desenvolvimento
 
-1. Execute `npm run tauri:dev`.
-2. O Vite sobe em `http://localhost:5173` (configurado em `src-tauri/tauri.conf.json`).
-3. O Tauri abre a janela **MyLauncher** (1094×816 px por defeito).
+1. `npm run tauri:dev`
+2. Vite em `http://localhost:5173` (`tauri.conf.json`)
+3. Janela **MyLauncher** (1094×816 px)
 
 ### Erro "Tauri indisponível"
 
-Se vir mensagens como *"execute com npm run tauri:dev"*, está a correr só o Vite. Feche e use `npm run tauri:dev`.
+Estás a correr só `npm run dev`. Usa `npm run tauri:dev`.
 
-### Downloads
+### Extração falha (`7z_not_found`)
 
-A fila de downloads depende do binário `download-engine.exe` (sidecar). Em desenvolvimento, o launcher procura o executável em `src-tauri/download-engine.exe` ou em pastas irmãs do projeto `download-engine`. Ver [Build e release](./build-and-release.md).
+```bash
+npm run setup:binaries
+```
+
+### Download-engine em falta
+
+Ver [Build e release](./build-and-release.md) — colocar `download-engine.exe` em `src-tauri/`.
 
 ## Script auxiliar
 
-`scripts/read-hydra-sources.mjs` lê fontes de download da base LevelDB do Hydra Launcher (Windows):
+`scripts/read-hydra-sources.mjs` — exporta fontes da LevelDB do Hydra Launcher:
 
 ```bash
 node scripts/read-hydra-sources.mjs [caminho-hydra-db] [pasta-snapshot]
 ```
 
-Por defeito usa `%APPDATA%\hydralauncher\hydra-db`.
+Por defeito: `%APPDATA%\hydralauncher\hydra-db`.
+
+## Próximos passos
+
+- [Arquitetura](./architecture.md) — biblioteca, fila, DB, Steam
+- [API Tauri](./api.md) — comandos e eventos
+- [Build e release](./build-and-release.md) — produção

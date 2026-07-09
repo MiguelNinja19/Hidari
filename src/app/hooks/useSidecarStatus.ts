@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
 import { queueApi } from '../../shared/api/tauri/queueApi'
 
-const POLL_MS = 15_000
-
-/** Verifica periodicamente se o sidecar de downloads está a responder. */
+/** Verifica o sidecar uma vez quando a tab Downloads fica activa. */
 export function useSidecarStatus(active: boolean) {
   const [online, setOnline] = useState<boolean | null>(null)
 
@@ -22,10 +20,8 @@ export function useSidecarStatus(active: boolean) {
     }
 
     void check()
-    const timer = window.setInterval(() => void check(), POLL_MS)
     return () => {
       cancelled = true
-      window.clearInterval(timer)
     }
   }, [active])
 

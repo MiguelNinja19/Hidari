@@ -1,11 +1,14 @@
 use rusqlite::{params, Connection};
 use rusqlite::OptionalExtension;
-use std::collections::HashSet;
+use r2d2_sqlite::SqliteConnectionManager;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use tauri::{AppHandle, Manager};
 
-static SCHEMA_MIGRATED: AtomicBool = AtomicBool::new(false);
+pub struct DbPool(r2d2::Pool<SqliteConnectionManager>);
+
+pub type DbConnection = r2d2::PooledConnection<SqliteConnectionManager>;
 
 fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
   let dir = app
@@ -16,10 +19,59 @@ fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
   Ok(dir.join("launcher.db"))
 }
 
-/// Migrações e seed só no arranque; invokes seguintes reutilizam WAL mode.
+/// Pool SQLite partilhado — reutiliza conexões entre invokes (Send-safe para async).
 pub fn init_database_pool(app: &AppHandle) -> Result<(), String> {
-  let _ = open_database_connection(app)?;
+  let path = database_path(app)?;
+  let manager = SqliteConnectionManager::file(path);
+  let pool = r2d2::Pool::builder()
+    .max_size(6)
+    .build(manager)
+    .map_err(|e| format!("could_not_build_db_pool: {e}"))?;
+  {
+    let conn = pool
+      .get()
+      .map_err(|e| format!("could_not_get_db_connection: {e}"))?;
+    apply_connection_pragmas(&conn)?;
+    run_database_migrations(&conn)?;
+  }
+  app.manage(DbPool(pool));
   Ok(())
+}
+
+fn apply_connection_pragmas(conn: &Connection) -> Result<(), String> {
+  conn
+    .execute_batch(
+      "PRAGMA journal_mode=WAL;
+       PRAGMA synchronous=NORMAL;
+       PRAGMA foreign_keys=ON;
+       PRAGMA cache_size=-64000;
+       PRAGMA temp_store=MEMORY;
+       PRAGMA mmap_size=268435456;",
+    )
+    .map_err(|e| format!("could_not_apply_pragmas: {e}"))
+}
+
+static MIGRATIONS_DONE: OnceLock<()> = OnceLock::new();
+
+fn run_database_migrations(conn: &Connection) -> Result<(), String> {
+  if MIGRATIONS_DONE.get().is_some() {
+    return Ok(());
+  }
+  initialize_database(conn)?;
+  migrate_schema(conn)?;
+  crate::sources::hydra::ensure_default_hydra_sources(conn)?;
+  let _ = MIGRATIONS_DONE.set(());
+  Ok(())
+}
+
+/// Obtém conexão do pool (libertar antes de `.await` em comandos async).
+pub fn open_database_connection(app: &AppHandle) -> Result<DbConnection, String> {
+  let pool = app
+    .try_state::<DbPool>()
+    .ok_or_else(|| "db_not_initialized".to_string())?;
+  pool.0
+    .get()
+    .map_err(|e| format!("could_not_get_db_connection: {e}"))
 }
 
 pub fn validate_app_setting_key(key: &str) -> Result<(), String> {
@@ -65,17 +117,50 @@ pub fn get_default_download_path(app: &AppHandle) -> Result<Option<String>, Stri
   Ok(value)
 }
 
-pub fn open_database_connection(app: &AppHandle) -> Result<Connection, String> {
-  let conn = Connection::open(database_path(app)?)
-    .map_err(|e| format!("could_not_open_db: {e}"))?;
-  let _ = conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;");
-  if !SCHEMA_MIGRATED.load(Ordering::Acquire) {
-    initialize_database(&conn)?;
-    migrate_schema(&conn)?;
-    crate::sources::hydra::ensure_default_hydra_sources(&conn)?;
-    SCHEMA_MIGRATED.store(true, Ordering::Release);
+pub struct ExtractionLogRow {
+  pub status: String,
+  pub extract_path: Option<String>,
+  pub error: Option<String>,
+}
+
+/// Uma query para vários jobs — substitui N+1 em `sidecar_list_jobs`.
+pub fn batch_get_extraction_logs(
+  conn: &Connection,
+  job_ids: &[String],
+) -> HashMap<String, ExtractionLogRow> {
+  let mut out = HashMap::new();
+  if job_ids.is_empty() {
+    return out;
   }
-  Ok(conn)
+  for chunk in job_ids.chunks(100) {
+    let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+      "SELECT job_id, status, extract_path, error FROM extraction_log WHERE job_id IN ({placeholders})"
+    );
+    let Ok(mut stmt) = conn.prepare(&sql) else {
+      continue;
+    };
+    let params: Vec<&dyn rusqlite::ToSql> = chunk
+      .iter()
+      .map(|id| id as &dyn rusqlite::ToSql)
+      .collect();
+    let Ok(rows) = stmt.query_map(params.as_slice(), |row| {
+      Ok((
+        row.get::<_, String>(0)?,
+        ExtractionLogRow {
+          status: row.get(1)?,
+          extract_path: row.get(2)?,
+          error: row.get(3)?,
+        },
+      ))
+    }) else {
+      continue;
+    };
+    for row in rows.flatten() {
+      out.insert(row.0, row.1);
+    }
+  }
+  out
 }
 
 fn migrate_schema(conn: &Connection) -> Result<(), String> {
@@ -129,6 +214,18 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
     .map_err(|e| format!("migrate_steam_app_index: {e}"))?;
   migrate_drop_legacy_tables(conn)?;
   migrate_feature_tables(conn)?;
+  conn
+    .execute(
+      "CREATE INDEX IF NOT EXISTS idx_hce_group_key ON hydra_catalog_entries(group_key)",
+      [],
+    )
+    .ok();
+  conn
+    .execute(
+      "CREATE INDEX IF NOT EXISTS idx_game_covers_updated_at ON game_covers(updated_at DESC)",
+      [],
+    )
+    .ok();
   Ok(())
 }
 
@@ -208,13 +305,10 @@ fn migrate_drop_legacy_tables(conn: &Connection) -> Result<(), String> {
 }
 
 fn initialize_database(conn: &Connection) -> Result<(), String> {
+  apply_connection_pragmas(conn)?;
   conn
     .execute_batch(
       "
-      PRAGMA journal_mode=WAL;
-      PRAGMA foreign_keys=ON;
-      PRAGMA synchronous=NORMAL;
-
       CREATE TABLE IF NOT EXISTS download_jobs (
         id               INTEGER PRIMARY KEY AUTOINCREMENT,
         title            TEXT    NOT NULL,

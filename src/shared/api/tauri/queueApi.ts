@@ -66,6 +66,12 @@ export function normalizeDownloadJob(raw: LooseJob): DownloadJob {
         : raw.error_msg != null
           ? String(raw.error_msg)
           : null,
+    extractionStatus:
+      raw.extractionStatus != null
+        ? String(raw.extractionStatus)
+        : raw.extraction_status != null
+          ? String(raw.extraction_status)
+          : null,
     createdAt: String(raw.createdAt ?? raw.created_at ?? ''),
     updatedAt: String(raw.updatedAt ?? raw.updated_at ?? raw.createdAt ?? raw.created_at ?? ''),
   }

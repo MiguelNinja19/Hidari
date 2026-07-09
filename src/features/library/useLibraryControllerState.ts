@@ -1,20 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ask, open } from '@tauri-apps/plugin-dialog'
 import type { AppDispatch } from '../../app/store'
-import { store } from '../../app/store'
 import {
   cancelJob,
-  extractStatusReceived,
   fetchJobs,
   removeJobLocally,
 } from '../queue/queueSlice'
 import { queueApi } from '../../shared/api/tauri/queueApi'
-import { tauriClient } from '../../shared/api/tauri/client'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { resolveDeletePath } from '../../shared/utils/archive'
-import { jobPathsOverlap } from '../../shared/utils/jobExtraction'
-import { dedupeLibraryEntries, findRelatedLibraryJobs, libraryGameKey } from '../../shared/utils/libraryDedupe'
-import { coverTitleKey } from '../../shared/utils/normalizeTitleKey'
+import {
+  formatLibraryDeleteError,
+  isBenignDeleteError,
+  isFileLockDeleteError,
+  resolveLibraryDeletePaths,
+} from '../../shared/utils/libraryDelete'
+import { activeJobBlocksLibraryFolder, normalizeLibraryPath } from '../../shared/utils/jobExtraction'
+import {
+  dedupeLibraryEntries,
+  findRelatedLibraryJobs,
+  libraryTitlesMatch,
+} from '../../shared/utils/libraryDedupe'
+import {
+  itemAwaitingInstall,
+  isActiveQueueJob,
+  isJobFinished,
+  isPathStateResolved,
+  isPlayableLibraryItem,
+  jobBelongsInLibrary,
+  jobPathCtx,
+  needsInstallItem,
+  pathStateKey,
+  showLocateInstallAction,
+} from './libraryItemState'
+import { coverTitleKey, libraryGameKeyCandidates } from '../../shared/utils/normalizeTitleKey'
+import { useToast } from '../../shared/components/ToastProvider'
 import { formatLaunchError } from '../../shared/utils/launchErrors'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import {
@@ -32,13 +52,6 @@ import {
 import type { DownloadJob, LocalLibraryItem } from '../../shared/types/contracts'
 import type { NavTab } from '../../layout/types'
 import type { LibraryControllerValue } from './LibraryController'
-import {
-  isJobFinished,
-  isPlayableLibraryItem,
-  jobPathCtx,
-  needsInstallItem,
-  pathStateKey,
-} from './libraryItemState'
 import type { LibraryEntry } from './types'
 import {
   clearLibraryPathStateCache,
@@ -62,16 +75,23 @@ const scoreLibraryEntry = (
   item: LibraryEntry,
   jobs: DownloadJob[],
   pathStateByKey: LibraryControllerValue['pathStateByKey'],
+  defaultDownloadPath: string,
 ): number => {
-  if (isPlayableLibraryItem(item, jobs, pathStateByKey)) return 100
+  if (isPlayableLibraryItem(item, jobs, pathStateByKey, defaultDownloadPath)) return 100
+  if (itemAwaitingInstall(item, jobs, pathStateByKey)) {
+    return item.kind === 'job' ? 90 : 70
+  }
   if (
     item.kind === 'job' &&
-    ['downloading', 'pending', 'retrying', 'extracting', 'paused'].includes(item.status)
+    ['downloading', 'pending', 'retrying', 'extracting'].includes(item.status)
   ) {
-    return 80
+    return 85
   }
+  if (showLocateInstallAction(item, jobs, pathStateByKey)) return 45
+  if (item.kind === 'folder' && !isPathStateResolved(item, pathStateByKey)) return 40
+  if (item.kind === 'job' && (item.status === 'paused' || item.status === 'failed')) return 80
   if (needsInstallItem(item, pathStateByKey)) return 60
-  if (item.kind === 'folder') return 40
+  if (item.kind === 'folder') return 35
   return 20
 }
 
@@ -88,6 +108,7 @@ const sortLibraryEntries = (items: LibraryEntry[], sort: LibrarySort): LibraryEn
 type UseLibraryControllerStateArgs = {
   activeTab: NavTab
   jobs: DownloadJob[]
+  queueInitialized: boolean
   defaultDownloadPath: string
   dispatch: AppDispatch
   onGoDiscover: () => void
@@ -100,6 +121,7 @@ type UseLibraryControllerStateArgs = {
 export function useLibraryControllerState({
   activeTab,
   jobs,
+  queueInitialized,
   defaultDownloadPath,
   dispatch,
   onGoDiscover,
@@ -108,12 +130,12 @@ export function useLibraryControllerState({
   resolveCoversBatch,
   invalidateLocalCover,
 }: UseLibraryControllerStateArgs): LibraryControllerValue {
+  const { showError } = useToast()
   const [libraryFilter, setLibraryFilter] = useState('')
   const [librarySort, setLibrarySortState] = useState<LibrarySort>('title-asc')
   const [localLibraryItems, setLocalLibraryItems] = useState<LocalLibraryItem[]>([])
+  const [libraryScanSettled, setLibraryScanSettled] = useState(false)
   const [pathStateByKey, setPathStateByKey] = useState<LibraryControllerValue['pathStateByKey']>({})
-  const [libraryLoading, setLibraryLoading] = useState(false)
-  const [savePathError, setSavePathError] = useState('')
   const [playBusyId, setPlayBusyId] = useState<string | null>(null)
   const [installBusyId, setInstallBusyId] = useState<string | null>(null)
   const [hiddenLibraryKeys, setHiddenLibraryKeys] = useState<Set<string>>(() => new Set())
@@ -203,21 +225,19 @@ export function useLibraryControllerState({
     [],
   )
 
-  const inspectAllLibraryPaths = useCallback(async (options?: { background?: boolean }) => {
-    const background = options?.background === true
-    if (!defaultDownloadPathRef.current.trim()) return
-    if (!background) setLibraryLoading(true)
+  const inspectAllLibraryPaths = useCallback(async () => {
+    if (!defaultDownloadPathRef.current.trim()) {
+      setLibraryScanSettled(true)
+      return
+    }
     try {
       const items = await sourcesApi.scanDefaultDownloadPath()
       setLocalLibraryItems(items)
-      if (!background) setSavePathError('')
       await runBatchPathInspection(items, jobsRef.current)
     } catch (error) {
-      if (!background) {
-        setSavePathError(formatUserError(error, 'Falha ao verificar a pasta de downloads.'))
-      }
+      showError(formatUserError(error, 'Falha ao verificar a pasta de downloads.'))
     } finally {
-      if (!background) setLibraryLoading(false)
+      setLibraryScanSettled(true)
     }
   }, [runBatchPathInspection])
 
@@ -232,9 +252,7 @@ export function useLibraryControllerState({
       const persisted = hydrateLibraryPathStateCache(path)
       setPathStateByKey({ ...persisted })
       knownDownloadPathRef.current = normalized
-      if (Object.keys(persisted).length === 0) {
-        void inspectAllLibraryPaths({ background: true })
-      }
+      void inspectAllLibraryPaths()
       return
     }
 
@@ -243,7 +261,7 @@ export function useLibraryControllerState({
     clearLibraryPathStateCache()
     setPathStateByKey({})
     knownDownloadPathRef.current = normalized
-    void inspectAllLibraryPaths({ background: true })
+    void inspectAllLibraryPaths()
   }, [defaultDownloadPath, inspectAllLibraryPaths])
 
   useEffect(() => {
@@ -322,24 +340,27 @@ export function useLibraryControllerState({
     }
   }, [jobs, refreshPathState])
 
-  const refreshLibraryScan = useCallback((options?: { background?: boolean }) => {
-    const background = options?.background === true
-    if (!background) setLibraryLoading(true)
-    return sourcesApi
-      .scanDefaultDownloadPath()
-      .then((items) => {
-        setLocalLibraryItems(items)
-        if (!background) setSavePathError('')
-      })
-      .catch((error) => {
-        if (!background) {
-          setSavePathError(formatUserError(error, 'Falha ao ler a pasta de downloads.'))
-        }
-      })
-      .finally(() => {
-        if (!background) setLibraryLoading(false)
-      })
-  }, [])
+  const refreshLibraryScan = useCallback(
+    (_options?: { background?: boolean }) => {
+      if (!defaultDownloadPathRef.current.trim()) {
+        setLibraryScanSettled(true)
+        return Promise.resolve()
+      }
+      return sourcesApi
+        .scanDefaultDownloadPath()
+        .then(async (items) => {
+          setLocalLibraryItems(items)
+          await runBatchPathInspection(items, jobsRef.current, { onlyUnresolved: true })
+        })
+        .catch((error) => {
+          showError(formatUserError(error, 'Falha ao ler a pasta de downloads.'))
+        })
+        .finally(() => {
+          setLibraryScanSettled(true)
+        })
+    },
+    [runBatchPathInspection],
+  )
 
   useEffect(() => {
     if (activeTab !== 'library') return
@@ -350,7 +371,10 @@ export function useLibraryControllerState({
     const normalizedFilter = libraryFilter.trim().toLowerCase()
 
     const jobPaths = new Set(
-      jobs.map((job) => resolveDeletePath(job.destPath).toLowerCase()).filter(Boolean),
+      jobs
+        .filter((job) => jobBelongsInLibrary(job))
+        .map((job) => resolveDeletePath(job.destPath).toLowerCase())
+        .filter(Boolean),
     )
 
     const folderEntries: LibraryEntry[] = localLibraryItems
@@ -358,10 +382,27 @@ export function useLibraryControllerState({
       .filter((item) => {
         const folderPath = item.path.toLowerCase()
         if (jobPaths.has(folderPath)) return false
+
+        const hasRelatedLibraryJob = jobs.some(
+          (job) =>
+            jobBelongsInLibrary(job) &&
+            (libraryTitlesMatch(job.title, item.name) ||
+              activeJobBlocksLibraryFolder(item.path, job.destPath, defaultDownloadPath)),
+        )
+        if (hasRelatedLibraryJob) return false
+
+        const hasIncompleteJob = jobs.some(
+          (job) =>
+            !jobBelongsInLibrary(job) &&
+            job.status !== 'cancelled' &&
+            libraryTitlesMatch(job.title, item.name),
+        )
+        if (hasIncompleteJob) return false
+
         const blockedByActiveJob = jobs.some(
           (job) =>
-            ['downloading', 'pending', 'retrying', 'extracting', 'paused'].includes(job.status) &&
-            jobPathsOverlap(item.path, job.destPath),
+            isActiveQueueJob(job) &&
+            activeJobBlocksLibraryFolder(item.path, job.destPath, defaultDownloadPath),
         )
         return !blockedByActiveJob
       })
@@ -374,7 +415,7 @@ export function useLibraryControllerState({
       }))
 
     const jobEntries: LibraryEntry[] = jobs
-      .filter((job) => job.status !== 'cancelled')
+      .filter((job) => jobBelongsInLibrary(job))
       .map((job) => ({
         id: job.id,
         title: job.title,
@@ -385,12 +426,15 @@ export function useLibraryControllerState({
       }))
 
     const merged = dedupeLibraryEntries([...jobEntries, ...folderEntries], (item) =>
-      scoreLibraryEntry(item, jobs, pathStateByKey),
-    ).filter((item) => !hiddenLibraryKeys.has(libraryGameKey(item.title)))
+      scoreLibraryEntry(item, jobs, pathStateByKey, defaultDownloadPath),
+    ).filter(
+      (item) =>
+        !libraryGameKeyCandidates(item.title).some((key) => hiddenLibraryKeys.has(key)),
+    )
 
     if (!normalizedFilter) return merged
     return merged.filter((item) => item.title.toLowerCase().includes(normalizedFilter))
-  }, [jobs, localLibraryItems, libraryFilter, pathStateByKey, hiddenLibraryKeys])
+  }, [jobs, localLibraryItems, libraryFilter, pathStateByKey, hiddenLibraryKeys, defaultDownloadPath])
 
   const filteredEntries = useMemo(
     () => sortLibraryEntries(baseLibraryEntries, librarySort),
@@ -398,6 +442,7 @@ export function useLibraryControllerState({
   )
 
   const libraryItems = filteredEntries
+  const libraryReady = queueInitialized && libraryScanSettled
 
   useEffect(() => {
     if (activeTab !== 'library') return
@@ -418,25 +463,8 @@ export function useLibraryControllerState({
     return () => window.clearTimeout(timer)
   }, [activeTab, libraryItems, resolveCover, resolveCoversBatch])
 
-  useEffect(() => {
-    let unlistenExtract: (() => void) | undefined
-    void tauriClient.listenExtractStatus((event) => {
-      dispatch(extractStatusReceived(event))
-      const job = store.getState().queue.jobs.find((row) => row.id === event.jobId)
-      if (job) {
-        void refreshPathState(job.title, job.destPath, job.id)
-      }
-    }).then((fn) => {
-      unlistenExtract = fn
-    })
-    return () => {
-      unlistenExtract?.()
-    }
-  }, [dispatch, refreshPathState])
-
   const handlePickGameInstallFolder = useCallback(
     async (title: string, destPath: string, busyKey: string, jobId?: string) => {
-      setSavePathError('')
       setInstallBusyId(busyKey)
       try {
         const selected = await open({
@@ -455,12 +483,12 @@ export function useLibraryControllerState({
           [cacheKey]: state,
         }))
         if (!state.hasGame) {
-          setSavePathError(
+          showError(
             'Pasta salva, mas ainda não encontramos o executável. Verifique se selecionou a pasta correta.',
           )
         }
       } catch (error) {
-        setSavePathError(
+        showError(
           formatUserError(error, 'Não foi possível salvar a pasta de instalação.'),
         )
       } finally {
@@ -471,7 +499,6 @@ export function useLibraryControllerState({
   )
 
   const handlePlayLibraryItem = useCallback(async (item: LibraryEntry) => {
-    setSavePathError('')
     const busyKey = item.kind === 'job' ? item.id : item.destPath
     setPlayBusyId(busyKey)
     try {
@@ -481,7 +508,7 @@ export function useLibraryControllerState({
         await sourcesApi.launchGame(item.title, item.destPath)
       }
     } catch (launchError) {
-      setSavePathError(formatLaunchError(launchError))
+      showError(formatLaunchError(launchError))
     } finally {
       setPlayBusyId(null)
     }
@@ -489,7 +516,6 @@ export function useLibraryControllerState({
 
   const handleExtractItem = useCallback(
     async (item: LibraryEntry) => {
-      setSavePathError('')
       const busyKey = item.kind === 'job' ? item.id : item.destPath
       const jobId = item.kind === 'job' ? item.id : undefined
       setInstallBusyId(busyKey)
@@ -497,7 +523,7 @@ export function useLibraryControllerState({
         await sourcesApi.extractLibraryFolder(item.title, item.destPath)
         await refreshPathState(item.title, item.destPath, jobId)
       } catch (error) {
-        setSavePathError(formatUserError(error))
+        showError(formatUserError(error))
       } finally {
         setInstallBusyId(null)
       }
@@ -507,7 +533,6 @@ export function useLibraryControllerState({
 
   const handleInstallItem = useCallback(
     async (item: LibraryEntry) => {
-      setSavePathError('')
       const busyKey = item.kind === 'job' ? item.id : item.destPath
       const jobId = item.kind === 'job' ? item.id : undefined
       setInstallBusyId(busyKey)
@@ -516,7 +541,7 @@ export function useLibraryControllerState({
         watchForInstalledGame(item.title, item.destPath, jobId)
         await refreshPathState(item.title, item.destPath, jobId)
       } catch (error) {
-        setSavePathError(formatUserError(error))
+        showError(formatUserError(error))
       } finally {
         setInstallBusyId(null)
       }
@@ -535,17 +560,21 @@ export function useLibraryControllerState({
       )
       if (!confirmed) return
 
-      const gameKey = libraryGameKey(item.title)
+      const hideKeys = libraryGameKeyCandidates(item.title)
       const deletePath = resolveDeletePath(item.destPath)
-      const relatedJobs = findRelatedLibraryJobs(item, jobs)
+      const relatedJobs = findRelatedLibraryJobs(item, jobs, defaultDownloadPath)
 
-      setHiddenLibraryKeys((prev) => new Set(prev).add(gameKey))
+      setHiddenLibraryKeys((prev) => new Set([...prev, ...hideKeys]))
       setLocalLibraryItems((prev) =>
         prev.filter((folder) => {
           if (!folder.isDir) return true
-          if (libraryGameKey(folder.name) === gameKey) return false
+          if (libraryTitlesMatch(folder.name, item.title)) return false
           if (resolveDeletePath(folder.path).toLowerCase() === deletePath.toLowerCase()) return false
-          return !relatedJobs.some((job) => jobPathsOverlap(folder.path, job.destPath))
+          return !relatedJobs.some(
+            (job) =>
+              libraryTitlesMatch(folder.name, job.title) ||
+              normalizeLibraryPath(folder.path) === normalizeLibraryPath(job.destPath),
+          )
         }),
       )
       for (const job of relatedJobs) {
@@ -568,19 +597,15 @@ export function useLibraryControllerState({
       })
 
       try {
-        if (deletePath) {
-          try {
-            await sourcesApi.deleteLocalLibraryItem(deletePath)
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error)
-            if (
-              !msg.includes('local_item_not_found') &&
-              !msg.includes('path_outside_default_download_path')
-            ) {
-              throw error
-            }
-          }
-        }
+        const scannedFolders =
+          (await sourcesApi.scanDefaultDownloadPath().catch(() => localLibraryItems)) ??
+          localLibraryItems
+        const pathsToDelete = resolveLibraryDeletePaths(
+          item,
+          scannedFolders,
+          defaultDownloadPath,
+          relatedJobs,
+        )
 
         for (const job of relatedJobs) {
           try {
@@ -594,38 +619,70 @@ export function useLibraryControllerState({
           }
         }
 
+        const deleteErrors: unknown[] = []
+        for (const path of pathsToDelete) {
+          try {
+            await sourcesApi.deleteLocalLibraryItem(path)
+          } catch (error) {
+            if (isBenignDeleteError(error)) continue
+            deleteErrors.push(error)
+          }
+        }
+
         const scanned = await sourcesApi.scanDefaultDownloadPath()
         setLocalLibraryItems(
-          scanned.filter((folder) => !folder.isDir || libraryGameKey(folder.name) !== gameKey),
+          scanned.filter(
+            (folder) => !folder.isDir || !libraryTitlesMatch(folder.name, item.title),
+          ),
         )
+
+        if (deleteErrors.length > 0) {
+          if (deleteErrors.some(isFileLockDeleteError)) {
+            showError(formatLibraryDeleteError(deleteErrors))
+            return
+          }
+          throw deleteErrors[0]
+        }
       } catch (error) {
+        if (isFileLockDeleteError(error)) {
+          showError(formatLibraryDeleteError([error]))
+          const scanned = await sourcesApi
+            .scanDefaultDownloadPath()
+            .catch(() => [] as LocalLibraryItem[])
+          setLocalLibraryItems(
+            scanned.filter(
+              (folder) => !folder.isDir || !libraryTitlesMatch(folder.name, item.title),
+            ),
+          )
+          return
+        }
+
         setHiddenLibraryKeys((prev) => {
           const next = new Set(prev)
-          next.delete(gameKey)
+          for (const key of hideKeys) next.delete(key)
           return next
         })
-        setSavePathError(formatUserError(error, 'Falha ao excluir item.'))
+        showError(formatUserError(error, 'Falha ao excluir item.'))
         void dispatch(fetchJobs())
         const scanned = await sourcesApi.scanDefaultDownloadPath().catch(() => [] as LocalLibraryItem[])
         setLocalLibraryItems(scanned)
       }
     },
-    [dispatch, jobs],
+    [dispatch, jobs, defaultDownloadPath, localLibraryItems],
   )
 
   return {
     libraryItems,
     filteredEntries,
-    libraryLoading,
+    libraryReady,
     refreshLibraryScan,
+    defaultDownloadPath,
     jobs,
     pathStateByKey,
     libraryFilter,
     librarySort,
     playBusyId,
     installBusyId,
-    savePathError,
-    clearSavePathError: () => setSavePathError(''),
     setLibraryFilter,
     setLibrarySort,
     onGoDownloads,

@@ -17,7 +17,6 @@ export function AppShell({ activeTab, activeDownloadsCount, onTabChange, childre
         <section
           className={`main-content${
             activeTab === 'discover' ||
-            activeTab === 'favorites' ||
             activeTab === 'library' ||
             activeTab === 'downloads' ||
             activeTab === 'settings'

@@ -10,7 +10,7 @@ use crate::launch_errors;
 use crate::library::roots::{
   launch_extra_roots, open_path_in_shell, read_library_launch_exe, upsert_library_launch_exe,
 };
-use crate::sources::{enrich_magnet_url, validate_job_url};
+use crate::sources::{enrich_magnet_url_with_title, validate_job_url};
 use crate::state::SidecarState;
 use rusqlite::params;
 use std::path::PathBuf;
@@ -56,7 +56,7 @@ pub async fn sidecar_enqueue_job(
     .clone()
     .or(default_dest_path)
     .ok_or_else(|| "default_download_path_not_configured".to_string())?;
-  let job_url = enrich_magnet_url(&payload.url);
+  let job_url = enrich_magnet_url_with_title(&payload.url, Some(&payload.title));
   drop(conn);
 
   let body = {
@@ -130,11 +130,17 @@ pub async fn sidecar_list_jobs(app: AppHandle) -> Result<serde_json::Value, Stri
 pub async fn sidecar_pause_job(app: AppHandle, id: String) -> Result<(), String> {
   let port = ensure_sidecar_running(app.clone()).await?;
   let client = reqwest::Client::new();
-  client
+  let response = client
     .post(format!("http://127.0.0.1:{port}/jobs/{id}/pause"))
     .send()
     .await
     .map_err(|e| format!("sidecar_request_failed: {e}"))?;
+
+  if !response.status().is_success() {
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    return Err(format!("sidecar_pause_failed: {status} {body}"));
+  }
   Ok(())
 }
 
@@ -142,11 +148,17 @@ pub async fn sidecar_pause_job(app: AppHandle, id: String) -> Result<(), String>
 pub async fn sidecar_resume_job(app: AppHandle, id: String) -> Result<(), String> {
   let port = ensure_sidecar_running(app.clone()).await?;
   let client = reqwest::Client::new();
-  client
+  let response = client
     .post(format!("http://127.0.0.1:{port}/jobs/{id}/resume"))
     .send()
     .await
     .map_err(|e| format!("sidecar_request_failed: {e}"))?;
+
+  if !response.status().is_success() {
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    return Err(format!("sidecar_resume_failed: {status} {body}"));
+  }
   Ok(())
 }
 

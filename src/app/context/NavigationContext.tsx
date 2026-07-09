@@ -14,7 +14,6 @@ export type NavigationContextValue = {
   activeTab: NavTab
   setActiveTab: Dispatch<SetStateAction<NavTab>>
   navigateDiscover: () => void
-  navigateFavorites: () => void
   navigateDownloads: () => void
   navigateLibrary: () => void
   navigateSettings: () => void
@@ -26,7 +25,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<NavTab>('discover')
 
   const navigateDiscover = useCallback(() => setActiveTab('discover'), [])
-  const navigateFavorites = useCallback(() => setActiveTab('favorites'), [])
   const navigateDownloads = useCallback(() => setActiveTab('downloads'), [])
   const navigateLibrary = useCallback(() => setActiveTab('library'), [])
   const navigateSettings = useCallback(() => setActiveTab('settings'), [])
@@ -36,12 +34,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       activeTab,
       setActiveTab,
       navigateDiscover,
-      navigateFavorites,
       navigateDownloads,
       navigateLibrary,
       navigateSettings,
     }),
-    [activeTab, navigateDiscover, navigateFavorites, navigateDownloads, navigateLibrary, navigateSettings],
+    [activeTab, navigateDiscover, navigateDownloads, navigateLibrary, navigateSettings],
   )
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>

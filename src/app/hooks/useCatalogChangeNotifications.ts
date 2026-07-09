@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import { CATALOG_CHANGES_POLL_MS } from '../../shared/config/polling'
 
 async function ensureNotificationPermission(): Promise<boolean> {
   try {
@@ -16,7 +15,7 @@ async function ensureNotificationPermission(): Promise<boolean> {
   }
 }
 
-/** Notifica quando fontes de catálogo têm novos jogos após sync. */
+/** Notifica novidades no catálogo ao focar a janela (sem polling). */
 export function useCatalogChangeNotifications(enabled: boolean) {
   const seenRef = useRef<Set<string>>(new Set())
 
@@ -24,7 +23,7 @@ export function useCatalogChangeNotifications(enabled: boolean) {
     if (!enabled) return
     let cancelled = false
 
-    const poll = async () => {
+    const check = async () => {
       try {
         const changes = await sourcesApi.checkCatalogChanges()
         if (cancelled || changes.length === 0) return
@@ -40,15 +39,19 @@ export function useCatalogChangeNotifications(enabled: boolean) {
           })
         }
       } catch {
-        // ignore polling errors
+        // ignore
       }
     }
 
-    void poll()
-    const timer = window.setInterval(() => void poll(), CATALOG_CHANGES_POLL_MS)
+    const onFocus = () => {
+      void check()
+    }
+
+    void check()
+    window.addEventListener('focus', onFocus)
     return () => {
       cancelled = true
-      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
     }
   }, [enabled])
 }

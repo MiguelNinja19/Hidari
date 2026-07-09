@@ -121,4 +121,18 @@ describe('libraryItemState', () => {
     expect(showInstallAction(item, [job], emptyPathState)).toBe(false)
     expect(itemAwaitingInstall(item, [job], emptyPathState)).toBe(false)
   })
+
+  it('jobBelongsInLibrary só aceita download concluído', async () => {
+    const { jobBelongsInLibrary, isActiveQueueJob } = await import('./libraryItemState')
+    const active = { status: 'paused' } as DownloadJob
+    const done = { status: 'completed' } as DownloadJob
+    expect(isActiveQueueJob(active)).toBe(true)
+    expect(jobBelongsInLibrary(active)).toBe(false)
+    expect(jobBelongsInLibrary({ status: 'downloading' } as DownloadJob)).toBe(false)
+    expect(jobBelongsInLibrary({ status: 'failed' } as DownloadJob)).toBe(false)
+    expect(jobBelongsInLibrary(done)).toBe(true)
+    expect(jobBelongsInLibrary({ status: 'extracted' } as DownloadJob)).toBe(true)
+    expect(jobBelongsInLibrary({ status: 'seeding' } as DownloadJob)).toBe(true)
+    expect(jobBelongsInLibrary({ status: 'cancelled' } as DownloadJob)).toBe(false)
+  })
 })

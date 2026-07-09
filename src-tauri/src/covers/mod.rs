@@ -393,19 +393,16 @@ pub async fn download_and_cache_cover(
 
 #[tauri::command]
 pub fn list_game_covers(app: AppHandle) -> Result<Vec<GameCoverDto>, String> {
-  let covers_dir = covers_dir_for_app(&app)?;
   let conn = open_database_connection(&app)?;
   let mut stmt = conn
     .prepare("SELECT title_key, cover_url, local_path FROM game_covers ORDER BY updated_at DESC")
     .map_err(|e| format!("could_not_prepare_list_game_covers: {e}"))?;
   let rows = stmt
     .query_map([], |row| {
-      let local_path: Option<String> = row.get(2)?;
-      let local_path = local_path.filter(|path| is_usable_cover_file(Path::new(path), &covers_dir));
       Ok(GameCoverDto {
         title_key: row.get(0)?,
         cover_url: row.get(1)?,
-        local_path,
+        local_path: row.get(2)?,
       })
     })
     .map_err(|e| format!("could_not_query_game_covers: {e}"))?

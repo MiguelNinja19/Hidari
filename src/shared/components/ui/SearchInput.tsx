@@ -1,4 +1,4 @@
-import type { ChangeEvent, ReactNode } from 'react'
+import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
 
 type SearchInputProps = {
   value: string
@@ -11,6 +11,8 @@ type SearchInputProps = {
   /** Identificador da aba para atalho Ctrl+F (data-search-focus). */
   searchFocusId?: string
   onChange: (value: string) => void
+  /** Chamado ao pressionar Enter no campo. */
+  onSubmit?: () => void
 }
 
 export function SearchInput({
@@ -23,7 +25,14 @@ export function SearchInput({
   trailing,
   searchFocusId,
   onChange,
+  onSubmit,
 }: SearchInputProps) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    onSubmit?.()
+  }
+
   return (
     <div className={className}>
       <span className="browse-search__icon" aria-hidden="true">
@@ -41,6 +50,7 @@ export function SearchInput({
         onClick={onClick}
         data-search-focus={searchFocusId}
         onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
+        onKeyDown={handleKeyDown}
         autoComplete="off"
         spellCheck={false}
       />

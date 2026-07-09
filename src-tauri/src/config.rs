@@ -33,6 +33,13 @@ pub const DEFAULT_MAGNET_TRACKERS: &[&str] = &[
   "udp://tracker.torrent.eu.org:451/announce",
   "udp://exodus.desync.com:6969/announce",
   "udp://tracker.tiny-vps.com:6969/announce",
+  "udp://tracker.internetwarriors.net:1337/announce",
+  "udp://tracker.openbittorrent.com:6969/announce",
+  "udp://open.demonii.com:1337/announce",
+  "udp://tracker-udp.gbitt.info:80/announce",
+  "udp://explodie.org:6969/announce",
+  "udp://tracker.moeking.me:6969/announce",
+  "http://tracker.openbittorrent.com:80/announce",
 ];
 
 pub fn steam_library_cover_urls(app_id: &str) -> Vec<String> {

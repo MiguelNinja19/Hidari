@@ -83,7 +83,10 @@ const initialState: QueueState = {
   initialized: false,
 }
 
-export const fetchJobs = createAsyncThunk('queue/fetchJobs', async () => queueApi.listJobs())
+export const fetchJobs = createAsyncThunk(
+  'queue/fetchJobs',
+  async (_options?: { silent?: boolean }) => queueApi.listJobs(),
+)
 
 export const enqueueJob = createAsyncThunk('queue/enqueueJob', async (payload: EnqueueJobInput) =>
   queueApi.enqueueJob(payload),
@@ -121,6 +124,7 @@ const queueSlice = createSlice({
         etaSeconds,
         bytesDownloaded,
         totalBytes,
+        errorMsg,
       } = action.payload
       const jobId = String(rawJobId)
       if (state.dismissedJobIds.includes(jobId)) return
@@ -141,6 +145,10 @@ const queueSlice = createSlice({
       job.bytesDownloaded = merged.bytesDownloaded
       job.totalBytes = merged.totalBytes
       job.progress = progress
+      job.updatedAt = new Date().toISOString()
+      if (errorMsg) {
+        job.errorMsg = errorMsg
+      }
     },
     extractStatusReceived: (state, action: { payload: ExtractStatusEvent }) => {
       const { jobId: rawJobId, status, message } = action.payload
@@ -157,6 +165,7 @@ const queueSlice = createSlice({
       }
       if (status === 'skipped') {
         job.status = 'completed'
+        job.extractionStatus = 'skipped'
         job.progress = 100
         return
       }
@@ -219,7 +228,9 @@ const queueSlice = createSlice({
       .addCase(fetchJobs.rejected, (state, action) => {
         state.loading = false
         state.initialized = true
-        state.error = action.error.message ?? 'Erro ao carregar fila.'
+        if (!action.meta.arg?.silent) {
+          state.error = action.error.message ?? 'Erro ao carregar fila.'
+        }
       })
       .addCase(enqueueJob.fulfilled, (state, action) => {
         state.jobs.push(normalizeJob(action.payload))
@@ -241,10 +252,18 @@ const queueSlice = createSlice({
       .addCase(pauseJob.fulfilled, (state, action) => {
         const job = state.jobs.find((j) => j.id === action.payload)
         if (job) job.status = 'paused'
+        state.error = null
+      })
+      .addCase(pauseJob.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Erro ao pausar download.'
       })
       .addCase(resumeJob.fulfilled, (state, action) => {
         const job = state.jobs.find((j) => j.id === action.payload)
         if (job) job.status = 'pending'
+        state.error = null
+      })
+      .addCase(resumeJob.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Erro ao retomar download.'
       })
       .addCase(clearCompletedJobs.fulfilled, (state, action) => {
         const removed = new Set(action.payload)

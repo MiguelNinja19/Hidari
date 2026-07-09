@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useAppDispatch } from '../../app/hooks'
 import {
   cancelJob,
@@ -7,8 +7,9 @@ import {
   resumeJob,
 } from '../queue/queueSlice'
 import { queueApi } from '../../shared/api/tauri/queueApi'
-import { jobNeedsExtraction } from '../../shared/utils/jobExtraction'
-import type { ResolvedCover } from '../covers/useGameCovers'
+import { useToast } from '../../shared/components/ToastProvider'
+import { useErrorToast } from '../../shared/hooks/useErrorToast'
+import { CoversProvider, useCovers } from '../covers/CoversProvider'
 import { DownloadsPage } from './DownloadsPage'
 import {
   formatProgressPercent,
@@ -24,50 +25,51 @@ type DownloadsTabProps = {
   queueError: string | null
   downloadsBooting: boolean
   onGoDiscover: () => void
-  resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
-  invalidateLocalCover: (title: string, coverUrl?: string | null) => void
 }
 
-export function DownloadsTab({
+function DownloadsTabContent({
   jobs,
   queueLoading,
   queueError,
   downloadsBooting,
   onGoDiscover,
-  resolveCover,
-  invalidateLocalCover,
 }: DownloadsTabProps) {
   const dispatch = useAppDispatch()
+  const { resolveCover, invalidateLocalCover } = useCovers()
+  const { showError } = useToast()
   const [actionBusyId, setActionBusyId] = useState<string | null>(null)
-  const [actionError, setActionError] = useState('')
+
+  useErrorToast(queueError, 'Falha na fila de downloads.')
 
   const runJobAction = useCallback(async (jobId: string, action: () => Promise<void>) => {
-    setActionError('')
     setActionBusyId(jobId)
     try {
       await action()
     } catch (error) {
-      setActionError(formatUserError(error, 'Falha na operação.'))
+      showError(formatUserError(error, 'Falha na operação.'))
     } finally {
       setActionBusyId(null)
     }
-  }, [])
+  }, [showError])
 
   return (
     <DownloadsPage
       jobs={jobs}
       queueLoading={queueLoading}
-      queueError={queueError || actionError || null}
       downloadsBooting={downloadsBooting}
       isTorrentMetadataPhase={isTorrentMetadataPhase}
       resolveJobProgressPercent={resolveJobProgressPercent}
       formatProgressPercent={formatProgressPercent}
       actionBusyId={actionBusyId}
       onPauseJob={async (id) => {
-        await dispatch(pauseJob(id))
+        await runJobAction(id, async () => {
+          await dispatch(pauseJob(id)).unwrap()
+        })
       }}
       onResumeJob={async (id) => {
-        await dispatch(resumeJob(id))
+        await runJobAction(id, async () => {
+          await dispatch(resumeJob(id)).unwrap()
+        })
       }}
       onCancelJob={async (id) => {
         await dispatch(cancelJob(id))
@@ -76,23 +78,58 @@ export function DownloadsTab({
         await dispatch(clearCompletedJobs())
       }}
       onPauseAll={async () => {
-        jobs
-          .filter((job) => job.status !== 'cancelled')
-          .forEach((job) => {
-            if (['downloading', 'pending', 'retrying'].includes(job.status)) {
-              void dispatch(pauseJob(job.id))
-            }
-          })
+        const active = jobs.filter(
+          (job) =>
+            job.status !== 'cancelled' &&
+            ['downloading', 'pending', 'retrying', 'seeding'].includes(job.status),
+        )
+        if (active.length === 0) return
+        setActionBusyId('__all__')
+        try {
+          await Promise.all(active.map((job) => dispatch(pauseJob(job.id)).unwrap()))
+        } catch (error) {
+          showError(formatUserError(error, 'Falha ao pausar downloads.'))
+        } finally {
+          setActionBusyId(null)
+        }
       }}
       onOpenJobFolder={(id) => runJobAction(id, () => queueApi.openJobFolder(id))}
-      onExtractJob={(id) => runJobAction(id, () => queueApi.extractJob(id))}
-      onPlayJob={(id) => runJobAction(id, async () => {
-        await queueApi.launchJob(id)
-      })}
-      jobNeedsExtraction={jobNeedsExtraction}
+      onPlayJob={(id) =>
+        runJobAction(id, async () => {
+          await queueApi.launchJob(id)
+        })
+      }
       onGoDiscover={onGoDiscover}
       resolveCover={resolveCover}
       invalidateLocalCover={invalidateLocalCover}
     />
+  )
+}
+
+export function DownloadsTab(props: DownloadsTabProps) {
+  const catalogGames = useMemo(
+    () =>
+      props.jobs.map((job) => ({
+        id: `job:${job.id}`,
+        title: job.title,
+        genre: '',
+        coverUrl: null,
+        localCoverPath: null,
+        source: 'queue',
+      })),
+    [props.jobs],
+  )
+
+  const preloadTitles = useMemo(() => props.jobs.map((job) => job.title), [props.jobs])
+
+  return (
+    <CoversProvider
+      catalogGames={catalogGames}
+      jobs={props.jobs}
+      eager
+      preloadTitles={preloadTitles}
+    >
+      <DownloadsTabContent {...props} />
+    </CoversProvider>
   )
 }

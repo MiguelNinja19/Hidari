@@ -1,12 +1,10 @@
 import { useTranslation } from 'react-i18next'
 import { CatalogCover } from '../../shared/components/CatalogCover'
 import { EmptyState } from '../../shared/components/EmptyState'
-import { LibraryGameCard, LibraryGameCardSkeleton } from './LibraryGameCard'
-import { PageNotice } from '../../shared/components/PageNotice'
+import { LibraryGameCard } from './LibraryGameCard'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { LibrarySortToggle } from './LibrarySortToggle'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
-import { resolveDeletePath } from '../../shared/utils/archive'
 import type { LibraryEntry } from './types'
 import {
   useLibraryController,
@@ -31,12 +29,6 @@ function busyKey(item: LibraryEntry) {
   return item.kind === 'job' ? item.id : item.destPath
 }
 
-function itemPathStateKey(item: LibraryEntry): string {
-  if (item.kind === 'job') return `job:${item.id}`
-  const base = resolveDeletePath(item.destPath).toLowerCase()
-  return `${base}::${item.title.trim().toLowerCase()}`
-}
-
 function buildLibraryActions(
   item: LibraryEntry,
   ctx: {
@@ -46,12 +38,10 @@ function buildLibraryActions(
     canLocate: boolean
     pathStatePending: boolean
     canDelete: boolean
-    needsExtraction: boolean
     playBusyId: string | null
     installBusyId: string | null
     handlePlayLibraryItem: (item: LibraryEntry) => Promise<void>
     handleInstallItem: (item: LibraryEntry) => Promise<void>
-    handleExtractItem: (item: LibraryEntry) => Promise<void>
     handlePickGameInstallFolder: LibraryControllerValue['handlePickGameInstallFolder']
     handleDeleteLibraryItem: (item: LibraryEntry) => Promise<void>
     onResumeItem: (id: string) => Promise<void>
@@ -105,19 +95,11 @@ function buildLibraryActions(
     return {
       primary: {
         id: 'install',
-        label:
-          ctx.installBusyId === ctx.key
-            ? 'Abrindo…'
-            : ctx.needsExtraction
-              ? 'Preparar'
-              : 'Instalar',
-        title: ctx.needsExtraction
-          ? 'Extrair arquivos antes de instalar'
-          : 'Abrir o instalador do jogo',
+        label: ctx.installBusyId === ctx.key ? 'Abrindo…' : 'Instalar',
+        title: 'Abrir o instalador do jogo',
         variant: 'primary',
         disabled: ctx.installBusyId === ctx.key,
-        onClick: () =>
-          void (ctx.needsExtraction ? ctx.handleExtractItem(item) : ctx.handleInstallItem(item)),
+        onClick: () => void ctx.handleInstallItem(item),
       },
       secondary,
     }
@@ -224,23 +206,18 @@ export function LibraryPage() {
   const { t } = useTranslation()
   const {
     filteredEntries,
-    libraryLoading,
-    pathStateByKey,
+    libraryReady,
     libraryFilter,
     librarySort,
     playBusyId,
     installBusyId,
-    savePathError,
-    clearSavePathError,
     setLibraryFilter,
     setLibrarySort,
     onGoDownloads,
-    onGoDiscover,
     resolveCover,
     invalidateLocalCover,
     handlePlayLibraryItem,
     handleInstallItem,
-    handleExtractItem,
     handlePickGameInstallFolder,
     handleDeleteLibraryItem,
   } = useLibraryController()
@@ -251,13 +228,10 @@ export function LibraryPage() {
     showLocateInstallAction,
     isPathStateResolved,
     hasManualInstallRoot,
-    isLibraryInstalled,
   } = useLibraryItemHelpers()
   const onResumeItem = useLibraryResumeItem()
   const onOpenLocalPath = useOpenLocalPath()
   const hasActiveFilter = libraryFilter.trim().length > 0
-  const showEmptyLibrary =
-    !libraryLoading && filteredEntries.length === 0 && !hasActiveFilter
 
   return (
     <section className="library-page">
@@ -274,19 +248,7 @@ export function LibraryPage() {
         </div>
       </header>
 
-      {savePathError?.trim() ? (
-        <PageNotice error={savePathError.trim()} onDismiss={clearSavePathError} />
-      ) : null}
-
-      {libraryLoading ? (
-        <ul className="library-grid library-grid--skeleton" aria-hidden="true">
-          {Array.from({ length: 8 }, (_, index) => (
-            <LibraryGameCardSkeleton key={index} />
-          ))}
-        </ul>
-      ) : null}
-
-      {!libraryLoading && filteredEntries.length > 0 ? (
+      {filteredEntries.length > 0 ? (
         <ul className="library-grid">
           {filteredEntries.map((item) => {
             const status = libraryStatusMeta(item)
@@ -296,10 +258,8 @@ export function LibraryPage() {
             const canInstall = showInstallAction(item)
             const canLocate = showLocateInstallAction(item)
             const pathStatePending = !isPathStateResolved(item)
-            const canDelete = isLibraryInstalled(item) || item.kind === 'folder'
+            const canDelete = true
             const manualRoot = hasManualInstallRoot(item)
-            const pathState = pathStateByKey[itemPathStateKey(item)]
-            const needsExtraction = pathState?.needsExtraction === true
 
             const { primary, secondary } = buildLibraryActions(item, {
               key,
@@ -308,12 +268,10 @@ export function LibraryPage() {
               canLocate,
               pathStatePending,
               canDelete,
-              needsExtraction,
               playBusyId,
               installBusyId,
               handlePlayLibraryItem,
               handleInstallItem,
-              handleExtractItem,
               handlePickGameInstallFolder,
               handleDeleteLibraryItem,
               onResumeItem,
@@ -342,6 +300,7 @@ export function LibraryPage() {
                       localPath={cover.localPath}
                       cached={cover.status === 'cached'}
                       status={cover.status}
+                      priority
                       onLocalCoverError={() => invalidateLocalCover(item.title, cover.coverUrl)}
                     />
                   }
@@ -354,15 +313,7 @@ export function LibraryPage() {
         </ul>
       ) : null}
 
-      {showEmptyLibrary ? (
-        <EmptyState
-          title={t('library.emptyTitle')}
-          description={t('library.emptyDescription')}
-          action={{ label: t('common.exploreCatalog'), onClick: onGoDiscover }}
-        />
-      ) : null}
-
-      {!libraryLoading && filteredEntries.length === 0 && hasActiveFilter ? (
+      {filteredEntries.length === 0 && hasActiveFilter && libraryReady ? (
         <EmptyState
           title={t('library.noResultsTitle')}
           description={t('library.noResultsDescription')}

@@ -19,16 +19,15 @@ import type { LibraryEntry } from './types'
 export type LibraryControllerValue = {
   libraryItems: LibraryEntry[]
   filteredEntries: LibraryEntry[]
-  libraryLoading: boolean
+  libraryReady: boolean
   refreshLibraryScan: (options?: { background?: boolean }) => Promise<void>
+  defaultDownloadPath: string
   jobs: DownloadJob[]
   pathStateByKey: Record<string, LibraryPathState>
   libraryFilter: string
   librarySort: LibrarySort
   playBusyId: string | null
   installBusyId: string | null
-  savePathError: string
-  clearSavePathError: () => void
   setLibraryFilter: (value: string) => void
   setLibrarySort: (value: LibrarySort) => void
   onGoDownloads: () => void
@@ -71,7 +70,7 @@ export function useLibraryController(): LibraryControllerValue {
 
 /** Helpers expostos ao LibraryPage via contexto (evita prop drilling). */
 export function useLibraryItemHelpers() {
-  const { jobs, pathStateByKey } = useLibraryController()
+  const { jobs, pathStateByKey, defaultDownloadPath } = useLibraryController()
   return {
     libraryStatusMeta: (item: LibraryEntry) => libraryStatusMeta(item, jobs, pathStateByKey),
     showPlayAction: (item: LibraryEntry) => showPlayAction(item, jobs, pathStateByKey),
@@ -80,7 +79,8 @@ export function useLibraryItemHelpers() {
       showLocateInstallAction(item, jobs, pathStateByKey),
     hasManualInstallRoot: (item: LibraryEntry) => hasManualInstallRoot(item, pathStateByKey),
     isPathStateResolved: (item: LibraryEntry) => isPathStateResolved(item, pathStateByKey),
-    isLibraryInstalled: (item: LibraryEntry) => isPlayableLibraryItem(item, jobs, pathStateByKey),
+    isLibraryInstalled: (item: LibraryEntry) =>
+      isPlayableLibraryItem(item, jobs, pathStateByKey, defaultDownloadPath),
   }
 }
 

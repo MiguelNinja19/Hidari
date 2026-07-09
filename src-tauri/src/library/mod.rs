@@ -1,4 +1,5 @@
 pub mod roots;
+pub mod watcher;
 
 use crate::db::{get_default_download_path, open_database_connection};
 use crate::dto::{
@@ -89,6 +90,10 @@ pub fn delete_local_library_item(
 
   if !canonical_target.starts_with(&canonical_base) {
     return Err("path_outside_default_download_path".to_string());
+  }
+
+  if canonical_target == canonical_base {
+    return Err("cannot_delete_default_download_root".to_string());
   }
 
   if canonical_target.is_dir() {
@@ -311,14 +316,16 @@ pub async fn extract_library_folder(app: AppHandle, payload: LaunchGamePayload) 
   extraction.release();
 
   if let Err(ref error) = result {
-    let _ = db::upsert_extraction_log(
-      &open_database_connection(&app_clone)?,
-      &job_id,
-      "failed",
-      None,
-      None,
-      Some(error),
-    );
+    if let Ok(conn) = open_database_connection(&app_clone) {
+      let _ = db::upsert_extraction_log(
+        &conn,
+        &job_id,
+        "failed",
+        None,
+        None,
+        Some(error.as_str()),
+      );
+    }
     emit_extract_status(&app_clone, &job_id, "failed", Some(error.clone()));
   }
   result

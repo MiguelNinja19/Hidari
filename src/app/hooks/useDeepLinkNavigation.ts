@@ -4,14 +4,14 @@ import type { GetGameDetailInput } from '../../shared/types/contracts'
 
 type UseDeepLinkNavigationArgs = {
   onNavigateDiscover: () => void
-  setDiscoverSearch: (query: string) => void
+  applyDiscoverSearch: (query: string) => void
   openGameDetail: (input: GetGameDetailInput) => void
 }
 
 /** Reage a `app://deep-link` (pesquisa, jogo, ação). */
 export function useDeepLinkNavigation({
   onNavigateDiscover,
-  setDiscoverSearch,
+  applyDiscoverSearch,
   openGameDetail,
 }: UseDeepLinkNavigationArgs) {
   useEffect(() => {
@@ -23,7 +23,7 @@ export function useDeepLinkNavigation({
 
         const searchQuery = payload.searchQuery?.trim()
         if (searchQuery) {
-          setDiscoverSearch(searchQuery)
+          applyDiscoverSearch(searchQuery)
         }
 
         const groupKey = payload.groupKey?.trim()
@@ -47,5 +47,5 @@ export function useDeepLinkNavigation({
     return () => {
       unlisten?.()
     }
-  }, [onNavigateDiscover, openGameDetail, setDiscoverSearch])
+  }, [onNavigateDiscover, openGameDetail, applyDiscoverSearch])
 }

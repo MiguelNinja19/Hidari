@@ -139,7 +139,6 @@ h3 {
 
 .sidebar-link:hover:not(.sidebar-link--active) {
   background: rgba(255, 255, 255, 0.03);
-  border-color: var(--divider);
   color: var(--text-main);
 }
 
@@ -152,7 +151,6 @@ h3 {
 
 .sidebar-link--active:hover {
   background: var(--accent-hover);
-  border-color: var(--accent-hover);
   color: var(--accent-text);
 }
 
@@ -273,7 +271,50 @@ select:focus {
     0 0 0 1px rgba(212, 255, 0, 0.2);
 }
 
+/* Explorar: campo + botão na mesma linha */
+.discover-search-inline {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.discover-search-inline .browse-search,
+.discover-search-inline .browse-search--bar {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.discover-search-inline .browse-search--bar .browse-search__input {
+  min-height: 44px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.discover-search-inline__btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  border-radius: 0;
+  border-left: var(--border-width) solid var(--divider);
+}
+
 /* Explorar: hover/focus suave, igual ao campo da Biblioteca */
+.page-toolbar--discover .discover-search-inline__input:hover:not(:disabled),
+.page-toolbar--discover .discover-search-inline__input:focus {
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.page-toolbar--discover .discover-search-inline:focus-within {
+  box-shadow:
+    var(--shadow-inset),
+    0 0 0 1px rgba(212, 255, 0, 0.2);
+}
+
 .page-toolbar--discover .browse-search__input:hover:not(:disabled),
 .page-toolbar--discover .browse-search__input:focus {
   border-color: var(--divider);
@@ -487,13 +528,8 @@ select:focus {
   transform: translateY(-2px);
 }
 
-.game-tile__cover .game-card__placeholder {
-  background:
-    linear-gradient(145deg, rgba(212, 255, 0, 0.06) 0%, transparent 55%),
-    var(--bg-elevated);
-  font-family: var(--display);
-  color: rgba(212, 255, 0, 0.25);
-  text-transform: uppercase;
+.game-tile__cover .game-card__cover-empty {
+  background: var(--bg-elevated);
 }
 
 .game-tile__title {
@@ -744,14 +780,6 @@ select:focus {
 
 .game-detail__option {
   border-radius: var(--radius-sm);
-  transition:
-    background var(--hover-dur) ease,
-    border-color var(--hover-dur) ease;
-}
-
-.game-detail__option:hover:not(:disabled) {
-  border-color: var(--divider);
-  background: transparent;
 }
 
 .game-detail .btn:hover:not(:disabled),
@@ -771,6 +799,13 @@ select:focus {
   font-weight: 700;
   letter-spacing: -0.01em;
   text-transform: none;
+  border-radius: var(--radius-sm);
+}
+
+.game-detail__option-action:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-text);
 }
 
 /* ── Downloads ──────────────────────────────────────────────────────────── */
@@ -819,7 +854,7 @@ select:focus {
   box-shadow: var(--shadow-modal);
 }
 
-/* ── Settings & favorites headers ───────────────────────────────────────── */
+/* ── Settings headers ───────────────────────────────────────── */
 
 .settings-page {
   display: flex;
@@ -829,17 +864,15 @@ select:focus {
   min-width: 0;
 }
 
-.settings-toast {
+.settings-toast,
+.app-toast {
   position: fixed;
   top: 18px;
   right: 18px;
-  z-index: 9999;
+  z-index: 10000;
   max-width: min(420px, calc(100vw - 24px));
-  padding: 10px 12px;
-  border: var(--border-thin) solid rgba(212, 255, 0, 0.55);
+  padding: 10px 14px;
   border-radius: var(--radius-sm);
-  background: rgba(212, 255, 0, 0.18);
-  color: #d4ff00;
   font-family: var(--font-body);
   font-size: 0.8125rem;
   font-weight: 700;
@@ -847,8 +880,50 @@ select:focus {
   box-shadow: var(--shadow-card);
   pointer-events: none;
   animation:
-    settings-toast-in 0.2s ease-out,
-    settings-toast-out 0.24s ease-in 2.76s;
+    app-toast-in 0.2s ease-out,
+    app-toast-out 0.24s ease-in 2.76s;
+}
+
+.app-toast--success,
+.settings-toast {
+  border: var(--border-thin) solid rgba(212, 255, 0, 0.55);
+  background: rgba(212, 255, 0, 0.18);
+  color: #d4ff00;
+}
+
+.app-toast--error {
+  border: var(--border-thin) solid rgba(255, 90, 90, 0.55);
+  background: rgba(255, 60, 60, 0.16);
+  color: #ffb4b4;
+  animation-duration: 0.2s, 4.76s;
+}
+
+.app-toast--info {
+  border: var(--border-thin) solid rgba(255, 255, 255, 0.2);
+  background: rgba(20, 20, 24, 0.92);
+  color: var(--text-primary, #f2f2f2);
+}
+
+@keyframes app-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes app-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 }
 
 @keyframes settings-toast-in {
@@ -1578,10 +1653,9 @@ select:focus {
   pointer-events: none;
 }
 
-/* ── Cards compartilhados (Explorar / Favoritos / Biblioteca) ────────────── */
+/* ── Cards compartilhados (Explorar / Biblioteca) ────────────── */
 
 .discover-grid,
-.favorites-grid,
 .library-grid {
   list-style: none;
   margin: 0;
@@ -1594,7 +1668,6 @@ select:focus {
 }
 
 .discover-grid__item,
-.favorites-grid__item,
 .library-grid__item {
   list-style: none;
   display: flex;
@@ -1604,7 +1677,6 @@ select:focus {
 }
 
 .discover-card,
-.favorite-card,
 .library-card {
   display: flex;
   flex-direction: column;
@@ -1615,7 +1687,6 @@ select:focus {
   height: 100%;
 }
 
-.favorite-card,
 .library-card {
   gap: 2px;
 }
@@ -1635,14 +1706,12 @@ select:focus {
   padding-bottom: 1px;
 }
 
-.favorite-card .discover-card__title-btn,
 .library-card .discover-card__title-btn {
   padding-bottom: 0;
   margin-bottom: -1px;
 }
 
 .discover-card__title,
-.favorite-card .discover-card__title,
 .library-card .discover-card__title {
   display: -webkit-box;
   margin: 0;
@@ -1678,7 +1747,6 @@ select:focus {
   text-overflow: ellipsis;
 }
 
-.favorite-card .discover-card__title,
 .library-card .discover-card__title {
   display: block;
   min-height: 1.35em;
@@ -1755,7 +1823,7 @@ select:focus {
 }
 
 .discover-card__cover .game-card__media,
-.discover-card__cover .game-card__placeholder,
+.discover-card__cover .game-card__cover-empty,
 .discover-card__cover .game-card__cover-skeleton {
   border-radius: 0;
   border: none;
@@ -1975,17 +2043,14 @@ select:focus {
 
 @media (max-width: 1024px) {
   .discover-grid,
-  .favorites-grid,
   .library-grid {
     grid-template-columns: repeat(auto-fill, minmax(136px, 160px));
     gap: 14px 12px;
   }
 
   .discover-grid__item,
-  .favorites-grid__item,
   .library-grid__item,
   .discover-card,
-  .favorite-card,
   .library-card {
     max-width: 160px;
   }
@@ -1993,16 +2058,13 @@ select:focus {
 
 @media (max-width: 720px) {
   .discover-grid,
-  .favorites-grid,
   .library-grid {
     grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
   }
 
   .discover-grid__item,
-  .favorites-grid__item,
   .library-grid__item,
   .discover-card,
-  .favorite-card,
   .library-card {
     max-width: none;
   }
@@ -2016,11 +2078,6 @@ select:focus {
     width: 28px;
     height: 28px;
   }
-}
-
-.favorites-page {
-  display: flex;
-  flex-direction: column;
 }
 
 .library-toolbar__sort {

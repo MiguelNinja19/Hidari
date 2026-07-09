@@ -1,24 +1,25 @@
 import type { LibraryEntry } from '../../features/library/types'
 import type { DownloadJob } from '../types/contracts'
-import { resolveDeletePath } from './archive'
-import { jobPathsOverlap } from './jobExtraction'
-import { libraryGameKey } from './normalizeTitleKey'
+import { normalizeLibraryPath, jobPathsOverlap } from './jobExtraction'
+import { libraryGameKey, libraryTitlesMatch } from './normalizeTitleKey'
 
 export function dedupeLibraryEntries(
   entries: LibraryEntry[],
   scoreEntry: (item: LibraryEntry) => number,
 ): LibraryEntry[] {
-  const groups = new Map<string, LibraryEntry[]>()
+  const groups: LibraryEntry[][] = []
 
   for (const item of entries) {
-    const key = libraryGameKey(item.title)
-    const bucket = groups.get(key) ?? []
-    bucket.push(item)
-    groups.set(key, bucket)
+    const existing = groups.find((group) => libraryTitlesMatch(item.title, group[0]!.title))
+    if (existing) {
+      existing.push(item)
+    } else {
+      groups.push([item])
+    }
   }
 
   const result: LibraryEntry[] = []
-  for (const group of groups.values()) {
+  for (const group of groups) {
     if (group.length === 1) {
       result.push(group[0]!)
       continue
@@ -33,16 +34,19 @@ export function dedupeLibraryEntries(
 export function findRelatedLibraryJobs(
   item: LibraryEntry,
   jobs: DownloadJob[],
+  defaultDownloadPath = '',
 ): DownloadJob[] {
-  const gameKey = libraryGameKey(item.title)
-  const basePath = resolveDeletePath(item.destPath).toLowerCase()
+  const basePath = normalizeLibraryPath(item.destPath)
+  const defaultRoot = normalizeLibraryPath(defaultDownloadPath)
 
   return jobs.filter((job) => {
     if (job.status === 'cancelled') return false
-    if (libraryGameKey(job.title) === gameKey) return true
-    if (resolveDeletePath(job.destPath).toLowerCase() === basePath) return true
+    if (libraryTitlesMatch(job.title, item.title)) return true
+    const jobPath = normalizeLibraryPath(job.destPath)
+    if (jobPath === basePath) return true
+    if (defaultRoot && jobPath === defaultRoot) return false
     return jobPathsOverlap(item.destPath, job.destPath)
   })
 }
 
-export { libraryGameKey }
+export { libraryGameKey, libraryTitlesMatch }

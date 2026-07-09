@@ -1,5 +1,7 @@
 # Build e release
 
+Ver também [Arquitetura](./architecture.md) (fluxo de downloads e extração) e [API](./api.md).
+
 ## Build de produção
 
 ```bash

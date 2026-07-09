@@ -395,7 +395,7 @@ pub async fn search_catalog_from_sources(
 ) -> Result<Vec<CatalogGameDto>, String> {
   let app = app.clone();
   let query = query.to_string();
-  let mut games = tokio::task::spawn_blocking({
+  let games = tokio::task::spawn_blocking({
     let app = app.clone();
     let query = query.clone();
     move || search_catalog_from_sources_sync(&app, &query, offset, limit, attach_covers)
@@ -403,7 +403,6 @@ pub async fn search_catalog_from_sources(
   .await
   .map_err(|error| format!("search_catalog_task: {error}"))??;
 
-  enrich_catalog_genres(&app, &mut games).await;
   Ok(games)
 }
 
@@ -424,79 +423,6 @@ pub(crate) fn looks_like_source_label(genre: &str) -> bool {
   ]
   .iter()
   .any(|hint| value.contains(hint))
-}
-
-fn looks_like_game_genres(genre: &str) -> bool {
-  let value = genre.trim();
-  if value.is_empty() || looks_like_source_label(value) {
-    return false;
-  }
-  if value.contains(',') {
-    return true;
-  }
-  let lower = value.to_lowercase();
-  [
-    "ação",
-    "action",
-    "aventura",
-    "adventure",
-    "rpg",
-    "terror",
-    "horror",
-    "indie",
-    "simula",
-    "estrat",
-    "fps",
-    "casual",
-    "sobreviv",
-    "survival",
-    "corrida",
-    "racing",
-    "esporte",
-    "sports",
-    "puzzle",
-    "plataforma",
-    "platform",
-    "roguelike",
-  ]
-  .iter()
-  .any(|hint| lower.contains(hint))
-}
-
-async fn enrich_catalog_genres(app: &AppHandle, games: &mut [CatalogGameDto]) {
-  let mut pending: Vec<usize> = games
-    .iter()
-    .enumerate()
-    .filter(|(_, game)| !looks_like_game_genres(&game.genre))
-    .map(|(index, _)| index)
-    .collect();
-
-  while !pending.is_empty() {
-    let batch: Vec<usize> = pending.drain(..pending.len().min(4)).collect();
-    let mut handles = Vec::with_capacity(batch.len());
-    for index in batch {
-      let title = games[index].title.clone();
-      let app = app.clone();
-      handles.push(tokio::spawn(async move {
-        let genres = steam_details::resolve_steam_details_for_app(&app, &title)
-          .await
-          .map(|details| details.genres)
-          .unwrap_or_default();
-        (index, genres)
-      }));
-    }
-
-    for handle in handles {
-      let Ok((index, genres)) = handle.await else {
-        continue;
-      };
-      if genres.is_empty() {
-        games[index].genre.clear();
-      } else {
-        games[index].genre = genres.join(", ");
-      }
-    }
-  }
 }
 
 fn resolve_catalog_genre(conn: &Connection, title: &str) -> String {

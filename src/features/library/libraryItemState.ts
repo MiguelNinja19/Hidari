@@ -1,5 +1,5 @@
 import { resolveDeletePath } from '../../shared/utils/archive'
-import { jobPathsOverlap } from '../../shared/utils/jobExtraction'
+import { activeJobBlocksLibraryFolder } from '../../shared/utils/jobExtraction'
 import {
   isTorrentMetadataPhase,
   resolveJobProgressPercent,
@@ -60,6 +60,26 @@ export const jobNeedsInstall = (
   return state?.needsInstall === true
 }
 
+const ACTIVE_QUEUE_STATUSES = new Set(['downloading', 'pending', 'retrying', 'paused'])
+
+const LIBRARY_JOB_STATUSES = new Set([
+  'completed',
+  'seeding',
+  'extracting',
+  'extracted',
+  'skipped',
+])
+
+/** Job ainda na fila de downloads — não deve aparecer na biblioteca. */
+export function isActiveQueueJob(job: DownloadJob): boolean {
+  return ACTIVE_QUEUE_STATUSES.has(job.status)
+}
+
+/** Só entra na biblioteca quando o download terminou (pronto para instalar/jogar). */
+export function jobBelongsInLibrary(job: DownloadJob): boolean {
+  return LIBRARY_JOB_STATUSES.has(job.status)
+}
+
 export const isJobFinished = (job: DownloadJob) =>
   job.status === 'extracted' ||
   job.status === 'completed' ||
@@ -72,6 +92,7 @@ export const isPlayableLibraryItem = (
   item: LibraryEntry,
   allJobs: DownloadJob[],
   pathStateByKey: Record<string, LibraryPathState>,
+  defaultDownloadPath = '',
 ) => {
   if (needsInstallItem(item, pathStateByKey)) return false
 
@@ -88,7 +109,7 @@ export const isPlayableLibraryItem = (
       job.status !== 'extracted' &&
       job.status !== 'cancelled' &&
       !itemHasGame(job.destPath, pathStateByKey, jobPathCtx(job)) &&
-      jobPathsOverlap(folderPath, job.destPath),
+      activeJobBlocksLibraryFolder(folderPath, job.destPath, defaultDownloadPath),
   )
   return !blockedByActiveJob
 }
@@ -101,7 +122,7 @@ export const itemAwaitingInstall = (
   if (isPlayableLibraryItem(item, allJobs, pathStateByKey)) return false
 
   const state = getPathState(item.destPath, pathStateByKey, itemPathCtx(item))
-  if (state?.needsInstall || state?.needsExtraction) return true
+  if (state?.needsInstall) return true
 
   if (item.kind === 'job') {
     if (
@@ -175,10 +196,10 @@ export function libraryStatusMeta(
   }
 
   if (itemAwaitingInstall(item, jobs, pathStateByKey)) {
-    if (state?.needsExtraction) {
-      return { label: 'Extrair', tone: 'waiting' }
-    }
     return { label: 'Instalar', tone: 'waiting' }
+  }
+  if (state?.needsExtraction) {
+    return { label: 'Preparando arquivos…', tone: 'idle' }
   }
   if (state?.hasGame || state?.playable || isPlayableLibraryItem(item, jobs, pathStateByKey)) {
     return { label: 'Jogar', tone: 'ready' }

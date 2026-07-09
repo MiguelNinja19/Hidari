@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useAppDispatch } from '../hooks'
 import { fetchSources } from '../../features/sources/sourcesSlice'
 import { extractStatusReceived, fetchJobs, jobProgressReceived } from '../../features/queue/queueSlice'
+import { notifyLibraryRefreshNeeded } from '../libraryRefreshBridge'
 import { tauriClient } from '../../shared/api/tauri/client'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { STARTUP_JOBS_DEFER_MS } from '../../shared/config/polling'
@@ -91,6 +92,9 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     })
     void tauriClient.listenExtractStatus((event) => {
       dispatch(extractStatusReceived(event))
+      if (event.status === 'extracted' || event.status === 'completed' || event.status === 'failed') {
+        notifyLibraryRefreshNeeded()
+      }
     }).then((fn) => {
       unlistenExtract = fn
     })

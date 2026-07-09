@@ -142,20 +142,3 @@ export function LibraryGameCard({
     </article>
   )
 }
-
-export function LibraryGameCardSkeleton() {
-  return (
-    <li className="library-grid__item">
-      <article className="discover-card library-card discover-card--skeleton" aria-hidden="true">
-        <div className="discover-card__title-skeleton shimmer" />
-        <div className="discover-card__panel">
-          <div className="discover-card__cover discover-card__cover--skeleton" />
-          <div className="discover-card__body">
-            <div className="discover-card__meta-skeleton shimmer" />
-            <div className="discover-card__cta-skeleton shimmer" />
-          </div>
-        </div>
-      </article>
-    </li>
-  )
-}

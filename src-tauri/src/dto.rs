@@ -84,11 +84,13 @@ pub struct HydraSourceDto {
   pub created_at: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct TestSourcePayload {
   pub id: i64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestSourceResultDto {
@@ -99,6 +101,7 @@ pub struct TestSourceResultDto {
   pub message: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameSourceChangeDto {
@@ -296,6 +299,7 @@ pub struct DiskPathPayload {
   pub path: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SourceEntry {
   pub id: i64,
@@ -303,6 +307,7 @@ pub struct SourceEntry {
   pub base_url: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceOptionItem {
@@ -313,11 +318,13 @@ pub struct SourceOptionItem {
   pub quality: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SourceSearchResponse {
   pub options: Vec<SourceOptionItem>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HydraChangesResponseItem {
@@ -340,6 +347,8 @@ pub struct JobProgressEvent {
   pub bytes_downloaded: Option<i64>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub total_bytes: Option<i64>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub error_msg: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -478,4 +487,6 @@ pub struct SidecarJobProgressRow {
   pub eta_seconds: i64,
   #[serde(default, alias = "percent", alias = "progressPercent", alias = "percentage")]
   pub progress: f64,
+  #[serde(default, alias = "errorMsg")]
+  pub error_msg: Option<String>,
 }

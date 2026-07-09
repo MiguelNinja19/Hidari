@@ -80,7 +80,7 @@ function drainCoverWarmQueue(
   }
 }
 
-export function useGameCovers(catalogGames: CatalogGame[]) {
+export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: boolean }) {
   const [savedCovers, setSavedCovers] = useState<Record<string, GameCover>>({})
   const savedCoversRef = useRef(savedCovers)
   const warmQueueRef = useRef<WarmTask[]>([])
@@ -137,7 +137,7 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
   }, [refreshCovers])
 
   useEffect(() => {
-    const cancel = scheduleDeferred(() => {
+    const loadSavedCovers = () => {
       void sourcesApi.listGameCovers().then((rows) => {
         setSavedCovers((prev) => {
           const map = { ...prev }
@@ -147,9 +147,16 @@ export function useGameCovers(catalogGames: CatalogGame[]) {
           return map
         })
       })
-    }, 300)
+    }
+
+    if (options?.eager) {
+      loadSavedCovers()
+      return
+    }
+
+    const cancel = scheduleDeferred(loadSavedCovers, 300)
     return cancel
-  }, [])
+  }, [options?.eager])
 
   useEffect(() => {
     let cancelled = false

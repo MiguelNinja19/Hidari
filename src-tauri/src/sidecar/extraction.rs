@@ -2,14 +2,14 @@ use super::engine::{ensure_sidecar_running, fetch_sidecar_job, resolve_job_folde
 use crate::archive;
 use crate::config::{MIN_DOWNLOAD_VERIFY_BYTES, SEVEN_ZIP_BINARY};
 use crate::db::{
-  get_extraction_status, open_database_connection, read_app_setting, read_app_setting_bool,
-  upsert_extraction_log,
+  batch_get_extraction_logs, get_extraction_status, open_database_connection, read_app_setting,
+  read_app_setting_bool, upsert_extraction_log, ExtractionLogRow,
 };
 use crate::dto::{EXTRACT_EVENT_STATUS, ExtractStatusEvent, SidecarJobWatcher};
 use crate::launch;
 use crate::library::roots::open_path_in_shell;
 use crate::state::ExtractionState;
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 use tauri::{AppHandle, Emitter, Manager};
@@ -95,55 +95,72 @@ pub fn which_7z_on_path() -> Option<PathBuf> {
     })
 }
 
-pub fn apply_extraction_overlay(job: &mut serde_json::Map<String, serde_json::Value>, conn: &Connection) {
-  let Some(id) = job
-    .get("id")
-    .and_then(|value| value.as_str().map(str::to_string))
-  else {
-    return;
-  };
-
-  let Ok(row) = conn.query_row(
-    "SELECT status, extract_path, error FROM extraction_log WHERE job_id = ?1",
-    params![id],
-    |row| {
-      Ok((
-        row.get::<_, String>(0)?,
-        row.get::<_, Option<String>>(1)?,
-        row.get::<_, Option<String>>(2)?,
-      ))
-    },
-  ) else {
-    return;
-  };
-
-  let (status, extract_path, error) = row;
-  if matches!(status.as_str(), "extracting" | "extracted" | "failed") {
-    job.insert("status".to_string(), serde_json::Value::String(status));
-  }
-  if let Some(path) = extract_path {
+pub fn apply_extraction_overlay(
+  job: &mut serde_json::Map<String, serde_json::Value>,
+  row: &ExtractionLogRow,
+) {
+  job.insert(
+    "extractionStatus".to_string(),
+    serde_json::Value::String(row.status.clone()),
+  );
+  if matches!(
+    row.status.as_str(),
+    "extracting" | "extracted" | "failed"
+  ) {
     job.insert(
-      "extractPath".to_string(),
-      serde_json::Value::String(path),
+      "status".to_string(),
+      serde_json::Value::String(row.status.clone()),
     );
   }
-  if let Some(message) = error {
+  if let Some(path) = row.extract_path.as_ref() {
+    job.insert(
+      "extractPath".to_string(),
+      serde_json::Value::String(path.clone()),
+    );
+  }
+  if let Some(message) = row.error.as_ref() {
     job.insert(
       "errorMsg".to_string(),
-      serde_json::Value::String(message),
+      serde_json::Value::String(message.clone()),
     );
   }
 }
 
-pub fn enrich_jobs_with_extraction(
+fn collect_job_id(value: &serde_json::Value, ids: &mut Vec<String>) {
+  match value {
+    serde_json::Value::Array(items) => {
+      for item in items {
+        collect_job_id(item, ids);
+      }
+    }
+    serde_json::Value::Object(map) => {
+      if let Some(id) = map.get("id").and_then(|v| v.as_str()) {
+        ids.push(id.to_string());
+      }
+      for key in ["jobs", "data", "items"] {
+        if let Some(nested) = map.get(key) {
+          collect_job_id(nested, ids);
+          return;
+        }
+      }
+    }
+    _ => {}
+  }
+}
+
+fn apply_extraction_overlays(
   value: &mut serde_json::Value,
-  conn: &Connection,
+  overlays: &std::collections::HashMap<String, ExtractionLogRow>,
 ) {
   match value {
     serde_json::Value::Array(items) => {
       for item in items {
         if let serde_json::Value::Object(map) = item {
-          apply_extraction_overlay(map, conn);
+          if let Some(id) = map.get("id").and_then(|v| v.as_str()) {
+            if let Some(row) = overlays.get(id) {
+              apply_extraction_overlay(map, row);
+            }
+          }
         }
       }
     }
@@ -152,7 +169,11 @@ pub fn enrich_jobs_with_extraction(
         if let Some(serde_json::Value::Array(items)) = map.get_mut(key) {
           for item in items {
             if let serde_json::Value::Object(job) = item {
-              apply_extraction_overlay(job, conn);
+              if let Some(id) = job.get("id").and_then(|v| v.as_str()) {
+                if let Some(row) = overlays.get(id) {
+                  apply_extraction_overlay(job, row);
+                }
+              }
             }
           }
           return;
@@ -161,6 +182,21 @@ pub fn enrich_jobs_with_extraction(
     }
     _ => {}
   }
+}
+
+pub fn enrich_jobs_with_extraction(
+  value: &mut serde_json::Value,
+  conn: &Connection,
+) {
+  let mut job_ids = Vec::new();
+  collect_job_id(value, &mut job_ids);
+  job_ids.sort_unstable();
+  job_ids.dedup();
+  if job_ids.is_empty() {
+    return;
+  }
+  let overlays = batch_get_extraction_logs(conn, &job_ids);
+  apply_extraction_overlays(value, &overlays);
 }
 
 #[allow(dead_code)]
@@ -258,43 +294,11 @@ pub fn finalize_job_if_playable(
   Ok(true)
 }
 
-fn is_valid_download_extension(path: &Path) -> bool {
-  if archive::is_archive_extension(path) {
-    return true;
-  }
-  path.extension()
-    .and_then(|ext| ext.to_str())
-    .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "exe" | "msi" | "iso" | "bin"))
-    .unwrap_or(false)
-}
-
-fn find_primary_download_file(dest_path: &str) -> Option<PathBuf> {
-  if let Some(archive) = archive::find_job_archive(dest_path) {
-    return Some(archive);
-  }
-  let folder = resolve_job_folder(dest_path);
-  if !folder.is_dir() {
-    return None;
-  }
-  let mut best: Option<(u64, PathBuf)> = None;
-  if let Ok(entries) = std::fs::read_dir(&folder) {
-    for entry in entries.flatten() {
-      let path = entry.path();
-      if !path.is_file() || !is_valid_download_extension(&path) {
-        continue;
-      }
-      let size = entry.metadata().ok().map(|m| m.len()).unwrap_or(0);
-      if best.as_ref().map(|(best_size, _)| size > *best_size).unwrap_or(true) {
-        best = Some((size, path));
-      }
-    }
-  }
-  best.map(|(_, path)| path)
-}
-
 pub fn verify_download_payload(dest_path: &str) -> Result<PathBuf, String> {
-  let file = find_primary_download_file(dest_path)
-    .ok_or_else(|| "verify_no_file: nenhum ficheiro válido encontrado na pasta do download".to_string())?;
+  let file = archive::find_download_payload(dest_path).ok_or_else(|| {
+    "verify_no_file: nenhum ficheiro válido encontrado na pasta do download (incluindo subpastas do torrent)"
+      .to_string()
+  })?;
   if !file.is_file() {
     return Err("verify_missing: ficheiro não existe".to_string());
   }
@@ -391,14 +395,17 @@ pub async fn process_job_extraction(
   let base_dir = resolve_job_folder(&dest_path);
   let extract_dest = archive::resolve_extract_destination(&title, &base_dir, &install_org);
 
-  upsert_extraction_log(
-    &open_database_connection(&app)?,
-    &job_id,
-    "extracting",
-    Some(&archive.to_string_lossy()),
-    Some(&extract_dest.to_string_lossy()),
-    None,
-  )?;
+  {
+    let conn = open_database_connection(&app)?;
+    upsert_extraction_log(
+      &*conn,
+      &job_id,
+      "extracting",
+      Some(&archive.to_string_lossy()),
+      Some(&extract_dest.to_string_lossy()),
+      None,
+    )?;
+  }
   emit_extract_status(&app, &job_id, "extracting", None);
 
   let seven_zip = resolve_7z_path(&app)?;
@@ -410,14 +417,17 @@ pub async fn process_job_extraction(
     }
   }
 
-  upsert_extraction_log(
-    &open_database_connection(&app)?,
-    &job_id,
-    "extracted",
-    Some(&archive.to_string_lossy()),
-    Some(&extract_dest.to_string_lossy()),
-    None,
-  )?;
+  {
+    let conn = open_database_connection(&app)?;
+    upsert_extraction_log(
+      &*conn,
+      &job_id,
+      "extracted",
+      Some(&archive.to_string_lossy()),
+      Some(&extract_dest.to_string_lossy()),
+      None,
+    )?;
+  }
   emit_extract_status(&app, &job_id, "extracted", None);
   run_after_install_action(&app, &title, &dest_path, &extract_dest);
   Ok(())
@@ -440,14 +450,16 @@ pub async fn extract_job_archive(app: AppHandle, id: String) -> Result<(), Strin
   extraction.release();
 
   if let Err(ref error) = result {
-    let _ = upsert_extraction_log(
-      &open_database_connection(&app_clone)?,
-      &id,
-      "failed",
-      None,
-      None,
-      Some(error),
-    );
+    if let Ok(conn) = open_database_connection(&app_clone) {
+      let _ = upsert_extraction_log(
+        &*conn,
+        &id,
+        "failed",
+        None,
+        None,
+        Some(error.as_str()),
+      );
+    }
     emit_extract_status(&app_clone, &id, "failed", Some(error.clone()));
   }
   result

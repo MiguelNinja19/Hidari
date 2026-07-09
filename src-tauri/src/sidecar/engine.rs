@@ -47,6 +47,8 @@ pub async fn pause_all_active_sidecar_jobs(app: AppHandle) -> Result<(), String>
     return Ok(());
   };
 
+  let mut last_error: Option<String> = None;
+
   for job in job_list {
     let Some(status) = job.get("status").and_then(|value| value.as_str()) else {
       continue;
@@ -60,13 +62,40 @@ pub async fn pause_all_active_sidecar_jobs(app: AppHandle) -> Result<(), String>
       continue;
     };
 
-    let _ = client
+    match client
       .post(format!("http://127.0.0.1:{port}/jobs/{id}/pause"))
       .send()
-      .await;
+      .await
+    {
+      Ok(response) if response.status().is_success() => {}
+      Ok(response) => {
+        let status_code = response.status();
+        let body = response.text().await.unwrap_or_default();
+        last_error = Some(format!("sidecar_pause_failed: {status_code} {body}"));
+        log::warn!("pause_job_failed id={id}: {status_code}");
+      }
+      Err(error) => {
+        last_error = Some(format!("sidecar_request_failed: {error}"));
+        log::warn!("pause_job_failed id={id}: {error}");
+      }
+    }
+  }
+
+  if let Some(error) = last_error {
+    return Err(error);
   }
 
   Ok(())
+}
+
+/// Pausa downloads ativos e termina a app (evita matar aria2 a meio do torrent).
+pub fn graceful_app_quit(app: AppHandle) {
+  tauri::async_runtime::spawn(async move {
+    if let Err(error) = pause_all_active_sidecar_jobs(app.clone()).await {
+      log::warn!("could_not_pause_jobs_on_quit: {error}");
+    }
+    app.exit(0);
+  });
 }
 
 pub fn get_sidecar_port(app: &AppHandle) -> Result<u16, String> {
@@ -281,10 +310,6 @@ pub async fn fetch_sidecar_jobs_progress(app: &AppHandle) -> Result<Vec<SidecarJ
 pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
   tauri::async_runtime::spawn(async move {
     let mut last_snapshot: HashMap<String, SidecarJobProgressRow> = HashMap::new();
-    let conn = match open_database_connection(&app) {
-      Ok(conn) => conn,
-      Err(_) => return,
-    };
 
     loop {
       sleep(Duration::from_millis(750)).await;
@@ -297,7 +322,7 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
       let active_ids: HashSet<String> = rows.iter().map(|row| row.id.clone()).collect();
       last_snapshot.retain(|id, _| active_ids.contains(id));
 
-      let mut batch_updates: Vec<(String, i64, i64, i64, i64)> = Vec::new();
+      let mut batch_updates: Vec<(String, i64, i64, i64, Option<String>, i64)> = Vec::new();
 
       for row in rows {
         let changed = last_snapshot.get(&row.id).map_or(true, |prev| {
@@ -314,6 +339,7 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
             &row.status,
           );
           prev.status != row.status
+            || prev.error_msg != row.error_msg
             || (prev_progress - next_progress).abs() >= 0.05
             || prev.bytes_downloaded != row.bytes_downloaded
             || prev.total_bytes != row.total_bytes
@@ -341,6 +367,7 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
             eta_seconds: row.eta_seconds.max(0),
             bytes_downloaded: Some(row.bytes_downloaded),
             total_bytes: Some(row.total_bytes),
+            error_msg: row.error_msg.clone(),
           },
         );
 
@@ -349,21 +376,28 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
           progress.round() as i64,
           row.bytes_downloaded,
           row.total_bytes,
+          row.error_msg.clone(),
           row.id.parse::<i64>().unwrap_or(0),
         ));
       }
 
-      if !batch_updates.is_empty() {
-        let _ = conn.execute("BEGIN IMMEDIATE", []);
-        for (status, progress, bytes, total, id) in batch_updates {
-          let _ = conn.execute(
-            "UPDATE download_jobs SET status = ?1, progress = ?2, bytes_downloaded = ?3, \
-             total_bytes = ?4, updated_at = CURRENT_TIMESTAMP WHERE id = ?5",
-            params![status, progress, bytes, total, id],
-          );
-        }
-        let _ = conn.execute("COMMIT", []);
+      if batch_updates.is_empty() {
+        continue;
       }
+
+      let Ok(conn) = open_database_connection(&app) else {
+        continue;
+      };
+      let _ = conn.execute("BEGIN IMMEDIATE", []);
+      for (status, progress, bytes, total, error_msg, id) in batch_updates {
+        let _ = conn.execute(
+          "UPDATE download_jobs SET status = ?1, progress = ?2, bytes_downloaded = ?3, \
+           total_bytes = ?4, error_msg = COALESCE(?5, error_msg), \
+           updated_at = CURRENT_TIMESTAMP WHERE id = ?6",
+          params![status, progress, bytes, total, error_msg, id],
+        );
+      }
+      let _ = conn.execute("COMMIT", []);
     }
   });
 }

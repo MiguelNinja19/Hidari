@@ -3,10 +3,9 @@ import type { NavTab } from '../../layout/types'
 
 const TAB_BY_KEY: Record<string, NavTab> = {
   '1': 'discover',
-  '2': 'favorites',
-  '3': 'downloads',
-  '4': 'library',
-  '5': 'settings',
+  '2': 'downloads',
+  '3': 'library',
+  '4': 'settings',
 }
 
 type UseKeyboardShortcutsArgs = {
@@ -14,7 +13,7 @@ type UseKeyboardShortcutsArgs = {
   setActiveTab: (tab: NavTab) => void
 }
 
-/** Atalhos globais: Ctrl+1–5 para abas, Ctrl+F para focar pesquisa. */
+/** Atalhos globais: Ctrl+1–4 para abas, Ctrl+F para focar pesquisa. */
 export function useKeyboardShortcuts({ activeTab, setActiveTab }: UseKeyboardShortcutsArgs) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

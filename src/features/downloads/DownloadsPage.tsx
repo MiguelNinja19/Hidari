@@ -1,8 +1,5 @@
-import { useEffect, useState } from 'react'
 import { CatalogCover } from '../../shared/components/CatalogCover'
 import { DownloadsEmpty } from './DownloadsEmpty'
-import { PageNotice } from '../../shared/components/PageNotice'
-import { formatUserError } from '../../shared/utils/formatUserError'
 import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
 import { Button } from '../../shared/components/ui/Button'
 import { formatDownloadError } from '../../shared/utils/downloadErrors'
@@ -15,20 +12,17 @@ import { resolveJobVerificationStatus } from '../../shared/utils/jobVerification
 type DownloadsPageProps = {
   jobs: DownloadJob[]
   queueLoading: boolean
-  queueError: string | null
   downloadsBooting: boolean
   actionBusyId: string | null
   isTorrentMetadataPhase: (job: DownloadJob) => boolean
   resolveJobProgressPercent: (job: DownloadJob, now?: number) => number
   formatProgressPercent: (job: DownloadJob, now?: number) => string
-  jobNeedsExtraction: (job: DownloadJob) => boolean
   onPauseJob: (jobId: string) => Promise<void>
   onResumeJob: (jobId: string) => Promise<void>
   onCancelJob: (jobId: string) => Promise<void>
   onClearCompleted: () => Promise<void>
   onPauseAll: () => Promise<void>
   onOpenJobFolder: (jobId: string) => void
-  onExtractJob: (jobId: string) => void
   onPlayJob: (jobId: string) => void
   onGoDiscover: () => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
@@ -40,24 +34,14 @@ const FINISHED_STATUSES = new Set(['completed', 'extracted', 'skipped'])
 function queuePrimaryAction(
   job: DownloadJob,
   busyId: string | null,
-  jobNeedsExtraction: (job: DownloadJob) => boolean,
   onPauseJob: (jobId: string) => Promise<void>,
   onResumeJob: (jobId: string) => Promise<void>,
   onPlayJob: (jobId: string) => void,
-  onExtractJob: (jobId: string) => void,
 ) {
   if (job.status === 'extracted') {
     return {
       label: busyId === job.id ? 'Iniciando…' : 'Jogar',
       onClick: () => onPlayJob(job.id),
-      disabled: busyId === job.id,
-    }
-  }
-
-  if (job.status === 'completed' && jobNeedsExtraction(job)) {
-    return {
-      label: busyId === job.id ? 'Extraindo…' : 'Extrair',
-      onClick: () => onExtractJob(job.id),
       disabled: busyId === job.id,
     }
   }
@@ -106,34 +90,23 @@ function buildJobSections(jobs: DownloadJob[]) {
 export function DownloadsPage({
   jobs,
   queueLoading,
-  queueError,
   downloadsBooting,
   actionBusyId,
   isTorrentMetadataPhase,
   resolveJobProgressPercent,
   formatProgressPercent,
-  jobNeedsExtraction,
   onPauseJob,
   onResumeJob,
   onCancelJob,
   onClearCompleted,
   onPauseAll,
   onOpenJobFolder,
-  onExtractJob,
   onPlayJob,
   onGoDiscover,
   resolveCover,
   invalidateLocalCover,
 }: DownloadsPageProps) {
-  const [queueErrorDismissed, setQueueErrorDismissed] = useState(false)
   const downloadNow = useDownloadClock(jobs)
-  const displayQueueError =
-    queueError && !queueErrorDismissed ? formatUserError(queueError) : null
-
-  useEffect(() => {
-    setQueueErrorDismissed(false)
-  }, [queueError])
-
   const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
   const sections = buildJobSections(activeJobs)
   const canPauseAll = activeJobs.some((job) =>
@@ -155,11 +128,9 @@ export function DownloadsPage({
     const primary = queuePrimaryAction(
       job,
       actionBusyId,
-      jobNeedsExtraction,
       onPauseJob,
       onResumeJob,
       onPlayJob,
-      onExtractJob,
     )
     const canCancel =
       job.status !== 'cancelled' && !['completed', 'extracted'].includes(job.status)
@@ -175,6 +146,7 @@ export function DownloadsPage({
             localPath={cover.localPath}
             cached={cover.status === 'cached'}
             status={cover.status}
+            priority
             onLocalCoverError={() => invalidateLocalCover(job.title, cover.coverUrl)}
           />
         </div>
@@ -276,13 +248,6 @@ export function DownloadsPage({
             </button>
           ) : null}
         </div>
-      ) : null}
-
-      {displayQueueError ? (
-        <PageNotice
-          error={displayQueueError}
-          onDismiss={() => setQueueErrorDismissed(true)}
-        />
       ) : null}
 
       {sections.length > 0 ? (

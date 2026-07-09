@@ -191,16 +191,3 @@ pub async fn resolve_steam_details_for_app(
   }
   Some(details)
 }
-
-pub async fn resolve_steam_details_with_conn(
-  conn: &Connection,
-  title: &str,
-) -> Option<SteamGameDetails> {
-  let app_id = lookup_steam_app_id_local(conn, title).map(|(id, _)| id)?;
-  if let Some(cached) = read_cached_steam_details(conn, app_id) {
-    return Some(cached);
-  }
-  let details = fetch_steam_game_details(app_id).await?;
-  write_cached_steam_details(conn, &details);
-  Some(details)
-}

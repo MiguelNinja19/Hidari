@@ -1,8 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CatalogCover } from '../../shared/components/CatalogCover'
-import { InlineAlert } from '../../shared/components/InlineAlert'
-import { Loader } from '../../shared/components/Loader'
+import { PageCenterSpinner } from '../../shared/components/PageCenterSpinner'
 import { Button } from '../../shared/components/ui/Button'
 import type { DownloadOption, GameDetail } from '../../shared/types/contracts'
 import { catalogGameDisplayTitle } from '../../shared/utils/normalizeTitleKey'
@@ -117,15 +116,7 @@ export function GameDetailPage({
       </header>
 
       {loading ? (
-        <div className="game-detail__loading">
-          <Loader size="lg" label={t('gameDetail.loading')} />
-        </div>
-      ) : null}
-
-      {!loading && error ? (
-        <InlineAlert className="game-detail__alert" variant="error">
-          {error}
-        </InlineAlert>
+        <PageCenterSpinner label={t('gameDetail.loading')} />
       ) : null}
 
       {!loading && !error && game ? (
@@ -189,23 +180,22 @@ export function GameDetailPage({
                   const metaLine = pickOptionMetaLine(opt)
                   return (
                     <li key={`${opt.url}-${index}`}>
-                      <button
-                        type="button"
-                        className="game-detail__option"
-                        title={opt.title}
-                        disabled={busy}
-                        onClick={() =>
-                          void onEnqueue(opt.title, opt.url, game.coverUrl ?? coverUrl)
-                        }
-                      >
+                      <div className="game-detail__option" title={opt.title}>
                         <span className="game-detail__option-main">
                           <span className="game-detail__option-variant">{variant}</span>
                           <span className="game-detail__option-meta">{metaLine}</span>
                         </span>
-                        <span className="game-detail__option-action">
+                        <button
+                          type="button"
+                          className="game-detail__option-action"
+                          disabled={busy}
+                          onClick={() =>
+                            void onEnqueue(opt.title, opt.url, game.coverUrl ?? coverUrl)
+                          }
+                        >
                           {busy ? '…' : t('common.download')}
-                        </span>
-                      </button>
+                        </button>
+                      </div>
                     </li>
                   )
                 })}

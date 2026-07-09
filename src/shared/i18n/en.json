@@ -1,7 +1,6 @@
 {
   "nav": {
     "discover": "Discover",
-    "favorites": "Favorites",
     "downloads": "Downloads",
     "library": "Library",
     "settings": "Settings"
@@ -38,14 +37,6 @@
     "emptyDescription": "Download games from the catalog or import an existing folder.",
     "noResultsTitle": "No results",
     "noResultsDescription": "No games match the current filter."
-  },
-  "favorites": {
-    "title": "Favorites",
-    "subtitle": "Games you starred in the catalog.",
-    "openDetails": "View details",
-    "remove": "Remove",
-    "emptyTitle": "No favorites",
-    "emptyDescription": "Open a game in the catalog and tap Favorite to save it here."
   },
   "downloads": {
     "verified": "Verified",

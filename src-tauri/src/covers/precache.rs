@@ -508,12 +508,12 @@ pub fn attach_cover_urls_to_games(app: &AppHandle, games: &mut [crate::dto::Cata
 }
 
 #[derive(Clone)]
-struct CoverBatchRow {
+pub(crate) struct CoverBatchRow {
   url: String,
   local_path: Option<String>,
 }
 
-fn batch_lookup_cover_rows(
+pub(crate) fn batch_lookup_cover_rows(
   conn: &Connection,
   keys: &[String],
   covers_dir: &Path,
@@ -636,13 +636,31 @@ pub async fn resolve_covers_for_titles(
   let mut out = Vec::with_capacity(unique.len());
   let mut needs_network = Vec::new();
 
-  for title in unique {
-    if let Some((url, local)) = super::lookup_cover_row_for_title(&conn, &title) {
-      let local_cover_path = local.filter(|path| is_usable_cover_file(Path::new(path), &covers_dir));
+  let mut lookup_keys: Vec<String> = Vec::new();
+  let mut title_keys: Vec<(String, String, String)> = Vec::with_capacity(unique.len());
+  for title in &unique {
+    let key = crate::title::normalize_title_key(title);
+    let group = crate::title::catalog_game_group_key(title);
+    lookup_keys.push(key.clone());
+    if group != key {
+      lookup_keys.push(group.clone());
+    }
+    title_keys.push((title.clone(), key, group));
+  }
+  lookup_keys.sort_unstable();
+  lookup_keys.dedup();
+
+  let batch = batch_lookup_cover_rows(&conn, &lookup_keys, &covers_dir);
+
+  for (title, key, group) in title_keys {
+    let row = batch
+      .get(&key)
+      .or_else(|| batch.get(&group));
+    if let Some(row) = row {
       out.push(crate::dto::ResolvedCoverBatchItem {
         title: title.clone(),
-        cover_url: Some(url),
-        local_cover_path,
+        cover_url: Some(row.url.clone()),
+        local_cover_path: row.local_path.clone(),
       });
       continue;
     }
@@ -657,6 +675,8 @@ pub async fn resolve_covers_for_titles(
     }
     needs_network.push(title);
   }
+
+  drop(conn);
 
   if needs_network.is_empty() {
     return Ok(out);

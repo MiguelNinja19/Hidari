@@ -70,7 +70,7 @@ fn catalog_group_keys_ready(conn: &Connection) -> bool {
 #[derive(Debug, Clone)]
 pub struct CatalogTitleHit {
   pub title: String,
-  pub source_name: String,
+  pub _source_name: String,
   pub group_key: String,
   pub option_count: usize,
 }
@@ -178,7 +178,7 @@ fn search_distinct_catalog_titles_sql(
       let group_key: String = row.get(2)?;
       Ok(CatalogTitleHit {
         title: crate::title::catalog_game_display_title_from_group_key(&group_key),
-        source_name: row.get(1)?,
+        _source_name: row.get(1)?,
         group_key,
         option_count: row.get::<_, i64>(3)? as usize,
       })
@@ -239,7 +239,7 @@ fn search_distinct_catalog_titles_scan(
   let mut groups: HashMap<String, CatalogTitleHit> = HashMap::new();
 
   for row in rows.flatten() {
-    let (raw_title, source_name) = row;
+    let (raw_title, _source_name) = row;
     if !title_matches_query(&raw_title, query) {
       continue;
     }
@@ -255,7 +255,7 @@ fn search_distinct_catalog_titles_scan(
         group_key.clone(),
         CatalogTitleHit {
           title: crate::title::catalog_game_display_title_from_group_key(&group_key),
-          source_name,
+          _source_name,
           group_key,
           option_count: 1,
         },

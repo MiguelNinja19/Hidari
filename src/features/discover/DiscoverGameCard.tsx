@@ -65,19 +65,3 @@ export function DiscoverGameCard({
     </article>
   )
 }
-
-export function DiscoverGameCardSkeleton() {
-  return (
-    <li className="discover-grid__item">
-      <article className="discover-card discover-card--skeleton" aria-hidden="true">
-        <div className="discover-card__title-skeleton shimmer" />
-        <div className="discover-card__panel">
-          <div className="discover-card__cover discover-card__cover--skeleton" />
-          <div className="discover-card__body">
-            <div className="discover-card__cta-skeleton shimmer" />
-          </div>
-        </div>
-      </article>
-    </li>
-  )
-}

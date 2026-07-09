@@ -1,18 +1,13 @@
-import { createPortal } from 'react-dom'
 import { APP_LOCALE } from '../../shared/config/locale'
-import { InlineAlert } from '../../shared/components/InlineAlert'
 import type { Source } from '../../shared/types/contracts'
 
 type SettingsPageProps = {
   defaultDownloadPath: string
-  savePathError: string
   diskFreeBytes: number | null
   installOrganization: string
   afterInstallAction: string
   sources: Source[]
   sourcesLoading: boolean
-  sourcesError: string | null
-  toastMessage: string | null
   removeTemporaryFiles: boolean
   seedTorrentsEnabled: boolean
   downloadSpeedLimit: string
@@ -43,14 +38,11 @@ function formatGameCount(count: number): string {
 
 export function SettingsPage({
   defaultDownloadPath,
-  savePathError,
   diskFreeBytes,
   installOrganization,
   afterInstallAction,
   sources,
   sourcesLoading,
-  sourcesError,
-  toastMessage,
   removeTemporaryFiles,
   seedTorrentsEnabled,
   downloadSpeedLimit,
@@ -79,14 +71,6 @@ export function SettingsPage({
 
   return (
     <section className="settings-page">
-      {toastMessage
-        ? createPortal(
-            <div className="settings-toast" role="status" aria-live="polite">
-              {toastMessage}
-            </div>,
-            document.body,
-          )
-        : null}
       <div className="settings-stack">
         <div className="settings-stack__row">
           <section id="settings-folder" className="settings-block">
@@ -149,13 +133,7 @@ export function SettingsPage({
             </div>
 
             <footer className="settings-block__footer">
-              {savePathError ? (
-                <InlineAlert className="settings-block__alert" variant="error">
-                  {savePathError}
-                </InlineAlert>
-              ) : (
-                <span className="settings-block__footer-spacer" aria-hidden="true" />
-              )}
+              <span className="settings-block__footer-spacer" aria-hidden="true" />
               <button
                 className="btn btn-primary btn--compact"
                 type="button"
@@ -247,11 +225,6 @@ export function SettingsPage({
           </header>
 
           <div className="settings-block__body">
-            {sourcesError ? (
-              <InlineAlert className="settings-block__alert" variant="error">
-                {sourcesError}
-              </InlineAlert>
-            ) : null}
             {sources.length === 0 && !sourcesLoading ? (
               <p className="settings-block__hint">Nenhuma fonte importada ainda. Clique em Importar.</p>
             ) : (

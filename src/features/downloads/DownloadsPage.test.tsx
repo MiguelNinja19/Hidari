@@ -24,20 +24,17 @@ describe('DownloadsPage', () => {
       <DownloadsPage
         jobs={[baseJob]}
         queueLoading={false}
-        queueError={null}
         downloadsBooting={false}
         actionBusyId={null}
         isTorrentMetadataPhase={() => false}
         resolveJobProgressPercent={() => 100}
         formatProgressPercent={() => '100%'}
-        jobNeedsExtraction={() => false}
         onPauseJob={async () => {}}
         onResumeJob={async () => {}}
         onCancelJob={async () => {}}
         onClearCompleted={async () => {}}
         onPauseAll={async () => {}}
         onOpenJobFolder={() => {}}
-        onExtractJob={() => {}}
         onPlayJob={() => {}}
         onGoDiscover={() => {}}
         resolveCover={() => ({ coverUrl: null, localPath: null, status: 'idle' })}

@@ -47,4 +47,7 @@ export const tauriClient = {
       handler(event.payload),
     )
   },
+  listenLibraryFolderChanged(handler: () => void): Promise<() => void> {
+    return safeListen<Record<string, never>>('library://folder-changed', () => handler())
+  },
 }

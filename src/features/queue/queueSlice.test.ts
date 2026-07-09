@@ -82,6 +82,26 @@ describe('queueSlice', () => {
     expect(state.jobs[0]?.progress).toBe(0)
   })
 
+  it('propaga errorMsg do evento de progresso', () => {
+    const state = queueReducer(
+      {
+        jobs: [{ ...baseJob, status: 'downloading', errorMsg: null }],
+        ...baseState,
+      },
+      jobProgressReceived({
+        jobId: 'job-1',
+        progress: 0,
+        status: 'failed',
+        speedBytesPerSec: 0,
+        etaSeconds: 0,
+        errorMsg: 'torrent_client_exit_code: exit code: 13',
+      }),
+    )
+
+    expect(state.jobs[0]?.status).toBe('failed')
+    expect(state.jobs[0]?.errorMsg).toContain('exit code: 13')
+  })
+
   it('ignora progress inflado sem bytes no magnet', () => {
     const state = queueReducer(
       {

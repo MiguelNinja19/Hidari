@@ -16,15 +16,6 @@ const tabs: TabDef[] = [
     ),
   },
   {
-    id: 'favorites',
-    labelKey: 'nav.favorites',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.3L12 15.8 7.2 17.8l.9-5.3L4.2 8.7l5.4-.8L12 3z" />
-      </svg>
-    ),
-  },
-  {
     id: 'downloads',
     labelKey: 'nav.downloads',
     icon: (
@@ -70,12 +61,6 @@ export function Sidebar({ activeTab, activeDownloadsCount, onTabChange }: Sideba
 
   return (
     <aside className="sidebar">
-      <div className="sidebar__logo">
-        <span className="sidebar__logo-mark" aria-hidden="true">
-          HX
-        </span>
-        <span className="sidebar__logo-name">HYDRAX</span>
-      </div>
       <nav className="sidebar__nav" aria-label="Navegação">
         {tabs.map((tab) => (
           <button

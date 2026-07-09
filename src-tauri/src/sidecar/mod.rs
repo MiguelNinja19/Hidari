@@ -8,10 +8,10 @@ pub use commands::{
   sidecar_open_job_folder, sidecar_pause_job, sidecar_resume_job, sidecar_status,
 };
 pub use engine::{
-  ensure_sidecar_running, pause_all_active_sidecar_jobs,
+  ensure_sidecar_running, graceful_app_quit,
   spawn_download_engine, spawn_sidecar_progress_watcher,
 };
 pub use extraction::{
   emit_extract_status, extract_job_archive, process_job_extraction, process_job_post_download,
-  spawn_extraction_watcher, verify_download_payload,
+  spawn_extraction_watcher,
 };
