@@ -31,6 +31,9 @@ jobs:
       - name: Setup sidecar binaries
         run: npm run setup:binaries
 
+      - name: Build frontend
+        run: npm run build
+
       - name: Build Tauri app
         run: npm run tauri:build
 

@@ -16,6 +16,7 @@
     "test:all": "npm test && npm run test:rust",
     "preview": "vite preview",
     "setup:binaries": "node scripts/setup-binaries.mjs",
+    "icon:build": "python scripts/build_hidari_icon.py && tauri icon hidari-icon-1024.png",
     "postinstall": "node scripts/setup-binaries.mjs"
   },
   "dependencies": {

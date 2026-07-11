@@ -111,6 +111,15 @@ Em desenvolvimento, o launcher também procura estes ficheiros em src-tauri/.
 
 async function main() {
   console.log('Configurando binários do launcher...')
+  if (process.platform !== 'win32') {
+    console.log(
+      `Plataforma ${process.platform}: a saltar download de binários Windows (.exe).`,
+    )
+    await mkdir(binariesDir, { recursive: true })
+    await writeReadme()
+    console.log('Setup concluído (sem sidecars Windows).')
+    return
+  }
   await ensure7Zip()
   await syncBundledTools()
   await writeReadme()
