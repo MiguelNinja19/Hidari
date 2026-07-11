@@ -1,6 +1,8 @@
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
+import { localeForLanguage, isAppLanguage, type AppLanguage } from '../../shared/config/locale'
+import type { LibraryStatusMeta } from './libraryItemState'
 import { CatalogCover } from '../../shared/components/CatalogCover'
-import { EmptyState } from '../../shared/components/EmptyState'
 import { LibraryGameCard } from './LibraryGameCard'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { LibrarySortToggle } from './LibrarySortToggle'
@@ -14,15 +16,25 @@ import {
 } from './LibraryController'
 import type { LibraryControllerValue } from './LibraryController'
 
-import type { GameTileAction } from '../../shared/components/GameTile'
+import type { GameTileAction } from '../../shared/components/GameTileAction'
+
+function formatStatusPct(pct: number, language: AppLanguage): string {
+  const decimal = localeForLanguage(language) === 'en-US' ? '.' : ','
+  return `${pct.toFixed(1).replace('.', decimal)}%`
+}
 
 function libraryStatusLine(
-  status: { label: string; tone: string },
+  meta: LibraryStatusMeta,
   primary: GameTileAction | null,
+  t: TFunction,
+  language: AppLanguage,
 ): string | null {
-  if (status.tone === 'ready' || status.tone === 'waiting') return null
+  if (meta.tone === 'ready' || meta.tone === 'waiting') return null
   if (primary?.id === 'play' || primary?.id === 'install') return null
-  return status.label
+  if (meta.pct != null) {
+    return t(meta.labelKey, { pct: formatStatusPct(meta.pct, language) })
+  }
+  return t(meta.labelKey)
 }
 
 function busyKey(item: LibraryEntry) {
@@ -31,6 +43,7 @@ function busyKey(item: LibraryEntry) {
 
 function buildLibraryActions(
   item: LibraryEntry,
+  t: TFunction,
   ctx: {
     key: string
     canPlay: boolean
@@ -40,10 +53,11 @@ function buildLibraryActions(
     canDelete: boolean
     playBusyId: string | null
     installBusyId: string | null
+    installingKeys: ReadonlySet<string>
     handlePlayLibraryItem: (item: LibraryEntry) => Promise<void>
     handleInstallItem: (item: LibraryEntry) => Promise<void>
     handlePickGameInstallFolder: LibraryControllerValue['handlePickGameInstallFolder']
-    handleDeleteLibraryItem: (item: LibraryEntry) => Promise<void>
+    handleDeleteLibraryItem: (item: LibraryEntry) => void
     onResumeItem: (id: string) => Promise<void>
     onOpenLocalPath: (path: string) => Promise<void>
     setActiveTabDownloads: () => void
@@ -54,8 +68,8 @@ function buildLibraryActions(
   const addOpenFolder = () => {
     secondary.push({
       id: 'open',
-      label: 'Pasta',
-      title: 'Abrir pasta de download',
+      label: t('library.openFolder'),
+      title: t('library.openFolderTitle'),
       variant: 'outline',
       onClick: () => void ctx.onOpenLocalPath(item.destPath),
     })
@@ -64,8 +78,8 @@ function buildLibraryActions(
   const addLocate = () => {
     secondary.push({
       id: 'locate',
-      label: 'Localizar',
-      title: 'Indicar onde o jogo foi instalado',
+      label: t('library.locate'),
+      title: t('library.locateTitle'),
       variant: 'outline',
       disabled: ctx.installBusyId === ctx.key,
       onClick: () =>
@@ -81,24 +95,26 @@ function buildLibraryActions(
   const addDelete = () => {
     secondary.push({
       id: 'delete',
-      label: 'Excluir',
-      title: 'Excluir da biblioteca',
+      label: t('common.delete'),
+      title: t('library.deleteTitle'),
       variant: 'danger',
       onClick: () => void ctx.handleDeleteLibraryItem(item),
     })
   }
 
   if (ctx.canInstall) {
+    const isInstallBusy =
+      ctx.installBusyId === ctx.key || ctx.installingKeys.has(ctx.key)
     addOpenFolder()
     if (ctx.canLocate) addLocate()
     if (ctx.canDelete) addDelete()
     return {
       primary: {
         id: 'install',
-        label: ctx.installBusyId === ctx.key ? 'Abrindo…' : 'Instalar',
-        title: 'Abrir o instalador do jogo',
+        label: isInstallBusy ? t('library.installing') : t('common.install'),
+        title: isInstallBusy ? t('library.installingTitle') : t('library.installTitle'),
         variant: 'primary',
-        disabled: ctx.installBusyId === ctx.key,
+        disabled: isInstallBusy,
         onClick: () => void ctx.handleInstallItem(item),
       },
       secondary,
@@ -111,8 +127,8 @@ function buildLibraryActions(
     return {
       primary: {
         id: 'play',
-        label: ctx.playBusyId === ctx.key ? 'Iniciando…' : 'Jogar',
-        title: 'Iniciar o jogo',
+        label: ctx.playBusyId === ctx.key ? t('library.playStarting') : t('common.play'),
+        title: t('library.playTitle'),
         variant: 'primary',
         disabled: ctx.playBusyId === ctx.key,
         onClick: () => void ctx.handlePlayLibraryItem(item),
@@ -129,8 +145,8 @@ function buildLibraryActions(
     return {
       primary: {
         id: 'queue',
-        label: 'Ver download',
-        title: 'Ir para a fila de downloads',
+        label: t('library.viewDownload'),
+        title: t('library.viewDownloadTitle'),
         variant: 'primary',
         onClick: ctx.setActiveTabDownloads,
       },
@@ -143,8 +159,8 @@ function buildLibraryActions(
     return {
       primary: {
         id: 'resume',
-        label: 'Retomar download',
-        title: 'Continuar o download',
+        label: t('library.resumeDownload'),
+        title: t('library.resumeDownloadTitle'),
         variant: 'primary',
         onClick: () => void ctx.onResumeItem(item.id),
       },
@@ -156,8 +172,8 @@ function buildLibraryActions(
     return {
       primary: {
         id: 'pending',
-        label: 'A verificar…',
-        title: 'A verificar se o jogo está instalado',
+        label: t('common.loading'),
+        title: t('library.locateTitle'),
         variant: 'primary',
         disabled: true,
         onClick: () => {},
@@ -172,8 +188,8 @@ function buildLibraryActions(
     return {
       primary: {
         id: 'locate-primary',
-        label: ctx.installBusyId === ctx.key ? 'Abrindo…' : 'Localizar pasta',
-        title: 'Selecionar a pasta onde o jogo foi instalado',
+        label: ctx.installBusyId === ctx.key ? t('library.installOpening') : t('library.locateFolder'),
+        title: t('library.locateFolderTitle'),
         variant: 'primary',
         disabled: ctx.installBusyId === ctx.key,
         onClick: () =>
@@ -193,8 +209,8 @@ function buildLibraryActions(
   return {
     primary: {
       id: 'open-primary',
-      label: 'Abrir pasta',
-      title: 'Abrir pasta no Explorer',
+      label: t('library.openExplorer'),
+      title: t('library.openExplorerTitle'),
       variant: 'outline',
       onClick: () => void ctx.onOpenLocalPath(item.destPath),
     },
@@ -203,14 +219,15 @@ function buildLibraryActions(
 }
 
 export function LibraryPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const currentLanguage: AppLanguage = isAppLanguage(i18n.language) ? i18n.language : 'pt-BR'
   const {
     filteredEntries,
-    libraryReady,
     libraryFilter,
     librarySort,
     playBusyId,
     installBusyId,
+    installingKeys,
     setLibraryFilter,
     setLibrarySort,
     onGoDownloads,
@@ -231,7 +248,6 @@ export function LibraryPage() {
   } = useLibraryItemHelpers()
   const onResumeItem = useLibraryResumeItem()
   const onOpenLocalPath = useOpenLocalPath()
-  const hasActiveFilter = libraryFilter.trim().length > 0
 
   return (
     <section className="library-page">
@@ -251,7 +267,7 @@ export function LibraryPage() {
       {filteredEntries.length > 0 ? (
         <ul className="library-grid">
           {filteredEntries.map((item) => {
-            const status = libraryStatusMeta(item)
+            const statusMeta = libraryStatusMeta(item)
             const cover = resolveCover(item.title)
             const key = busyKey(item)
             const canPlay = showPlayAction(item)
@@ -261,7 +277,7 @@ export function LibraryPage() {
             const canDelete = true
             const manualRoot = hasManualInstallRoot(item)
 
-            const { primary, secondary } = buildLibraryActions(item, {
+            const { primary, secondary } = buildLibraryActions(item, t, {
               key,
               canPlay,
               canInstall,
@@ -270,6 +286,7 @@ export function LibraryPage() {
               canDelete,
               playBusyId,
               installBusyId,
+              installingKeys,
               handlePlayLibraryItem,
               handleInstallItem,
               handlePickGameInstallFolder,
@@ -279,7 +296,7 @@ export function LibraryPage() {
               setActiveTabDownloads: onGoDownloads,
             })
 
-            const statusLine = libraryStatusLine(status, primary)
+            const statusLine = libraryStatusLine(statusMeta, primary, t, currentLanguage)
 
             return (
               <li key={item.id} className="library-grid__item">
@@ -287,8 +304,10 @@ export function LibraryPage() {
                   title={cleanTitleForDisplay(item.title)}
                   titleAttr={[
                     cleanTitleForDisplay(item.title),
-                    status.label,
-                    manualRoot ? 'Pasta indicada manualmente' : '',
+                    statusMeta.pct != null
+                      ? t(statusMeta.labelKey, { pct: formatStatusPct(statusMeta.pct, currentLanguage) })
+                      : t(statusMeta.labelKey),
+                    manualRoot ? t('library.manualFolder') : '',
                   ]
                     .filter(Boolean)
                     .join(' · ')}
@@ -311,13 +330,6 @@ export function LibraryPage() {
             )
           })}
         </ul>
-      ) : null}
-
-      {filteredEntries.length === 0 && hasActiveFilter && libraryReady ? (
-        <EmptyState
-          title={t('library.noResultsTitle')}
-          description={t('library.noResultsDescription')}
-        />
       ) : null}
     </section>
   )

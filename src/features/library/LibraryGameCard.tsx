@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import type { GameTileAction } from '../../shared/components/GameTile'
+import { useTranslation } from 'react-i18next'
+import type { GameTileAction } from '../../shared/components/GameTileAction'
 
 type LibraryGameCardProps = {
   title: string
@@ -18,6 +19,7 @@ export function LibraryGameCard({
   primaryAction = null,
   secondaryActions = [],
 }: LibraryGameCardProps) {
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const menuId = useId()
@@ -70,7 +72,7 @@ export function LibraryGameCard({
             <button
               type="button"
               className="library-card__menu-trigger"
-              aria-label="Mais opções"
+              aria-label={t('library.moreOptions')}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               aria-controls={menuId}

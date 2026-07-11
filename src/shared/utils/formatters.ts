@@ -1,5 +1,5 @@
 import type { DownloadJob } from '../../shared/types/contracts'
-import { isTorrentMetadataPhase, metadataPhaseDetail } from './jobProgress'
+import { isTorrentMetadataPhase } from './jobProgress'
 
 export function formatSpeed(speedBytesPerSec?: number) {
   const speed = speedBytesPerSec ?? 0
@@ -62,12 +62,4 @@ export function showEtaForJob(job: DownloadJob) {
   if (job.status !== 'downloading' && job.status !== 'retrying') return false
   const eta = job.etaSeconds
   return eta != null && Number.isFinite(eta) && eta > 0 && eta < 86400 * 2
-}
-
-export function jobTransferDetail(job: DownloadJob, downloadNow: number) {
-  if (isTorrentMetadataPhase(job)) {
-    return metadataPhaseDetail(job, downloadNow)
-  }
-  const total = job.totalBytes > 0 ? formatSize(job.totalBytes) : 'tamanho desconhecido'
-  return `${formatSize(job.bytesDownloaded)} / ${total}`
 }

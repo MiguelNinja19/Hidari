@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAppDispatch } from '../../app/hooks'
 import {
   cancelJob,
@@ -21,42 +22,35 @@ import type { DownloadJob } from '../../shared/types/contracts'
 
 type DownloadsTabProps = {
   jobs: DownloadJob[]
-  queueLoading: boolean
   queueError: string | null
-  downloadsBooting: boolean
-  onGoDiscover: () => void
 }
 
 function DownloadsTabContent({
   jobs,
-  queueLoading,
   queueError,
-  downloadsBooting,
-  onGoDiscover,
 }: DownloadsTabProps) {
   const dispatch = useAppDispatch()
   const { resolveCover, invalidateLocalCover } = useCovers()
   const { showError } = useToast()
+  const { t } = useTranslation()
   const [actionBusyId, setActionBusyId] = useState<string | null>(null)
 
-  useErrorToast(queueError, 'Falha na fila de downloads.')
+  useErrorToast(queueError, t('downloads.queueError'))
 
   const runJobAction = useCallback(async (jobId: string, action: () => Promise<void>) => {
     setActionBusyId(jobId)
     try {
       await action()
     } catch (error) {
-      showError(formatUserError(error, 'Falha na operação.'))
+      showError(formatUserError(error, t('downloads.operationError')))
     } finally {
       setActionBusyId(null)
     }
-  }, [showError])
+  }, [showError, t])
 
   return (
     <DownloadsPage
       jobs={jobs}
-      queueLoading={queueLoading}
-      downloadsBooting={downloadsBooting}
       isTorrentMetadataPhase={isTorrentMetadataPhase}
       resolveJobProgressPercent={resolveJobProgressPercent}
       formatProgressPercent={formatProgressPercent}
@@ -88,7 +82,7 @@ function DownloadsTabContent({
         try {
           await Promise.all(active.map((job) => dispatch(pauseJob(job.id)).unwrap()))
         } catch (error) {
-          showError(formatUserError(error, 'Falha ao pausar downloads.'))
+          showError(formatUserError(error, t('downloads.pauseAllError')))
         } finally {
           setActionBusyId(null)
         }
@@ -99,7 +93,6 @@ function DownloadsTabContent({
           await queueApi.launchJob(id)
         })
       }
-      onGoDiscover={onGoDiscover}
       resolveCover={resolveCover}
       invalidateLocalCover={invalidateLocalCover}
     />

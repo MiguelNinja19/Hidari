@@ -28,6 +28,7 @@ export type LibraryControllerValue = {
   librarySort: LibrarySort
   playBusyId: string | null
   installBusyId: string | null
+  installingKeys: ReadonlySet<string>
   setLibraryFilter: (value: string) => void
   setLibrarySort: (value: LibrarySort) => void
   onGoDownloads: () => void
@@ -43,7 +44,11 @@ export type LibraryControllerValue = {
     busyKey: string,
     jobId?: string,
   ) => Promise<void>
-  handleDeleteLibraryItem: (item: LibraryEntry) => Promise<void>
+  handleDeleteLibraryItem: (item: LibraryEntry) => void
+  handleConfirmDeleteLibraryItem: () => Promise<void>
+  handleCancelDeleteLibraryItem: () => void
+  pendingDeleteItem: LibraryEntry | null
+  deletingLibraryKey: string | null
 }
 
 const LibraryControllerContext = createContext<LibraryControllerValue | null>(null)
@@ -70,9 +75,15 @@ export function useLibraryController(): LibraryControllerValue {
 
 /** Helpers expostos ao LibraryPage via contexto (evita prop drilling). */
 export function useLibraryItemHelpers() {
-  const { jobs, pathStateByKey, defaultDownloadPath } = useLibraryController()
+  const { jobs, pathStateByKey, defaultDownloadPath, installingKeys } = useLibraryController()
+
+  const itemBusyKey = (item: LibraryEntry) => (item.kind === 'job' ? item.id : item.destPath)
+
   return {
-    libraryStatusMeta: (item: LibraryEntry) => libraryStatusMeta(item, jobs, pathStateByKey),
+    libraryStatusMeta: (item: LibraryEntry) =>
+      libraryStatusMeta(item, jobs, pathStateByKey, {
+        installing: installingKeys.has(itemBusyKey(item)),
+      }),
     showPlayAction: (item: LibraryEntry) => showPlayAction(item, jobs, pathStateByKey),
     showInstallAction: (item: LibraryEntry) => showInstallAction(item, jobs, pathStateByKey),
     showLocateInstallAction: (item: LibraryEntry) =>

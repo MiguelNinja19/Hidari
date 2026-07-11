@@ -1,5 +1,6 @@
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { CatalogCover } from '../../shared/components/CatalogCover'
-import { DownloadsEmpty } from './DownloadsEmpty'
 import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
 import { Button } from '../../shared/components/ui/Button'
 import { formatDownloadError } from '../../shared/utils/downloadErrors'
@@ -11,8 +12,6 @@ import { resolveJobVerificationStatus } from '../../shared/utils/jobVerification
 
 type DownloadsPageProps = {
   jobs: DownloadJob[]
-  queueLoading: boolean
-  downloadsBooting: boolean
   actionBusyId: string | null
   isTorrentMetadataPhase: (job: DownloadJob) => boolean
   resolveJobProgressPercent: (job: DownloadJob, now?: number) => number
@@ -24,7 +23,6 @@ type DownloadsPageProps = {
   onPauseAll: () => Promise<void>
   onOpenJobFolder: (jobId: string) => void
   onPlayJob: (jobId: string) => void
-  onGoDiscover: () => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
   invalidateLocalCover: (title: string, coverUrl?: string | null) => void
 }
@@ -34,13 +32,14 @@ const FINISHED_STATUSES = new Set(['completed', 'extracted', 'skipped'])
 function queuePrimaryAction(
   job: DownloadJob,
   busyId: string | null,
+  t: TFunction,
   onPauseJob: (jobId: string) => Promise<void>,
   onResumeJob: (jobId: string) => Promise<void>,
   onPlayJob: (jobId: string) => void,
 ) {
   if (job.status === 'extracted') {
     return {
-      label: busyId === job.id ? 'Iniciando…' : 'Jogar',
+      label: busyId === job.id ? t('downloads.playStarting') : t('common.play'),
       onClick: () => onPlayJob(job.id),
       disabled: busyId === job.id,
     }
@@ -48,14 +47,14 @@ function queuePrimaryAction(
 
   if (job.status === 'paused' || job.status === 'failed') {
     return {
-      label: 'Retomar',
+      label: t('common.resume'),
       onClick: () => void onResumeJob(job.id),
     }
   }
 
   if (['downloading', 'pending', 'retrying', 'seeding'].includes(job.status)) {
     return {
-      label: 'Pausar',
+      label: t('common.pause'),
       onClick: () => void onPauseJob(job.id),
     }
   }
@@ -63,7 +62,7 @@ function queuePrimaryAction(
   return null
 }
 
-function buildJobSections(jobs: DownloadJob[]) {
+function buildJobSections(jobs: DownloadJob[], t: TFunction) {
   const inProgress = jobs.filter((job) => !FINISHED_STATUSES.has(job.status))
   const finished = jobs.filter((job) => FINISHED_STATUSES.has(job.status))
   const sections: { key: string; title: string | null; jobs: DownloadJob[] }[] = []
@@ -71,7 +70,7 @@ function buildJobSections(jobs: DownloadJob[]) {
   if (inProgress.length > 0) {
     sections.push({
       key: 'active',
-      title: finished.length > 0 ? 'Em andamento' : null,
+      title: finished.length > 0 ? t('downloads.inProgress') : null,
       jobs: inProgress,
     })
   }
@@ -79,7 +78,7 @@ function buildJobSections(jobs: DownloadJob[]) {
   if (finished.length > 0) {
     sections.push({
       key: 'done',
-      title: inProgress.length > 0 ? 'Concluídos' : null,
+      title: inProgress.length > 0 ? t('downloads.completed') : null,
       jobs: finished,
     })
   }
@@ -89,8 +88,6 @@ function buildJobSections(jobs: DownloadJob[]) {
 
 export function DownloadsPage({
   jobs,
-  queueLoading,
-  downloadsBooting,
   actionBusyId,
   isTorrentMetadataPhase,
   resolveJobProgressPercent,
@@ -102,19 +99,17 @@ export function DownloadsPage({
   onPauseAll,
   onOpenJobFolder,
   onPlayJob,
-  onGoDiscover,
   resolveCover,
   invalidateLocalCover,
 }: DownloadsPageProps) {
+  const { t } = useTranslation()
   const downloadNow = useDownloadClock(jobs)
   const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
-  const sections = buildJobSections(activeJobs)
+  const sections = buildJobSections(activeJobs, t)
   const canPauseAll = activeJobs.some((job) =>
     ['downloading', 'pending', 'retrying', 'seeding'].includes(job.status),
   )
   const canClearCompleted = activeJobs.some((job) => FINISHED_STATUSES.has(job.status))
-  const isBootstrapping = (queueLoading || downloadsBooting) && activeJobs.length === 0
-  const showEmpty = activeJobs.length === 0 && !isBootstrapping
 
   const progressWidth = (job: DownloadJob) => {
     const value = resolveJobProgressPercent(job)
@@ -128,6 +123,7 @@ export function DownloadsPage({
     const primary = queuePrimaryAction(
       job,
       actionBusyId,
+      t,
       onPauseJob,
       onResumeJob,
       onPlayJob,
@@ -162,11 +158,11 @@ export function DownloadsPage({
                   className={`download-row__verify-badge download-row__verify-badge--${verificationStatus}`}
                   title={
                     verificationStatus === 'verified'
-                      ? 'Download verificado'
-                      : 'Falha na verificação do download'
+                      ? t('downloads.verifiedTitle')
+                      : t('downloads.verifyFailedTitle')
                   }
                 >
-                  {verificationStatus === 'verified' ? 'Verificado' : 'Verificação falhou'}
+                  {verificationStatus === 'verified' ? t('downloads.verified') : t('downloads.verifyFailed')}
                 </span>
               ) : null}
               <span className="download-row__percent">{formatProgressPercent(job)}</span>
@@ -208,7 +204,7 @@ export function DownloadsPage({
               disabled={actionBusyId === job.id}
               onClick={() => onOpenJobFolder(job.id)}
             >
-              Pasta
+              {t('common.openFolder')}
             </button>
           ) : null}
           {canCancel ? (
@@ -217,7 +213,7 @@ export function DownloadsPage({
               className="btn btn-outline btn--compact download-row__btn download-row__btn--danger"
               onClick={() => void onCancelJob(job.id)}
             >
-              Cancelar
+              {t('common.cancel')}
             </button>
           ) : null}
         </div>
@@ -235,7 +231,7 @@ export function DownloadsPage({
               type="button"
               onClick={() => void onPauseAll()}
             >
-              Pausar todos
+              {t('downloads.pauseAll')}
             </button>
           ) : null}
           {canClearCompleted ? (
@@ -244,7 +240,7 @@ export function DownloadsPage({
               type="button"
               onClick={() => void onClearCompleted()}
             >
-              Limpar concluídos
+              {t('downloads.clearCompleted')}
             </button>
           ) : null}
         </div>
@@ -261,8 +257,6 @@ export function DownloadsPage({
             </section>
           ))}
         </div>
-      ) : showEmpty ? (
-        <DownloadsEmpty onGoDiscover={onGoDiscover} />
       ) : null}
     </section>
   )

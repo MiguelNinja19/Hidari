@@ -1,12 +1,148 @@
 export function normalizeTitleKey(title: string): string {
   return title
     .toLowerCase()
-    .replace(/[™®©]/g, '')
+    .replace(/[™®©'’]/g, '')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 6)
     .join(' ')
+}
+
+const COLON_UPDATE_SUFFIX_WORDS = new Set([
+  'beyond',
+  'next',
+  'waypoint',
+  'leviathan',
+  'endurance',
+  'synthesis',
+  'vision',
+  'prisms',
+  'worlds',
+  'frontiers',
+  'aberration',
+  'extinction',
+  'genesis',
+  'crystal',
+  'isle',
+  'scorched',
+  'ragnarok',
+  'valguero',
+  'aquatica',
+  'ascendancy',
+  'specters',
+  'liberty',
+  'phantom',
+  'rebirth',
+  'apocalypse',
+  'forsaken',
+  'royale',
+  'chapter',
+  'season',
+  'episode',
+  'operation',
+  'protocol',
+  'overhaul',
+  'expansion',
+  'anniversary',
+  'remastered',
+])
+
+const TRAILING_NOISE_TOKENS = new Set([
+  ...COLON_UPDATE_SUFFIX_WORDS,
+  'update',
+  'updates',
+  'patch',
+  'patches',
+  'hotfix',
+  'repack',
+  'build',
+  'builds',
+  'dlc',
+  'dlcs',
+  'bonus',
+  'bonuses',
+  'rmulti',
+  'part',
+  'chapter',
+  'episode',
+  'season',
+  'pack',
+  'bundle',
+  'remaster',
+  'i',
+  'ii',
+  'iii',
+  'iv',
+])
+
+function isVersionFragmentToken(token: string): boolean {
+  const t = token.toLowerCase()
+  if (t.startsWith('v') && t.length > 1) {
+    return [...t.slice(1)].every((c) => /\d|\./.test(c))
+  }
+  if (t.includes('.')) {
+    return [...t].every((c) => /\d|\./.test(c))
+  }
+  return false
+}
+
+function isTrailingNoiseToken(token: string): boolean {
+  const t = token.toLowerCase()
+  if (TRAILING_NOISE_TOKENS.has(t)) return true
+  if (isVersionFragmentToken(t)) return true
+  if (t.startsWith('multi') && t.length <= 8) return true
+  return false
+}
+
+function canonicalCatalogGroupKey(groupKey: string): string {
+  const tokens = groupKey.split(/\s+/).filter(Boolean)
+  if (tokens.length >= 2) {
+    const last = tokens[tokens.length - 1]!.toLowerCase()
+    const prev = tokens[tokens.length - 2]!.toLowerCase()
+    if (prev === 'sky' && ['origins', 'beyond', 'next', 'waypoint'].includes(last)) {
+      tokens.pop()
+    }
+  }
+
+  let afterVersion = false
+  while (tokens.length > 0) {
+    const last = tokens[tokens.length - 1]!
+    const lower = last.toLowerCase()
+    if (isTrailingNoiseToken(lower)) {
+      tokens.pop()
+      afterVersion = isVersionFragmentToken(lower)
+      continue
+    }
+    if (afterVersion && /^\d{1,3}$/.test(lower)) {
+      tokens.pop()
+      afterVersion = false
+      continue
+    }
+    break
+  }
+  return tokens.join(' ')
+}
+
+function stripColonUpdateSuffix(title: string): string {
+  const trimmed = title.trim()
+  const idx = trimmed.indexOf(':')
+  if (idx < 0) return trimmed
+  const after = trimmed.slice(idx + 1).trim()
+  if (!after || after.includes(':')) return trimmed
+  if (after.split(/\s+/).length > 1) return trimmed
+  if (COLON_UPDATE_SUFFIX_WORDS.has(after.toLowerCase())) {
+    return trimmed.slice(0, idx).trim()
+  }
+  return trimmed
+}
+
+function extractCatalogBaseTitleOnce(title: string): string {
+  const normalized = title.replace(/[™®©]/g, '').trim()
+  if (!normalized) return ''
+  const match = normalized.match(CATALOG_BASE_TITLE_RE)
+  const base = match?.[1]?.trim() || normalized
+  return stripTrailingVersionSuffix(base)
 }
 
 export function cleanTitleForCover(title: string): string {
@@ -18,27 +154,36 @@ export function cleanTitleForCover(title: string): string {
     .trim()
 }
 
-/** Um único regex: extrai só o nome do jogo. */
-export const CATALOG_BASE_TITLE_RE =
-  /^\s*(.+?)(?:\s*:\s*.+|\s*-\s+(?:v?\d[\d.]*|fitgirl|update|repack|build\b).+|\s*\([^)]*\)|\s*\[[^\]]*\])?\s*$/i
+/** Extrai o nome do jogo: remove edições/versões/repack, mas mantém subtítulos (ex.: Spider-Man: Miles Morales). */
+const CATALOG_BASE_TITLE_RE =
+  /^\s*(.+?)(?:\s*:\s*.*?\b(?:edition|remastered|remake|definitive|goty|game of the year|deluxe|ultimate|enhanced|complete collection)\b.*|\s*-\s+(?:v?\d[\d.]*|fitgirl|update|repack|build\b).+|\s*\([^)]*\)|\s*\[[^\]]*\])?\s*$/i
 
 /** Remove sufixo de versão e tudo o que vier depois (ex.: "V1 0 466", "v1.4.4.1 - Labor of Love"). */
-export const TRAILING_VERSION_SUFFIX_RE =
+const TRAILING_VERSION_SUFFIX_RE =
   /\s+v(?:er(?:sion)?)?[\s.]*\d+(?:[\s._-]\d+)*(?:\s*-\s*)?.*$/i
 
-export function stripTrailingVersionSuffix(title: string): string {
+function stripTrailingVersionSuffix(title: string): string {
   return title.replace(TRAILING_VERSION_SUFFIX_RE, '').trim()
 }
 
-export function extractCatalogBaseTitle(title: string): string {
-  const normalized = decodeHtmlEntities(title.trim())
-    .replace(/[™®©]/g, '')
+function extractCatalogBaseTitle(title: string): string {
+  let working = cleanTitleForCover(title)
+    .replace(/\(.*?fitgirl.*?\)/gi, '')
+    .replace(/fitgirl[- ]?repack/gi, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(/,?\s*builds?\s+[\d/]+/gi, '')
+    .replace(/,?\s*\+?\s*\d+\s*dlcs?(?:\/bonuses?)?/gi, '')
+    .replace(/,?\s*\+?\s*bonuses?/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
-  if (!normalized) return ''
-  const match = normalized.match(CATALOG_BASE_TITLE_RE)
-  const base = match?.[1]?.trim() || normalized
-  return stripTrailingVersionSuffix(base)
+  if (!working) return ''
+
+  for (let i = 0; i < 8; i += 1) {
+    const next = stripColonUpdateSuffix(extractCatalogBaseTitleOnce(working))
+    if (next === working) return next
+    working = next
+  }
+  return working
 }
 
 export function catalogGameDisplayTitle(title: string): string {
@@ -110,7 +255,7 @@ export function coverTitleKeyCandidates(title: string): string[] {
 
 /** Chave de agrupamento do catálogo (espelha `catalog_game_group_key` no backend). */
 export function catalogGameGroupKey(title: string): string {
-  return normalizeTitleKey(extractCatalogBaseTitle(title))
+  return canonicalCatalogGroupKey(normalizeTitleKey(extractCatalogBaseTitle(title)))
 }
 
 /** Chaves possíveis para o mesmo jogo (repack, pasta, job). */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   catalogGameDisplayTitle,
+  catalogGameGroupKey,
   cleanTitleForCover,
   cleanTitleForDisplay,
   coverTitleKey,
@@ -33,6 +34,33 @@ describe('catalogGameDisplayTitle', () => {
     expect(catalogGameDisplayTitle('Terraria v1.4.4.1 - Labor of Love Update')).toBe(
       'Terraria',
     )
+  })
+
+  it('mantém subtítulos distintos após dois pontos', () => {
+    expect(catalogGameDisplayTitle('Spider-Man: Shattered Dimensions [FitGirl]')).toBe(
+      'Spider-man: Shattered Dimensions',
+    )
+    expect(catalogGameDisplayTitle('Spider-Man: Miles Morales')).toBe(
+      'Spider-man: Miles Morales',
+    )
+  })
+
+  it('remove só edições após dois pontos', () => {
+    expect(
+      catalogGameDisplayTitle(
+        'ELDEN RING: Deluxe Edition (v1.02 + DLC + Bonus Content, MULTi14)',
+      ),
+    ).toBe('Elden Ring')
+  })
+})
+
+describe('catalogGameGroupKey', () => {
+  it('não colapsa jogos Spider-Man com subtítulos diferentes', () => {
+    const shattered = catalogGameGroupKey('Spider-Man: Shattered Dimensions [FitGirl Repack]')
+    const miles = catalogGameGroupKey('Spider-Man: Miles Morales (v1.0)')
+    expect(shattered).not.toBe(miles)
+    expect(shattered).toContain('shattered')
+    expect(miles).toContain('miles')
   })
 })
 

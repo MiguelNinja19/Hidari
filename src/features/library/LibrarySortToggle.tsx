@@ -17,7 +17,7 @@ export function LibrarySortToggle({ value, onChange }: LibrarySortToggleProps) {
   const { t } = useTranslation()
 
   return (
-    <div className="library-sort-toggle" role="group" aria-label="Ordenar biblioteca">
+    <div className="library-sort-toggle" role="group" aria-label={t('library.sortAriaLabel')}>
       {OPTIONS.map((option) => {
         const active = value === option
         return (

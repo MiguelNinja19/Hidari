@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ask, open } from '@tauri-apps/plugin-dialog'
+import { useTranslation } from 'react-i18next'
+import { open } from '@tauri-apps/plugin-dialog'
 import type { AppDispatch } from '../../app/store'
 import {
   cancelJob,
@@ -29,6 +30,7 @@ import {
   isPlayableLibraryItem,
   jobBelongsInLibrary,
   jobPathCtx,
+  itemPathCtx,
   needsInstallItem,
   pathStateKey,
   showLocateInstallAction,
@@ -40,6 +42,8 @@ import { formatUserError } from '../../shared/utils/formatUserError'
 import {
   INSTALL_WATCH_INTERVAL_MS,
   INSTALL_WATCH_MAX_TICKS,
+  INSTALL_WATCH_POST_CLOSE_TICKS,
+  INSTALL_WATCH_START_GRACE_TICKS,
   LIBRARY_COVER_LOOKUP_DEBOUNCE_MS,
   LIBRARY_INSPECT_BATCH_PAUSE_MS,
   LIBRARY_INSPECT_BATCH_SIZE,
@@ -68,6 +72,15 @@ const emptyPathState = (): LibraryControllerValue['pathStateByKey'][string] => (
   needsExtraction: false,
   installPath: null,
 })
+
+type InstallWatch = {
+  intervalId: number
+  busyKey: string
+  setupPath: string
+  ticks: number
+  sawInstallerRunning: boolean
+  installerClosedTick: number | null
+}
 
 const normalizeDownloadPath = (path: string) => path.trim().replace(/\\/g, '/').toLowerCase()
 
@@ -131,6 +144,7 @@ export function useLibraryControllerState({
   invalidateLocalCover,
 }: UseLibraryControllerStateArgs): LibraryControllerValue {
   const { showError } = useToast()
+  const { t } = useTranslation()
   const [libraryFilter, setLibraryFilter] = useState('')
   const [librarySort, setLibrarySortState] = useState<LibrarySort>('title-asc')
   const [localLibraryItems, setLocalLibraryItems] = useState<LocalLibraryItem[]>([])
@@ -138,9 +152,12 @@ export function useLibraryControllerState({
   const [pathStateByKey, setPathStateByKey] = useState<LibraryControllerValue['pathStateByKey']>({})
   const [playBusyId, setPlayBusyId] = useState<string | null>(null)
   const [installBusyId, setInstallBusyId] = useState<string | null>(null)
+  const [installingKeys, setInstallingKeys] = useState<Set<string>>(() => new Set())
   const [hiddenLibraryKeys, setHiddenLibraryKeys] = useState<Set<string>>(() => new Set())
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<LibraryEntry | null>(null)
+  const [deletingLibraryKey, setDeletingLibraryKey] = useState<string | null>(null)
 
-  const installWatchRef = useRef<Map<string, number>>(new Map())
+  const installWatchRef = useRef<Map<string, InstallWatch>>(new Map())
   const pathStateByKeyRef = useRef(pathStateByKey)
   const jobsRef = useRef(jobs)
   const defaultDownloadPathRef = useRef(defaultDownloadPath)
@@ -235,11 +252,11 @@ export function useLibraryControllerState({
       setLocalLibraryItems(items)
       await runBatchPathInspection(items, jobsRef.current)
     } catch (error) {
-      showError(formatUserError(error, 'Falha ao verificar a pasta de downloads.'))
+      showError(formatUserError(error, t('library.verifyPathError')))
     } finally {
       setLibraryScanSettled(true)
     }
-  }, [runBatchPathInspection])
+  }, [runBatchPathInspection, showError, t])
 
   useEffect(() => {
     const path = defaultDownloadPath.trim()
@@ -291,37 +308,107 @@ export function useLibraryControllerState({
     return state
   }, [])
 
+  const addInstallingKey = useCallback((busyKey: string) => {
+    setInstallingKeys((prev) => {
+      if (prev.has(busyKey)) return prev
+      const next = new Set(prev)
+      next.add(busyKey)
+      return next
+    })
+  }, [])
+
+  const removeInstallingKey = useCallback((busyKey: string) => {
+    setInstallingKeys((prev) => {
+      if (!prev.has(busyKey)) return prev
+      const next = new Set(prev)
+      next.delete(busyKey)
+      return next
+    })
+  }, [])
+
+  const stopInstallWatch = useCallback(
+    (watchKey: string) => {
+      const watch = installWatchRef.current.get(watchKey)
+      if (!watch) return
+      window.clearInterval(watch.intervalId)
+      installWatchRef.current.delete(watchKey)
+      removeInstallingKey(watch.busyKey)
+    },
+    [removeInstallingKey],
+  )
+
   const watchForInstalledGame = useCallback(
-    (title: string, destPath: string, jobId?: string) => {
+    (title: string, destPath: string, busyKey: string, setupPath: string, jobId?: string) => {
       const watchKey = pathStateKey(destPath, { jobId, title })
       const existing = installWatchRef.current.get(watchKey)
-      if (existing != null) {
-        window.clearInterval(existing)
+      if (existing) {
+        window.clearInterval(existing.intervalId)
+        installWatchRef.current.delete(watchKey)
       }
-      let ticks = 0
-      const intervalId = window.setInterval(() => {
-        ticks += 1
-        void refreshPathState(title, destPath, jobId).then((state) => {
+      addInstallingKey(busyKey)
+
+      const tick = async () => {
+        const watch = installWatchRef.current.get(watchKey)
+        if (!watch) return
+        watch.ticks += 1
+
+        try {
+          const state = await refreshPathState(title, destPath, jobId)
           if (state.hasGame) {
-            window.clearInterval(intervalId)
-            installWatchRef.current.delete(watchKey)
+            stopInstallWatch(watchKey)
+            return
           }
-        })
-        if (ticks >= INSTALL_WATCH_MAX_TICKS && installWatchRef.current.has(watchKey)) {
-          window.clearInterval(intervalId)
-          installWatchRef.current.delete(watchKey)
+        } catch {
+          // continua a monitorizar
         }
+
+          if (watch.setupPath && watch.ticks > INSTALL_WATCH_START_GRACE_TICKS) {
+          let running = false
+          try {
+            running = await sourcesApi.isExecutableRunning(watch.setupPath)
+          } catch {
+            // keep false
+          }
+
+          if (running) {
+            watch.sawInstallerRunning = true
+            watch.installerClosedTick = null
+          } else if (watch.sawInstallerRunning) {
+            if (watch.installerClosedTick === null) {
+              watch.installerClosedTick = watch.ticks
+            } else if (watch.ticks - watch.installerClosedTick >= INSTALL_WATCH_POST_CLOSE_TICKS) {
+              stopInstallWatch(watchKey)
+              return
+            }
+          }
+        }
+
+        if (watch.ticks >= INSTALL_WATCH_MAX_TICKS) {
+          stopInstallWatch(watchKey)
+        }
+      }
+
+      const intervalId = window.setInterval(() => {
+        void tick()
       }, INSTALL_WATCH_INTERVAL_MS)
-      installWatchRef.current.set(watchKey, intervalId)
+      installWatchRef.current.set(watchKey, {
+        intervalId,
+        busyKey,
+        setupPath,
+        ticks: 0,
+        sawInstallerRunning: false,
+        installerClosedTick: null,
+      })
+      void tick()
     },
-    [refreshPathState],
+    [addInstallingKey, refreshPathState, stopInstallWatch],
   )
 
   useEffect(() => {
     const watches = installWatchRef.current
     return () => {
-      for (const intervalId of watches.values()) {
-        window.clearInterval(intervalId)
+      for (const watch of watches.values()) {
+        window.clearInterval(watch.intervalId)
       }
       watches.clear()
     }
@@ -353,7 +440,7 @@ export function useLibraryControllerState({
           await runBatchPathInspection(items, jobsRef.current, { onlyUnresolved: true })
         })
         .catch((error) => {
-          showError(formatUserError(error, 'Falha ao ler a pasta de downloads.'))
+          showError(formatUserError(error, t('library.readPathError')))
         })
         .finally(() => {
           setLibraryScanSettled(true)
@@ -470,7 +557,7 @@ export function useLibraryControllerState({
         const selected = await open({
           directory: true,
           multiple: false,
-          title: 'Onde instalou o jogo?',
+          title: t('library.pickInstallFolderTitle'),
           defaultPath: destPath || defaultDownloadPath || undefined,
         })
         if (typeof selected !== 'string') return
@@ -483,19 +570,15 @@ export function useLibraryControllerState({
           [cacheKey]: state,
         }))
         if (!state.hasGame) {
-          showError(
-            'Pasta salva, mas ainda não encontramos o executável. Verifique se selecionou a pasta correta.',
-          )
+          showError(t('library.pickInstallFolderWarning'))
         }
       } catch (error) {
-        showError(
-          formatUserError(error, 'Não foi possível salvar a pasta de instalação.'),
-        )
+        showError(formatUserError(error, t('library.pickInstallFolderError')))
       } finally {
         setInstallBusyId(null)
       }
     },
-    [defaultDownloadPath],
+    [defaultDownloadPath, showError, t],
   )
 
   const handlePlayLibraryItem = useCallback(async (item: LibraryEntry) => {
@@ -537,139 +620,165 @@ export function useLibraryControllerState({
       const jobId = item.kind === 'job' ? item.id : undefined
       setInstallBusyId(busyKey)
       try {
-        await sourcesApi.launchSetup(item.title, item.destPath, jobId)
-        watchForInstalledGame(item.title, item.destPath, jobId)
+        const setupPath = await sourcesApi.launchSetup(item.title, item.destPath, jobId)
+        watchForInstalledGame(item.title, item.destPath, busyKey, setupPath, jobId)
         await refreshPathState(item.title, item.destPath, jobId)
       } catch (error) {
         showError(formatUserError(error))
+        removeInstallingKey(busyKey)
       } finally {
         setInstallBusyId(null)
       }
     },
-    [refreshPathState, watchForInstalledGame],
+    [refreshPathState, removeInstallingKey, watchForInstalledGame, showError],
   )
 
-  const handleDeleteLibraryItem = useCallback(
-    async (item: LibraryEntry) => {
-      const confirmed = await ask(
-        `Deseja excluir "${item.title}"?\n\nOs arquivos da pasta de instalação também serão removidos e essa ação não pode ser desfeita.`,
-        {
-          title: 'Remover jogo',
-          kind: 'warning',
-        },
-      )
-      if (!confirmed) return
+  const handleDeleteLibraryItem = useCallback((item: LibraryEntry) => {
+    setPendingDeleteItem(item)
+  }, [])
 
-      const hideKeys = libraryGameKeyCandidates(item.title)
-      const deletePath = resolveDeletePath(item.destPath)
-      const relatedJobs = findRelatedLibraryJobs(item, jobs, defaultDownloadPath)
+  const handleCancelDeleteLibraryItem = useCallback(() => {
+    if (deletingLibraryKey) return
+    setPendingDeleteItem(null)
+  }, [deletingLibraryKey])
 
-      setHiddenLibraryKeys((prev) => new Set([...prev, ...hideKeys]))
-      setLocalLibraryItems((prev) =>
-        prev.filter((folder) => {
-          if (!folder.isDir) return true
-          if (libraryTitlesMatch(folder.name, item.title)) return false
-          if (resolveDeletePath(folder.path).toLowerCase() === deletePath.toLowerCase()) return false
-          return !relatedJobs.some(
-            (job) =>
-              libraryTitlesMatch(folder.name, job.title) ||
-              normalizeLibraryPath(folder.path) === normalizeLibraryPath(job.destPath),
-          )
-        }),
-      )
-      for (const job of relatedJobs) {
-        dispatch(removeJobLocally(job.id))
+  const handleConfirmDeleteLibraryItem = useCallback(async () => {
+    const item = pendingDeleteItem
+    if (!item || deletingLibraryKey) return
+
+    const busyKey = item.kind === 'job' ? item.id : item.destPath
+    setDeletingLibraryKey(busyKey)
+
+    const hideKeys = libraryGameKeyCandidates(item.title)
+    const deletePath = resolveDeletePath(item.destPath)
+    const relatedJobs = findRelatedLibraryJobs(item, jobs, defaultDownloadPath)
+    const watchKey = pathStateKey(item.destPath, itemPathCtx(item))
+    const activeWatch = installWatchRef.current.get(watchKey)
+    if (activeWatch) {
+      window.clearInterval(activeWatch.intervalId)
+      installWatchRef.current.delete(watchKey)
+    }
+    removeInstallingKey(busyKey)
+
+    setHiddenLibraryKeys((prev) => new Set([...prev, ...hideKeys]))
+    setLocalLibraryItems((prev) =>
+      prev.filter((folder) => {
+        if (!folder.isDir) return true
+        if (libraryTitlesMatch(folder.name, item.title)) return false
+        if (resolveDeletePath(folder.path).toLowerCase() === deletePath.toLowerCase()) return false
+        return !relatedJobs.some(
+          (job) =>
+            libraryTitlesMatch(folder.name, job.title) ||
+            normalizeLibraryPath(folder.path) === normalizeLibraryPath(job.destPath),
+        )
+      }),
+    )
+    for (const job of relatedJobs) {
+      dispatch(removeJobLocally(job.id))
+    }
+    setPathStateByKey((prev) => {
+      const next = { ...prev }
+      for (const key of Object.keys(next)) {
+        const matchesPath = key.includes(deletePath.toLowerCase())
+        const matchesJob = relatedJobs.some((job) => key === `job:${job.id}`)
+        if (matchesPath || matchesJob) delete next[key]
       }
-      setPathStateByKey((prev) => {
-        const next = { ...prev }
-        for (const key of Object.keys(next)) {
-          const matchesPath = key.includes(deletePath.toLowerCase())
-          const matchesJob = relatedJobs.some((job) => key === `job:${job.id}`)
-          if (matchesPath || matchesJob) delete next[key]
-        }
-        removeLibraryPathStateCacheKeys(
-          (key) =>
-            key.includes(deletePath.toLowerCase()) ||
-            relatedJobs.some((job) => key === `job:${job.id}`),
-          defaultDownloadPathRef.current,
-        )
-        return next
-      })
+      removeLibraryPathStateCacheKeys(
+        (key) =>
+          key.includes(deletePath.toLowerCase()) ||
+          relatedJobs.some((job) => key === `job:${job.id}`),
+        defaultDownloadPathRef.current,
+      )
+      return next
+    })
 
-      try {
-        const scannedFolders =
-          (await sourcesApi.scanDefaultDownloadPath().catch(() => localLibraryItems)) ??
-          localLibraryItems
-        const pathsToDelete = resolveLibraryDeletePaths(
-          item,
-          scannedFolders,
-          defaultDownloadPath,
-          relatedJobs,
-        )
+    try {
+      const scannedFolders =
+        (await sourcesApi.scanDefaultDownloadPath().catch(() => localLibraryItems)) ??
+        localLibraryItems
+      const pathsToDelete = resolveLibraryDeletePaths(
+        item,
+        scannedFolders,
+        defaultDownloadPath,
+        relatedJobs,
+      )
 
-        for (const job of relatedJobs) {
+      for (const job of relatedJobs) {
+        try {
+          await queueApi.removeJobFromLibrary(job.id)
+        } catch {
           try {
-            await queueApi.removeJobFromLibrary(job.id)
+            await dispatch(cancelJob(job.id)).unwrap()
           } catch {
-            try {
-              await dispatch(cancelJob(job.id)).unwrap()
-            } catch {
-              /* já removido localmente */
-            }
+            /* já removido localmente */
           }
         }
+      }
 
-        const deleteErrors: unknown[] = []
-        for (const path of pathsToDelete) {
-          try {
-            await sourcesApi.deleteLocalLibraryItem(path)
-          } catch (error) {
-            if (isBenignDeleteError(error)) continue
-            deleteErrors.push(error)
-          }
+      const deleteErrors: unknown[] = []
+      for (const path of pathsToDelete) {
+        try {
+          await sourcesApi.deleteLocalLibraryItem(path)
+        } catch (error) {
+          if (isBenignDeleteError(error)) continue
+          deleteErrors.push(error)
         }
+      }
 
-        const scanned = await sourcesApi.scanDefaultDownloadPath()
+      const scanned = await sourcesApi.scanDefaultDownloadPath()
+      setLocalLibraryItems(
+        scanned.filter(
+          (folder) => !folder.isDir || !libraryTitlesMatch(folder.name, item.title),
+        ),
+      )
+
+      if (deleteErrors.length > 0) {
+        if (deleteErrors.some(isFileLockDeleteError)) {
+          showError(formatLibraryDeleteError(deleteErrors))
+          return
+        }
+        throw deleteErrors[0]
+      }
+      setPendingDeleteItem(null)
+    } catch (error) {
+      if (isFileLockDeleteError(error)) {
+        showError(formatLibraryDeleteError([error]))
+        const scanned = await sourcesApi
+          .scanDefaultDownloadPath()
+          .catch(() => [] as LocalLibraryItem[])
         setLocalLibraryItems(
           scanned.filter(
             (folder) => !folder.isDir || !libraryTitlesMatch(folder.name, item.title),
           ),
         )
-
-        if (deleteErrors.length > 0) {
-          if (deleteErrors.some(isFileLockDeleteError)) {
-            showError(formatLibraryDeleteError(deleteErrors))
-            return
-          }
-          throw deleteErrors[0]
-        }
-      } catch (error) {
-        if (isFileLockDeleteError(error)) {
-          showError(formatLibraryDeleteError([error]))
-          const scanned = await sourcesApi
-            .scanDefaultDownloadPath()
-            .catch(() => [] as LocalLibraryItem[])
-          setLocalLibraryItems(
-            scanned.filter(
-              (folder) => !folder.isDir || !libraryTitlesMatch(folder.name, item.title),
-            ),
-          )
-          return
-        }
-
-        setHiddenLibraryKeys((prev) => {
-          const next = new Set(prev)
-          for (const key of hideKeys) next.delete(key)
-          return next
-        })
-        showError(formatUserError(error, 'Falha ao excluir item.'))
-        void dispatch(fetchJobs())
-        const scanned = await sourcesApi.scanDefaultDownloadPath().catch(() => [] as LocalLibraryItem[])
-        setLocalLibraryItems(scanned)
+        setPendingDeleteItem(null)
+        return
       }
-    },
-    [dispatch, jobs, defaultDownloadPath, localLibraryItems],
-  )
+
+      setHiddenLibraryKeys((prev) => {
+        const next = new Set(prev)
+        for (const key of hideKeys) next.delete(key)
+        return next
+      })
+      showError(formatUserError(error, t('library.deleteError')))
+      void dispatch(fetchJobs())
+      const scanned = await sourcesApi.scanDefaultDownloadPath().catch(() => [] as LocalLibraryItem[])
+      setLocalLibraryItems(scanned)
+      setPendingDeleteItem(null)
+    } finally {
+      setDeletingLibraryKey(null)
+    }
+  }, [
+    pendingDeleteItem,
+    deletingLibraryKey,
+    dispatch,
+    jobs,
+    defaultDownloadPath,
+    localLibraryItems,
+    removeInstallingKey,
+    showError,
+    t,
+  ])
 
   return {
     libraryItems,
@@ -683,6 +792,7 @@ export function useLibraryControllerState({
     librarySort,
     playBusyId,
     installBusyId,
+    installingKeys,
     setLibraryFilter,
     setLibrarySort,
     onGoDownloads,
@@ -694,5 +804,9 @@ export function useLibraryControllerState({
     handleExtractItem,
     handlePickGameInstallFolder,
     handleDeleteLibraryItem,
+    handleConfirmDeleteLibraryItem,
+    handleCancelDeleteLibraryItem,
+    pendingDeleteItem,
+    deletingLibraryKey,
   }
 }

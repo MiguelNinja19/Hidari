@@ -181,14 +181,6 @@ const queueSlice = createSlice({
         state.dismissedJobIds.push(id)
       }
     },
-    clearHistoryLocally: (state) => {
-      state.jobs = state.jobs.filter(
-        (job) =>
-          job.status !== 'completed' &&
-          job.status !== 'cancelled' &&
-          job.status !== 'failed',
-      )
-    },
   },
   extraReducers: (builder) => {
     builder
@@ -277,6 +269,5 @@ const queueSlice = createSlice({
   },
 })
 
-export const { jobProgressReceived, extractStatusReceived, removeJobLocally, clearHistoryLocally } =
-  queueSlice.actions
+export const { jobProgressReceived, extractStatusReceived, removeJobLocally } = queueSlice.actions
 export const queueReducer = queueSlice.reducer

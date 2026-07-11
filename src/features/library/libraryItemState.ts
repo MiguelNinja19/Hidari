@@ -17,7 +17,7 @@ export const pathStateKey = (
   return base
 }
 
-export const getPathState = (
+const getPathState = (
   path: string,
   pathStateByKey: Record<string, LibraryPathState>,
   ctx?: { jobId?: string; title?: string },
@@ -35,7 +35,7 @@ export const itemPathCtx = (item: LibraryEntry) => ({
   title: item.title,
 })
 
-export const itemHasGame = (
+const itemHasGame = (
   path: string,
   pathStateByKey: Record<string, LibraryPathState>,
   ctx?: { jobId?: string; title?: string },
@@ -49,14 +49,6 @@ export const needsInstallItem = (
   pathStateByKey: Record<string, LibraryPathState>,
 ) => {
   const state = getPathState(item.destPath, pathStateByKey, itemPathCtx(item))
-  return state?.needsInstall === true
-}
-
-export const jobNeedsInstall = (
-  job: DownloadJob,
-  pathStateByKey: Record<string, LibraryPathState>,
-) => {
-  const state = getPathState(job.destPath, pathStateByKey, jobPathCtx(job))
   return state?.needsInstall === true
 }
 
@@ -178,34 +170,45 @@ export const hasManualInstallRoot = (
   return Boolean(state?.customGameRoot?.trim())
 }
 
+export type LibraryStatusMeta = {
+  tone: string
+  labelKey: string
+  pct?: number
+}
+
 export function libraryStatusMeta(
   item: LibraryEntry,
   jobs: DownloadJob[],
   pathStateByKey: Record<string, LibraryPathState>,
-): { label: string; tone: string } {
+  ctx?: { installing?: boolean },
+): LibraryStatusMeta {
   const state = getPathState(item.destPath, pathStateByKey, itemPathCtx(item))
   const resolved = state !== undefined
 
+  if (ctx?.installing) {
+    return { labelKey: 'library.status.installing', tone: 'installing' }
+  }
+
   if (!resolved) {
     if (item.kind === 'folder') {
-      return { label: 'A verificar…', tone: 'idle' }
+      return { labelKey: 'library.status.verifying', tone: 'idle' }
     }
     if (item.kind === 'job' && item.job && isJobFinished(item.job)) {
-      return { label: 'A verificar…', tone: 'idle' }
+      return { labelKey: 'library.status.verifying', tone: 'idle' }
     }
   }
 
   if (itemAwaitingInstall(item, jobs, pathStateByKey)) {
-    return { label: 'Instalar', tone: 'waiting' }
+    return { labelKey: 'library.status.install', tone: 'waiting' }
   }
   if (state?.needsExtraction) {
-    return { label: 'Preparando arquivos…', tone: 'idle' }
+    return { labelKey: 'library.status.preparing', tone: 'idle' }
   }
   if (state?.hasGame || state?.playable || isPlayableLibraryItem(item, jobs, pathStateByKey)) {
-    return { label: 'Jogar', tone: 'ready' }
+    return { labelKey: 'library.status.play', tone: 'ready' }
   }
   if (item.kind === 'folder') {
-    return { label: 'Na biblioteca', tone: 'idle' }
+    return { labelKey: 'library.status.inLibrary', tone: 'idle' }
   }
   if (
     item.status === 'downloading' ||
@@ -227,21 +230,30 @@ export function libraryStatusMeta(
       updatedAt: '',
     }
     if (isTorrentMetadataPhase(asJob)) {
-      return { label: 'Conectando peers', tone: 'downloading' }
+      return { labelKey: 'library.status.connectingPeers', tone: 'downloading' }
     }
     const pct = resolveJobProgressPercent(asJob)
-    const pctLabel =
-      pct > 0 && pct < 100 ? `${pct.toFixed(1).replace('.', ',')}%` : pct >= 100 ? '100%' : ''
-    return {
-      label: pctLabel ? `Transferindo · ${pctLabel}` : 'Transferindo',
-      tone: 'downloading',
+    if (pct > 0 && pct < 100) {
+      return {
+        labelKey: 'library.status.downloadingPct',
+        tone: 'downloading',
+        pct,
+      }
     }
+    if (pct >= 100) {
+      return {
+        labelKey: 'library.status.downloadingPct',
+        tone: 'downloading',
+        pct: 100,
+      }
+    }
+    return { labelKey: 'library.status.downloading', tone: 'downloading' }
   }
   if (item.status === 'paused') {
-    return { label: 'Pausado', tone: 'paused' }
+    return { labelKey: 'library.status.paused', tone: 'paused' }
   }
   if (item.status === 'failed') {
-    return { label: 'Falhou', tone: 'failed' }
+    return { labelKey: 'library.status.failed', tone: 'failed' }
   }
-  return { label: 'Aguardando', tone: 'idle' }
+  return { labelKey: 'library.status.waiting', tone: 'idle' }
 }

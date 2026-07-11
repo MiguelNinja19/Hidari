@@ -1,11 +1,11 @@
 import type { DownloadJob } from '../types/contracts'
 
-export const isMagnetJob = (job: DownloadJob) => job.url.toLowerCase().startsWith('magnet:')
+const isMagnetJob = (job: DownloadJob) => job.url.toLowerCase().startsWith('magnet:')
 
 const TERMINAL_STATUSES = new Set(['completed', 'seeding', 'extracted', 'skipped'])
 
 /** Converte fração 0–1 ou percentagem 0–100 para 0–100. */
-export const coerceProgressToPercent = (value: number): number => {
+const coerceProgressToPercent = (value: number): number => {
   if (!Number.isFinite(value) || value < 0) return 0
   if (value > 0 && value < 1) return value * 100
   return Math.min(100, value)
@@ -19,9 +19,6 @@ export type ProgressFields = {
   url: string
   speedBps?: number
 }
-
-export const hasReliableByteProgress = (bytesDownloaded: number, totalBytes: number) =>
-  totalBytes > 0 && bytesDownloaded >= 0
 
 export function resolveJobProgressPercentFromFields(input: ProgressFields): number {
   const { progress, bytesDownloaded, totalBytes, status, url, speedBps = 0 } = input
@@ -62,21 +59,6 @@ export function resolveJobProgressPercentFromFields(input: ProgressFields): numb
   return Math.max(0, Math.min(100, server))
 }
 
-export const hasTransferActivity = (job: DownloadJob) => {
-  if ((job.bytesDownloaded ?? 0) > 0) return true
-  if ((job.totalBytes ?? 0) > 0 && (job.speedBps ?? 0) > 0) return true
-  if ((job.speedBps ?? 0) > 0) return true
-  const pct = resolveJobProgressPercentFromFields({
-    progress: job.progress,
-    bytesDownloaded: job.bytesDownloaded ?? 0,
-    totalBytes: job.totalBytes ?? 0,
-    status: job.status,
-    url: job.url,
-    speedBps: job.speedBps,
-  })
-  return pct > 0 && pct < 100
-}
-
 export const isTorrentMetadataPhase = (job: DownloadJob) => {
   if (!isMagnetJob(job)) return false
   if (!['downloading', 'pending', 'retrying'].includes(job.status)) return false
@@ -94,8 +76,6 @@ export const isTorrentMetadataPhase = (job: DownloadJob) => {
   })
   return pct <= 0
 }
-
-export const isActivelyTransferring = (job: DownloadJob) => hasTransferActivity(job)
 
 export const resolveJobProgressPercent = (job: DownloadJob): number =>
   resolveJobProgressPercentFromFields({
@@ -115,25 +95,4 @@ export const formatProgressPercent = (job: DownloadJob): string => {
   const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10
   const text = rounded % 1 === 0 ? String(rounded) : rounded.toFixed(1)
   return `${text.replace('.', ',')}%`
-}
-
-const formatElapsedSince = (iso: string, nowMs: number): string => {
-  const start = Date.parse(iso)
-  if (!Number.isFinite(start)) return '0s'
-  const secs = Math.max(0, Math.floor((nowMs - start) / 1000))
-  if (secs < 60) return `${secs}s`
-  const mins = Math.floor(secs / 60)
-  const rem = secs % 60
-  return rem > 0 ? `${mins}m ${rem}s` : `${mins}m`
-}
-
-export const metadataPhaseDetail = (job: DownloadJob, nowMs: number): string => {
-  const elapsed = formatElapsedSince(job.updatedAt || job.createdAt, nowMs)
-  const secs = Math.max(
-    0,
-    Math.floor((nowMs - Date.parse(job.updatedAt || job.createdAt)) / 1000),
-  )
-  if (secs < 20) return `Trackers · ${elapsed}`
-  if (secs < 90) return `Peers · ${elapsed}`
-  return `Metadados · ${elapsed}`
 }

@@ -1,7 +1,7 @@
 import type { LibraryEntry } from '../../features/library/types'
 import type { DownloadJob } from '../types/contracts'
 import { normalizeLibraryPath, jobPathsOverlap } from './jobExtraction'
-import { libraryGameKey, libraryTitlesMatch } from './normalizeTitleKey'
+import { libraryTitlesMatch } from './normalizeTitleKey'
 
 export function dedupeLibraryEntries(
   entries: LibraryEntry[],
@@ -49,4 +49,4 @@ export function findRelatedLibraryJobs(
   })
 }
 
-export { libraryGameKey, libraryTitlesMatch }
+export { libraryTitlesMatch }

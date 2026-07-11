@@ -30,10 +30,6 @@ function persist(downloadPath: string): void {
   }
 }
 
-export function readLibraryPathStateCache(): PathStateMap {
-  return sessionCache
-}
-
 /** Carrega cache persistido se for da mesma pasta de downloads. */
 export function hydrateLibraryPathStateCache(downloadPath: string): PathStateMap {
   const normalized = normalizeDownloadPath(downloadPath)

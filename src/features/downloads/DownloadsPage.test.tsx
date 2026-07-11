@@ -23,8 +23,6 @@ describe('DownloadsPage', () => {
     render(
       <DownloadsPage
         jobs={[baseJob]}
-        queueLoading={false}
-        downloadsBooting={false}
         actionBusyId={null}
         isTorrentMetadataPhase={() => false}
         resolveJobProgressPercent={() => 100}
@@ -36,7 +34,6 @@ describe('DownloadsPage', () => {
         onPauseAll={async () => {}}
         onOpenJobFolder={() => {}}
         onPlayJob={() => {}}
-        onGoDiscover={() => {}}
         resolveCover={() => ({ coverUrl: null, localPath: null, status: 'idle' })}
         invalidateLocalCover={() => {}}
       />,
