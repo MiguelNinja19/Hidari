@@ -37,28 +37,40 @@ function DiscoverTabInner({
   }, [controller.applyDiscoverSearch, controller.openGameDetail, onRegisterBridge])
 
   useEffect(() => {
-    const visible = controller.displayCatalogSource.slice(0, 80)
+    const visible = controller.displayCatalogSource.slice(0, 24)
     if (visible.length === 0) return
 
-    const titles = visible.map((game) => game.title)
-    covers.resolveCoversBatch(titles)
+    const missingTitles: string[] = []
+    const directUrls: { title: string; coverUrl: string }[] = []
 
-    const directUrls = visible
-      .map((game) => {
-        const url = game.coverUrl?.trim()
-        if (!url) return null
-        return { title: game.title, coverUrl: url }
-      })
-      .filter((item): item is { title: string; coverUrl: string } => item != null)
+    for (const game of visible) {
+      const url = game.coverUrl?.trim()
+      if (url) {
+        directUrls.push({ title: game.title, coverUrl: url })
+      } else {
+        missingTitles.push(game.title)
+      }
+    }
+
+    if (missingTitles.length > 0) {
+      covers.resolveCoversBatch(missingTitles)
+    }
     if (directUrls.length > 0) {
       covers.warmCovers(directUrls)
     }
-  }, [controller.displayCatalogSource, covers])
+  }, [
+    controller.displayCatalogSource,
+    covers.resolveCoversBatch,
+    covers.warmCovers,
+  ])
 
   useEffect(() => {
     if (!controller.discoverPickGame?.coverUrl) return
     covers.warmCover(controller.discoverPickGame.title, controller.discoverPickGame.coverUrl)
-  }, [controller.discoverPickGame, covers])
+  }, [
+    controller.discoverPickGame,
+    covers.warmCover,
+  ])
 
   return (
     <DiscoverControllerProvider value={controller}>

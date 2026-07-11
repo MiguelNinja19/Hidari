@@ -28,7 +28,7 @@ export function SearchInput({
   onSubmit,
 }: SearchInputProps) {
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter') return
+    if (event.key !== 'Enter' || disabled) return
     event.preventDefault()
     onSubmit?.()
   }

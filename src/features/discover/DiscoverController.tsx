@@ -1,16 +1,8 @@
 import { createContext, useContext, type ReactNode } from 'react'
-import type { CatalogGame, DownloadOption, GameDetail, Source } from '../../shared/types/contracts'
+import type { CatalogGame, DownloadOption, Source } from '../../shared/types/contracts'
 import type { GetGameDetailInput } from '../../shared/types/contracts'
-import type { DiscoverView } from './useDiscoverCatalog'
 
 export type DiscoverControllerValue = {
-  view: DiscoverView
-  gameDetail: GameDetail | null
-  detailLoading: boolean
-  detailError: string
-  isFavorite: boolean
-  favoriteBusy: boolean
-  onToggleFavorite: () => void
   discoverSearch: string
   discoverSearchDraft: string
   setDiscoverSearchDraft: (value: string) => void
@@ -32,7 +24,6 @@ export type DiscoverControllerValue = {
   isSourceEnabled: (sourceId: string) => boolean
   onGoSettings: () => void
   openGameDetail: (input: GetGameDetailInput | CatalogGame) => void
-  closeGameDetail: () => void
   closeDiscoverPicker: () => void
   handleEnqueueFromDiscover: (title: string, url: string, coverUrl?: string | null) => Promise<void>
   coverCatalogGames: CatalogGame[]

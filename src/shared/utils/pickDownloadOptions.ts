@@ -1,7 +1,7 @@
 import type { DownloadOption } from '../types/contracts'
 import { decodeHtmlEntities } from './normalizeTitleKey'
 
-export type PickOptionMeta = {
+type PickOptionMeta = {
   source: string
   size: string | null
   downloadType: string
@@ -23,14 +23,6 @@ export function pickOptionVariantLabel(option: DownloadOption, _baseTitle: strin
   return pickOptionLabel(option)
 }
 
-export function pickOptionMetaLine(option: DownloadOption): string {
-  const meta = pickOptionMeta(option)
-  const parts = [meta.source]
-  if (meta.size) parts.push(meta.size)
-  parts.push(meta.downloadType)
-  return parts.join(' · ')
-}
-
 export function pickOptionMeta(option: DownloadOption): PickOptionMeta {
   const quality = option.quality?.trim()
   const looksLikeSize = quality && quality !== 'standard' && !/^link\s+\d+$/i.test(quality)
@@ -45,11 +37,6 @@ export function pickOptionMeta(option: DownloadOption): PickOptionMeta {
           ? 'HTTP'
           : option.downloadType,
   }
-}
-
-/** @deprecated use pickOptionMeta */
-export function pickOptionSubtitle(option: DownloadOption): string | null {
-  return pickOptionMetaLine(option)
 }
 
 export function dedupeDownloadOptions(options: DownloadOption[]): DownloadOption[] {

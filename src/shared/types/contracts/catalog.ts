@@ -18,6 +18,8 @@ export type SearchCatalogInput = {
   offset?: number
   limit?: number
   attachCovers?: boolean
+  /** Local JSON/cache only — fast first paint; omit/false to also query Hydra API. */
+  localOnly?: boolean
 }
 
 export type ResolvedGenre = {
@@ -32,6 +34,8 @@ export type ResolveGenresBatchInput = {
 export type GetGameDetailInput = {
   groupKey?: string
   title?: string
+  /** When false/omitted, skip Steam synopsis (faster picker). */
+  includeSteam?: boolean
 }
 
 export type GameDetail = {
@@ -43,52 +47,6 @@ export type GameDetail = {
   steamAppId?: number | null
   downloads: DownloadOption[]
   inLibrary: boolean
-}
-
-export type FavoriteEntry = {
-  catalogKey: string
-  title: string
-  addedAt: string
-}
-
-export type ToggleFavoriteInput = {
-  catalogKey: string
-  title: string
-}
-
-export type Collection = {
-  id: string
-  name: string
-  entryCount: number
-}
-
-export type CollectionEntry = {
-  catalogKey: string
-  title: string
-}
-
-export type CreateCollectionInput = {
-  name: string
-}
-
-export type RenameCollectionInput = {
-  id: string
-  name: string
-}
-
-export type CollectionIdInput = {
-  id: string
-}
-
-export type CollectionEntryInput = {
-  collectionId: string
-  catalogKey: string
-  title: string
-}
-
-export type GameSourceChange = {
-  gameId: number
-  newDownloadOptionsCount: number
 }
 
 export type DeepLinkPayload = {
