@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useState, useRef, type CSSProperties } from 'react'
 import { useAppDispatch, useAppSelector } from './app/hooks'
 import { useAppSettings } from './app/context/AppSettingsContext'
 import { useNavigation } from './app/context/NavigationContext'
@@ -12,12 +12,11 @@ import { selectActiveDownloadsCount, selectQueueJobs } from './features/queue/qu
 import { AppShell } from './layout/AppShell'
 import { PageCenterSpinner } from './shared/components/PageCenterSpinner'
 import type { DiscoverBridge } from './features/discover/DiscoverTab'
+import { DiscoverTab } from './features/discover/DiscoverTab'
 import { LibraryTab } from './features/library/LibraryTab'
+import type { NavTab } from './layout/types'
 import './styles/index.css'
 
-const DiscoverTab = lazy(() =>
-  import('./features/discover/DiscoverTab').then((m) => ({ default: m.DiscoverTab })),
-)
 const DownloadsTab = lazy(() =>
   import('./features/downloads/DownloadsTab').then((m) => ({ default: m.DownloadsTab })),
 )
@@ -33,7 +32,6 @@ function App() {
   const dispatch = useAppDispatch()
   const jobs = useAppSelector(selectQueueJobs)
   const queueInitialized = useAppSelector((state) => state.queue.initialized)
-  const queueLoading = useAppSelector((state) => state.queue.loading)
   const queueError = useAppSelector((state) => state.queue.error)
   const sourcesCount = useAppSelector((state) => state.sources.items.length)
   const activeDownloadsCount = useAppSelector(selectActiveDownloadsCount)
@@ -48,7 +46,19 @@ function App() {
 
   const discoverBridgeRef = useRef<DiscoverBridge>(null)
   const refreshLibraryScanRef = useRef<((options?: { background?: boolean }) => void) | null>(null)
-  const [downloadsBooting, setDownloadsBooting] = useState(false)
+  const [, setDownloadsBooting] = useState(false)
+
+  // Mantém tabs já visitadas montadas (trocar de aba não perde cache / capas).
+  const [mountedTabs, setMountedTabs] = useState<Record<NavTab, boolean>>({
+    discover: true,
+    library: false,
+    downloads: false,
+    settings: false,
+  })
+
+  useEffect(() => {
+    setMountedTabs((prev) => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }))
+  }, [activeTab])
 
   useAppUpdater()
   useKeyboardShortcuts({ activeTab, setActiveTab })
@@ -75,20 +85,27 @@ function App() {
     },
   })
 
-  const renderMainContent = () => {
-    switch (activeTab) {
-      case 'discover':
-        return (
-          <DiscoverTab
-            onGoSettings={() => setActiveTab('settings')}
-            onGoDownloads={navigateDownloads}
-            onRegisterBridge={(bridge) => {
-              discoverBridgeRef.current = bridge
-            }}
-          />
-        )
-      case 'library':
-        return (
+  const tabStyle = (tab: NavTab): CSSProperties | undefined =>
+    activeTab === tab ? undefined : { display: 'none' }
+
+  return (
+    <AppShell
+      activeTab={activeTab}
+      activeDownloadsCount={activeDownloadsCount}
+      onTabChange={setActiveTab}
+    >
+      <div style={tabStyle('discover')}>
+        <DiscoverTab
+          onGoSettings={() => setActiveTab('settings')}
+          onGoDownloads={navigateDownloads}
+          onRegisterBridge={(bridge) => {
+            discoverBridgeRef.current = bridge
+          }}
+        />
+      </div>
+
+      {mountedTabs.library ? (
+        <div style={tabStyle('library')}>
           <LibraryTab
             jobs={jobs}
             queueInitialized={queueInitialized}
@@ -100,31 +117,24 @@ function App() {
               refreshLibraryScanRef.current = fn ?? null
             }}
           />
-        )
-      case 'downloads':
-        return (
-          <DownloadsTab
-            jobs={jobs}
-            queueLoading={queueLoading}
-            queueError={queueError}
-            downloadsBooting={downloadsBooting}
-            onGoDiscover={navigateDiscover}
-          />
-        )
-      case 'settings':
-        return <SettingsTab />
-      default:
-        return null
-    }
-  }
+        </div>
+      ) : null}
 
-  return (
-    <AppShell
-      activeTab={activeTab}
-      activeDownloadsCount={activeDownloadsCount}
-      onTabChange={setActiveTab}
-    >
-      <Suspense fallback={<TabFallback />}>{renderMainContent()}</Suspense>
+      {mountedTabs.downloads ? (
+        <div style={tabStyle('downloads')}>
+          <Suspense fallback={<TabFallback />}>
+            <DownloadsTab jobs={jobs} queueError={queueError} />
+          </Suspense>
+        </div>
+      ) : null}
+
+      {mountedTabs.settings ? (
+        <div style={tabStyle('settings')}>
+          <Suspense fallback={<TabFallback />}>
+            <SettingsTab />
+          </Suspense>
+        </div>
+      ) : null}
     </AppShell>
   )
 }

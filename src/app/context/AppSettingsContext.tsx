@@ -28,6 +28,8 @@ export type AppSettingsContextValue = {
   setAfterInstallAction: Dispatch<SetStateAction<string>>
   disabledSourceIds: string[]
   setDisabledSourceIds: Dispatch<SetStateAction<string[]>>
+  /** true depois de carregar `disabled_hydra_source_ids` do SQLite (evita race no toggle). */
+  disabledSourcesReady: boolean
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -40,6 +42,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [installOrganization, setInstallOrganization] = useState(INSTALL_ORGANIZATION_DEFAULT)
   const [afterInstallAction, setAfterInstallAction] = useState(AFTER_INSTALL_ACTION_DEFAULT)
   const [disabledSourceIds, setDisabledSourceIds] = useState<string[]>([])
+  const [disabledSourcesReady, setDisabledSourcesReady] = useState(false)
 
   useAppBootstrap({
     setDefaultDownloadPath,
@@ -49,6 +52,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     setRemoveTemporaryFiles,
     setDownloadSpeedLimit,
     setDisabledSourceIds,
+    setDisabledSourcesReady,
   })
 
   const value = useMemo(
@@ -67,11 +71,13 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       setAfterInstallAction,
       disabledSourceIds,
       setDisabledSourceIds,
+      disabledSourcesReady,
     }),
     [
       afterInstallAction,
       defaultDownloadPath,
       disabledSourceIds,
+      disabledSourcesReady,
       downloadSpeedLimit,
       installOrganization,
       removeTemporaryFiles,

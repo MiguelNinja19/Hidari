@@ -15,8 +15,8 @@ export type ResolvedCover = {
 
 const WARM_RETRY_MS = 30 * 60 * 1000
 const BATCH_LOOKUP_RETRY_MS = 15 * 60 * 1000
-const MAX_WARM_CONCURRENT = 2
-const BATCH_DEBOUNCE_MS = 120
+const BATCH_DEBOUNCE_MS = 40
+const MAX_WARM_CONCURRENT = 4
 
 type WarmTask = { title: string; coverUrl: string; key: string }
 
@@ -154,7 +154,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
       return
     }
 
-    const cancel = scheduleDeferred(loadSavedCovers, 300)
+    const cancel = scheduleDeferred(loadSavedCovers, 0)
     return cancel
   }, [options?.eager])
 

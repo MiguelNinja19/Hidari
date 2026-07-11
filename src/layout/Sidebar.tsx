@@ -61,7 +61,7 @@ export function Sidebar({ activeTab, activeDownloadsCount, onTabChange }: Sideba
 
   return (
     <aside className="sidebar">
-      <nav className="sidebar__nav" aria-label="Navegação">
+      <nav className="sidebar__nav" aria-label={t('nav.ariaLabel')}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -72,7 +72,7 @@ export function Sidebar({ activeTab, activeDownloadsCount, onTabChange }: Sideba
             <span className="sidebar-link__icon">{tab.icon}</span>
             <span className="sidebar-link__label">{t(tab.labelKey)}</span>
             {tab.id === 'downloads' && activeDownloadsCount > 0 ? (
-              <span className="sidebar-link__badge" aria-label={`${activeDownloadsCount} downloads ativos`}>
+              <span className="sidebar-link__badge" aria-label={t('library.activeDownloads', { count: activeDownloadsCount })}>
                 {activeDownloadsCount > 99 ? '99+' : activeDownloadsCount}
               </span>
             ) : null}

@@ -10,6 +10,8 @@ import {
   bpsToSpeedKey,
   SETTING_KEY,
 } from '../../shared/config/appSettings'
+import { isAppLanguage, LANGUAGE_STORAGE_KEY } from '../../shared/config/locale'
+import { setAppLanguage, default as i18n } from '../../shared/i18n'
 import { scheduleDeferred } from '../../shared/utils/scheduleDeferred'
 type BootstrapSettings = {
   setDefaultDownloadPath: (path: string) => void
@@ -19,6 +21,20 @@ type BootstrapSettings = {
   setRemoveTemporaryFiles: (v: boolean) => void
   setDownloadSpeedLimit: (v: string) => void
   setDisabledSourceIds: (v: string[]) => void
+  setDisabledSourcesReady: (v: boolean) => void
+}
+
+function parseDisabledSourceIds(raw: string | null): string[] {
+  if (!raw) return []
+  try {
+    const arr = JSON.parse(raw) as unknown
+    if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
+      return arr
+    }
+  } catch {
+    // JSON inválido
+  }
+  return []
 }
 
 /** Carrega fontes, settings e listeners Tauri no arranque. */
@@ -32,13 +48,29 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     setRemoveTemporaryFiles,
     setDownloadSpeedLimit,
     setDisabledSourceIds,
+    setDisabledSourcesReady,
   } = settings
 
   useEffect(() => {
+    let cancelled = false
     void dispatch(fetchSources())
     const cancelJobsDefer = scheduleDeferred(() => {
       void dispatch(fetchJobs())
     }, STARTUP_JOBS_DEFER_MS)
+
+    // Fontes desativadas: carregar já (sem atraso de 400ms) para não mostrar tudo
+    // ativo e para o toggle não gravar por cima duma lista ainda não hidratada.
+    void (async () => {
+      try {
+        const dis = await sourcesApi.getAppSetting(SETTING_KEY.disabledHydraSourceIds)
+        if (cancelled) return
+        setDisabledSourceIds(parseDisabledSourceIds(dis))
+      } catch {
+        // Tauri indisponível (ex.: dev no browser)
+      } finally {
+        if (!cancelled) setDisabledSourcesReady(true)
+      }
+    })()
 
     void (async () => {
       try {
@@ -54,34 +86,28 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     const cancelSettingsDefer = scheduleDeferred(() => {
       void (async () => {
         try {
+          const lang = await sourcesApi.getAppSetting(LANGUAGE_STORAGE_KEY)
+          if (isAppLanguage(lang) && lang !== i18n.language) {
+            await setAppLanguage(lang)
+          }
+
           const enabled = await sourcesApi.getSeedTorrentsEnabled()
           setSeedTorrentsEnabled(enabled)
-          const [org, after, rem, speed, dis] = await Promise.all([
+          const [org, after, rem, speed] = await Promise.all([
             sourcesApi.getAppSetting(SETTING_KEY.installOrganization),
             sourcesApi.getAppSetting(SETTING_KEY.afterInstallAction),
             sourcesApi.getAppSetting(SETTING_KEY.removeTempFiles),
             sourcesApi.getAppSetting(SETTING_KEY.downloadSpeedLimitBps),
-            sourcesApi.getAppSetting(SETTING_KEY.disabledHydraSourceIds),
           ])
           if (org) setInstallOrganization(org)
           if (after) setAfterInstallAction(after)
           if (rem !== null) setRemoveTemporaryFiles(rem === '1' || rem === 'true')
           if (speed !== null) setDownloadSpeedLimit(bpsToSpeedKey(speed))
-          if (dis) {
-            try {
-              const arr = JSON.parse(dis) as unknown
-              if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
-                setDisabledSourceIds(arr)
-              }
-            } catch {
-              // ignora JSON inválido
-            }
-          }
         } catch {
           // Tauri indisponível (ex.: dev no browser)
         }
       })()
-    }, 400)
+    }, 0)
 
     let unlistenJob: (() => void) | undefined
     let unlistenExtract: (() => void) | undefined
@@ -100,6 +126,7 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     })
 
     return () => {
+      cancelled = true
       cancelJobsDefer()
       cancelSettingsDefer()
       unlistenJob?.()
@@ -110,6 +137,7 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     setAfterInstallAction,
     setDefaultDownloadPath,
     setDisabledSourceIds,
+    setDisabledSourcesReady,
     setDownloadSpeedLimit,
     setInstallOrganization,
     setRemoveTemporaryFiles,

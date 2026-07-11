@@ -46,7 +46,7 @@ export function CoverWarmGridItem({
           onNeedsCover(title)
         }
       },
-      { rootMargin: '240px', threshold: 0.01 },
+      { rootMargin: '600px', threshold: 0.01 },
     )
 
     observer.observe(element)

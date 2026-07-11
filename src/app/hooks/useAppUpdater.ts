@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 /** Espelha `plugins.updater.active` em tauri.conf.json. */
-export const UPDATER_ENABLED = false
+const UPDATER_ENABLED = false
 
 type UpdaterState = {
   checking: boolean

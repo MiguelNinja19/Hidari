@@ -8,7 +8,6 @@ import { store } from './app/store'
 import { ErrorBoundary } from './shared/components/ErrorBoundary'
 import { AppSettingsProvider } from './app/context/AppSettingsContext'
 import { NavigationProvider } from './app/context/NavigationContext'
-import { FavoritesProvider } from './features/favorites/FavoritesProvider'
 import { ToastProvider } from './shared/components/ToastProvider'
 
 createRoot(document.getElementById('root')!).render(
@@ -17,11 +16,9 @@ createRoot(document.getElementById('root')!).render(
       <Provider store={store}>
         <AppSettingsProvider>
           <NavigationProvider>
-            <FavoritesProvider>
-              <ToastProvider>
-                <App />
-              </ToastProvider>
-            </FavoritesProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
           </NavigationProvider>
         </AppSettingsProvider>
       </Provider>
