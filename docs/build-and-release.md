@@ -1,87 +1,96 @@
-# Build e release
+# Build and release
 
-Ver também [Arquitetura](./architecture.md) (fluxo de downloads e extração) e [API](./api.md).
+See also [Architecture](./architecture.md) (download and extraction flow) and [API](./api.md).
 
-## Build de produção
+<p align="center">
+  <img src="./assets/hidari-icon.png" alt="Hidari icon" width="64" />
+</p>
+
+## Production build
 
 ```bash
 npm run setup:binaries
 npm run tauri:build
 ```
 
-O Tauri:
+Tauri will:
 
-1. Executa `npm run build` (TypeScript + Vite → `dist/`).
-2. Compila o crate Rust em `src-tauri/`.
-3. Empacota o instalador/executável conforme `tauri.conf.json`.
+1. Run `npm run build` (TypeScript + Vite → `dist/`).
+2. Compile the Rust crate in `src-tauri/`.
+3. Package the installer/executable per `tauri.conf.json`.
 
-Saída típica: `src-tauri/target/release/bundle/`.
+Typical output: `src-tauri/target/release/bundle/`.
 
-## Configuração Tauri
+## Tauri configuration
 
-Arquivo: `src-tauri/tauri.conf.json`
+File: `src-tauri/tauri.conf.json`
 
-| Campo | Valor atual |
-|-------|-------------|
-| `productName` | MyLauncher |
+| Field | Current value |
+|-------|---------------|
+| `productName` | Hidari |
 | `identifier` | com.mylauncher.app |
 | `devUrl` | http://localhost:5173 |
-| Janela | 1094×816, redimensionável |
+| Window | 1094×816, resizable, title **Hidari** |
+| Deep links | `hidari://`, `mylauncher://` |
 
-## Binários necessários
+App icons: `src-tauri/icons/` (from the Hidari brand). Docs logo: `docs/assets/`.
+
+## Required binaries
 
 ### `download-engine`
 
-Sidecar responsável pela fila de downloads (HTTP/torrent). O launcher procura `download-engine.exe` nesta ordem aproximada:
+Sidecar that owns the download queue (HTTP/torrent). The launcher looks for `download-engine.exe` roughly in this order:
 
-1. `src-tauri/download-engine.exe` (incluído no repo para dev)
-2. Pastas de build do projeto irmão `../download-engine/target*/release|debug/`
-3. Recursos empacotados do Tauri
-4. Pasta de dados da aplicação
+1. `src-tauri/download-engine.exe` (in the repo for dev)
+2. Sibling project build folders `../download-engine/target*/release|debug/`
+3. Packaged Tauri resources
+4. Application data folder
 
-Para desenvolvimento local, coloque o executável compilado em `src-tauri/download-engine.exe` ou construa o projeto `download-engine` numa pasta adjacente.
+For local development, put the built executable at `src-tauri/download-engine.exe` or build the `download-engine` project in an adjacent folder.
 
 ### `7za.exe` / `7z.exe`
 
-Usado para extrair arquivos após o download (ZIP, 7Z, RAR). O setup automático coloca em:
+Used to extract archives after download (ZIP, 7Z, RAR). Automatic setup places them at:
 
 ```
 src-tauri/binaries/7za.exe
 src-tauri/binaries/7za.dll
 ```
 
-Execute `npm run setup:binaries` se esses arquivos não existirem. O launcher também procura `7z` no PATH ou em `Program Files\7-Zip`.
+Run `npm run setup:binaries` if those files are missing. The launcher also looks for `7z` on `PATH` or under `Program Files\7-Zip`.
 
-Para release, os binários são incluídos em `bundle.resources` no `tauri.conf.json`.
+For release, binaries are included via `bundle.resources` in `tauri.conf.json`.
 
 ### `aria2c.exe`
 
-Usado pelo motor de download para transferências. Coloque em:
+Used by the download engine for transfers. Place at:
 
 ```
 src-tauri/binaries/aria2c.exe
 ```
 
-Em release, o arquivo é incluído via `bundle.resources` no `tauri.conf.json`.
+In release, the file is included via `bundle.resources` in `tauri.conf.json`.
 
-Em runtime, o launcher também procura:
+At runtime the launcher also looks:
 
-- Ao lado de `download-engine.exe`
-- `tools/aria2c.exe` relativo ao engine
-- Recursos Tauri (`aria2c.exe`, `tools/`, `binaries/`)
-- `PATH` do sistema
+- Next to `download-engine.exe`
+- `tools/aria2c.exe` relative to the engine
+- Tauri resources (`aria2c.exe`, `tools/`, `binaries/`)
+- System `PATH`
 
-Detalhes em `src-tauri/binaries/README.txt`.
+Details in `src-tauri/binaries/README.txt`.
 
-## Recursos embutidos
+## Embedded resources
 
-- `src-tauri/resources/embedded_catalog.json` — catálogo para pesquisa na aba Discover
-- Ícones em `src-tauri/icons/`
+- `src-tauri/resources/embedded_catalog.json` — embedded catalog (search without sources)
+- Imported catalogs — AppData cache (`catalogs/`)
+- Icons in `src-tauri/icons/`
+- UI logo: `src/assets/logo.webp`
 
-## Plataformas
+## Platforms
 
-O projeto está orientado para **Windows** (`aria2c.exe`, `download-engine.exe`). Outras plataformas exigiriam binários equivalentes e ajustes em `lib.rs` (`cfg!(target_os = "windows")`).
+The project targets **Windows** (`aria2c.exe`, `download-engine.exe`). Other platforms would need equivalent binaries and changes in `lib.rs` (`cfg!(target_os = "windows")`).
 
-## Licença
+## License
 
-MIT — ver `LICENSE` na raiz do repositório.
+MIT — see `LICENSE` at the repository root.

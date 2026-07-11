@@ -1,50 +1,65 @@
-# Documentação — MyLauncher (Hydrax)
+<p align="center">
+  <img src="./assets/hidari-logo.webp" alt="Hidari" width="180" />
+</p>
 
-Launcher desktop: **Tauri 2** · **React 19** · **TypeScript** · **Redux Toolkit** · **SQLite**.
+# Documentation — Hidari
 
-## Índice
+Desktop launcher for discovering, downloading, and managing games.
 
-| Documento | Conteúdo |
-|-----------|----------|
-| [Primeiros passos](./getting-started.md) | Instalação, comandos, fluxo do utilizador |
-| [Arquitetura](./architecture.md) | Camadas, biblioteca, fila, DB, Steam, eventos |
-| [API Tauri](./api.md) | Comandos IPC, eventos, módulos TypeScript |
-| [Build e release](./build-and-release.md) | Binários, empacotamento, recursos |
+**Tauri 2** · **React 19** · **TypeScript** · **Redux Toolkit** · **Rust** · **SQLite**
 
-## Visão rápida
+Inspired by [Hydra Launcher](https://github.com/hydralauncher/hydra), with its own identity and a native Tauri runtime. See the [README](../README.md) for naming and stack rationale.
+
+## Index
+
+| Document | Contents |
+|----------|----------|
+| [Getting started](./getting-started.md) | Install, commands, user flow |
+| [Architecture](./architecture.md) | Layers, library, queue, DB, Steam, events |
+| [Tauri API](./api.md) | IPC commands, events, TypeScript modules |
+| [Build and release](./build-and-release.md) | Binaries, packaging, resources |
+
+## Quick overview
 
 ```
-Explorar → Downloads → Biblioteca → Jogar
+Discover → Downloads → Library → Play
      ↑         │            │
-     └─ fontes Hydra    sidecar + SQLite
+     └─ Hydra sources   sidecar + SQLite
 ```
 
-| Tab | Função |
-|-----|--------|
-| **Explorar** | Pesquisa no catálogo Hydra local; favoritos no cartão |
-| **Downloads** | Fila ativa (transferência, pós-download automático) |
-| **Biblioteca** | Jogos prontos para instalar/jogar (deduplicados) |
-| **Configurações** | Pasta de downloads, fontes, velocidade, seed |
+| Tab | Role |
+|-----|------|
+| **Discover** | Search active-source catalogs (Enter or Search) |
+| **Downloads** | Active queue (transfer, automatic post-download) |
+| **Library** | Games ready to install/play (deduped) |
+| **Settings** | Download folder, sources (on/off), speed, seed |
 
-## Comandos essenciais
+## Why Tauri?
+
+- Lighter than Electron (no bundled Chromium)
+- **Rust** backend for files, tray, and deep links (`hidari://`)
+- React UI with hot reload in development (`npm run tauri:dev`)
+
+## Essential commands
 
 ```bash
-npm install          # dependências + setup:binaries (7-Zip, aria2c, engine)
-npm run tauri:dev    # desenvolvimento (app desktop + hot reload)
-npm run tauri:build  # build de produção
+npm install          # deps + setup:binaries (7-Zip, aria2c, engine)
+npm run tauri:dev    # development (desktop app + hot reload)
+npm run tauri:build  # production build
 npm run test         # Vitest
 npm run lint         # ESLint
 ```
 
-> Funcionalidades nativas (ficheiros, downloads, diálogos) **só** funcionam com `npm run tauri:dev` ou o executável compilado — **não** com `npm run dev` sozinho.
+> Native features (files, downloads, dialogs) work **only** with `npm run tauri:dev` or a built executable — **not** with `npm run dev` alone.
 
-## Onde está o quê
+## Where to look
 
-| Precisas de… | Vai a… |
-|--------------|--------|
-| Correr o projeto | [getting-started.md](./getting-started.md) |
-| Entender biblioteca / fila / cache | [architecture.md](./architecture.md) |
-| Invocar um comando Rust | [api.md](./api.md) |
-| Compilar release / binários | [build-and-release.md](./build-and-release.md) |
-| Contratos TS | `src/shared/types/contracts/` |
-| Settings persistidos | `src/shared/config/appSettings.ts` |
+| Need… | Go to… |
+|-------|--------|
+| Run the project | [getting-started.md](./getting-started.md) |
+| Library / queue / cache | [architecture.md](./architecture.md) |
+| Invoke a Rust command | [api.md](./api.md) |
+| Release build / binaries | [build-and-release.md](./build-and-release.md) |
+| TS contracts | `src/shared/types/contracts/` |
+| Persisted settings | `src/shared/config/appSettings.ts` |
+| Logo / icon | `docs/assets/`, `src/assets/logo.webp`, `src-tauri/icons/` |

@@ -1,90 +1,101 @@
-# Primeiros passos
+<p align="center">
+  <img src="./assets/hidari-icon.png" alt="Hidari icon" width="72" />
+</p>
 
-## Pré-requisitos
+# Getting started
 
-| Ferramenta | Versão | Notas |
-|------------|--------|-------|
-| [Node.js](https://nodejs.org/) | 18+ | Frontend (Vite) e CLI Tauri |
-| [Rust](https://www.rust-lang.org/tools/install) | 1.77+ | Backend em `src-tauri/` |
-| Windows SDK | — | Obrigatório no Windows |
+## Prerequisites
 
-Ver também [pré-requisitos Tauri v2](https://v2.tauri.app/start/prerequisites/).
+| Tool | Version | Notes |
+|------|---------|-------|
+| [Node.js](https://nodejs.org/) | 18+ | Frontend (Vite) and Tauri CLI |
+| [Rust](https://www.rust-lang.org/tools/install) | 1.77+ | Backend in `src-tauri/` |
+| Windows SDK | — | Required on Windows |
 
-## Instalação
+See also [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+## Install
 
 ```bash
 npm install
 ```
 
-O `postinstall` executa `npm run setup:binaries`:
+`postinstall` runs `npm run setup:binaries`:
 
-- **7-Zip** (`7za.exe`, `7za.dll`) — extração automática
-- **aria2c.exe** e **download-engine.exe** → `src-tauri/binaries/`
+- **7-Zip** (`7za.exe`, `7za.dll`) — automatic extraction
+- **aria2c.exe** and **download-engine.exe** → `src-tauri/binaries/`
 
-Na primeira execução, o Rust compila dependências (pode demorar alguns minutos).
+On first run, Rust compiles dependencies (may take a few minutes).
 
-## Comandos
+## Commands
 
-| Comando | Descrição |
-|---------|-----------|
-| `npm run tauri:dev` | **Recomendado** — app desktop + hot reload |
-| `npm run dev` | Só browser — **sem** APIs Tauri |
-| `npm run tauri:build` | Instalador / executável de produção |
-| `npm run build` | Só frontend → `dist/` |
+| Command | Description |
+|---------|-------------|
+| `npm run tauri:dev` | **Recommended** — desktop app + hot reload |
+| `npm run dev` | Browser only — **no** Tauri APIs |
+| `npm run tauri:build` | Production installer / executable |
+| `npm run build` | Frontend only → `dist/` |
 | `npm run test` | Vitest |
 | `npm run lint` | ESLint |
-| `npm run setup:binaries` | Re-download de binários nativos |
+| `npm run setup:binaries` | Re-download native binaries |
 
-## Fluxo do utilizador
+## User flow
 
-1. **Configurações** — pasta de downloads + importar fonte `.json` (Hydra)
-2. **Explorar** — pesquisar jogo → escolher versão/torrent → enfileirar
-3. **Downloads** — acompanhar progresso; pós-download é **automático**
-4. **Biblioteca** — **Instalar** (setup) → **Jogar**
+1. **Settings** — download folder + import a `.json` source (or HydraLinks URL)
+2. **Discover** — type a game name → **Enter** or Search → pick a version → enqueue
+3. **Downloads** — watch progress; post-download is **automatic**
+4. **Library** — **Install** (setup) → **Play**
 
-### O que esperar em cada fase
+### Active / inactive sources
 
-| Fase | Onde | O que vês |
-|------|------|-----------|
-| A transferir | Downloads | Barra de progresso, velocidade |
-| A 100% | Downloads | "Preparando arquivos…" (segundos) |
-| Pronto | Downloads / Biblioteca | "Pronto para instalar" ou botão **Instalar** |
-| Instalado | Biblioteca | **Jogar** |
+In Settings you can **disable** a source without deleting it. State lives in `app_settings` (`disabled_hydra_source_ids`) and survives restarts. Discover search uses active sources only.
 
-Erros aparecem como **toast** no canto superior direito (não bloqueiam a página).
+If search is empty with “active” sources, sync the catalog (per-source refresh or refresh all).
 
-## Desenvolvimento
+### What to expect per stage
+
+| Stage | Where | What you see |
+|-------|-------|--------------|
+| Transferring | Downloads | Progress bar, speed |
+| At 100% | Downloads | “Preparing files…” (seconds) |
+| Ready | Downloads / Library | “Ready to install” or **Install** |
+| Installed | Library | **Play** |
+
+Errors show as a **toast** in the top-right (they do not block the page).
+
+## Development
 
 1. `npm run tauri:dev`
-2. Vite em `http://localhost:5173` (`tauri.conf.json`)
-3. Janela **MyLauncher** (1094×816 px)
+2. Vite at `http://localhost:5173` (`tauri.conf.json`)
+3. **Hidari** window (1094×816 px)
 
-### Erro "Tauri indisponível"
+### “Tauri unavailable” error
 
-Estás a correr só `npm run dev`. Usa `npm run tauri:dev`.
+You are running `npm run dev` only. Use `npm run tauri:dev`.
 
-### Extração falha (`7z_not_found`)
+### Extraction fails (`7z_not_found`)
 
 ```bash
 npm run setup:binaries
 ```
 
-### Download-engine em falta
+### Missing download-engine
 
-Ver [Build e release](./build-and-release.md) — colocar `download-engine.exe` em `src-tauri/`.
+See [Build and release](./build-and-release.md) — place `download-engine.exe` under `src-tauri/`.
 
-## Script auxiliar
+## Helper script
 
-`scripts/read-hydra-sources.mjs` — exporta fontes da LevelDB do Hydra Launcher:
+`scripts/read-hydra-sources.mjs` — exports sources from Hydra Launcher’s LevelDB (useful to migrate catalogs):
 
 ```bash
-node scripts/read-hydra-sources.mjs [caminho-hydra-db] [pasta-snapshot]
+node scripts/read-hydra-sources.mjs [hydra-db-path] [snapshot-folder]
 ```
 
-Por defeito: `%APPDATA%\hydralauncher\hydra-db`.
+Default: `%APPDATA%\hydralauncher\hydra-db`.
 
-## Próximos passos
+## Next steps
 
-- [Arquitetura](./architecture.md) — biblioteca, fila, DB, Steam
-- [API Tauri](./api.md) — comandos e eventos
-- [Build e release](./build-and-release.md) — produção
+- [Architecture](./architecture.md) — library, queue, DB, Steam
+- [Tauri API](./api.md) — commands and events
+- [Build and release](./build-and-release.md) — production
+- [README](../README.md) — why Hidari and why Tauri

@@ -1,51 +1,57 @@
-# Arquitetura
+# Architecture
 
-Documento único de referência: estrutura, fluxos de dados, regras de negócio, base de dados e uso da API Steam.
+Single reference for structure, data flows, business rules, database, and Steam API usage.
 
-## Visão geral
+<p align="center">
+  <img src="./assets/hidari-logo.webp" alt="Hidari" width="140" />
+</p>
+
+**Hidari** is a Tauri launcher inspired by the Hydra ecosystem (JSON sources/catalogs). The UI is React; the Rust backend handles SQLite, downloads (sidecar), covers, and game launching.
+
+## Overview
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  App.tsx — shell fino (tabs lazy, navegação, providers) │
-│  features/* — tab autónoma (Controller + Provider)       │
-│  Redux: sources, queue                                 │
-│  ToastProvider — erros e sucessos (toast global)       │
+│  App.tsx — thin shell (lazy tabs, navigation, providers)│
+│  features/* — autonomous tab (Controller + Provider)    │
+│  Redux: sources, queue                                  │
+│  ToastProvider — errors and success (global toast)      │
 └────────────────────┬────────────────────────────────────┘
                      │ invoke / listen
 ┌────────────────────▼────────────────────────────────────┐
-│  API TypeScript (src/shared/api/tauri/*)                │
-│  Contratos (src/shared/types/contracts/*)               │
+│  TypeScript API (src/shared/api/tauri/*)                │
+│  Contracts (src/shared/types/contracts/*)               │
 │  Config (src/shared/config/*)                           │
 └────────────────────┬────────────────────────────────────┘
                      │ Tauri IPC
 ┌────────────────────▼────────────────────────────────────┐
 │  Rust (src-tauri/src/)                                  │
 │  db · sidecar · catalog · covers · library · launch …   │
-│  SQLite (pool r2d2) · HTTP (reqwest)                    │
+│  SQLite (r2d2 pool) · HTTP (reqwest)                    │
 └────────────┬───────────────────────┬────────────────────┘
              │                       │
     ┌────────▼────────┐     ┌────────▼────────────┐
     │  Hydra / JSON   │     │  download-engine    │
-    │  (fontes locais)│     │  (sidecar HTTP)     │
+    │  (local sources)│     │  (HTTP sidecar)     │
     └─────────────────┘     └─────────────────────┘
 ```
 
-## Estrutura de pastas
+## Folder structure
 
 ```
 launcher-app/
-├── docs/                    # documentação (este índice)
+├── docs/                    # documentation
 ├── src/
-│   ├── app/                 # hooks globais (bootstrap, queue sync, deep links)
+│   ├── app/                 # global hooks (bootstrap, queue sync, deep links)
 │   ├── features/
-│   │   ├── discover/        # Explorar
+│   │   ├── discover/        # Discover
 │   │   ├── downloads/       # Downloads
-│   │   ├── library/         # Biblioteca
+│   │   ├── library/         # Library
 │   │   ├── queue/           # queueSlice + selectors
 │   │   ├── settings/
 │   │   ├── sources/
 │   │   ├── covers/          # CoversProvider
-│   │   └── favorites/     # FavoritesProvider (toggle no Explorar; sem tab)
+│   │   └── favorites/       # FavoritesProvider (toggle in Discover; no tab)
 │   ├── layout/              # AppShell, Sidebar (4 tabs)
 │   ├── shared/
 │   │   ├── api/tauri/
@@ -64,272 +70,285 @@ launcher-app/
     └── launch/
 ```
 
-## Tabs e padrão Controller
+## Tabs and Controller pattern
 
-| Tab | Wrapper | Estado |
-|-----|---------|--------|
-| Explorar | `DiscoverTab` | `DiscoverController` + `useDiscoverControllerState` |
-| Biblioteca | `LibraryTab` | `LibraryController` + `useLibraryControllerState` |
-| Downloads | `DownloadsTab` | jobs do Redux (props mínimas) |
-| Configurações | `SettingsTab` | `AppSettingsContext` + `sources` slice |
+| Tab | Wrapper | State |
+|-----|---------|-------|
+| Discover | `DiscoverTab` | `DiscoverController` + `useDiscoverControllerState` |
+| Library | `LibraryTab` | `LibraryController` + `useLibraryControllerState` |
+| Downloads | `DownloadsTab` | Redux jobs (minimal props) |
+| Settings | `SettingsTab` | `AppSettingsContext` + `sources` slice |
 
-`CoversProvider` envolve Explorar, Biblioteca e Downloads.
+`CoversProvider` wraps Discover, Library, and Downloads.
 
-### UI global
+### Global UI
 
-- **Toasts** (`ToastProvider` em `main.tsx`): erros e sucessos no canto superior direito; substitui banners inline (`PageNotice`) nas tabs.
-- **Atalhos**: Ctrl+1–4 para as quatro tabs.
-
----
-
-## Fluxo do utilizador
-
-```
-Configurações (pasta + fontes .json)
-        ↓
-Explorar (pesquisa Hydra, includeSteam: false)
-        ↓
-Downloads (fila sidecar, progresso em tempo real)
-        ↓
-Pós-download automático (verificar / extrair se necessário)
-        ↓
-Biblioteca (Instalar → Jogar)
-```
+- **Toasts** (`ToastProvider` in `main.tsx`): errors and success in the top-right; replaces inline banners (`PageNotice`) on tabs.
+- **Shortcuts**: Ctrl+1–4 for the four tabs.
 
 ---
 
-## Biblioteca
+## User flow
 
-A biblioteca **não** usa tabela `games` nem slice Redux dedicado.
+```
+Settings (folder + .json sources)
+        ↓
+Discover (Hydra search, includeSteam: false)
+        ↓
+Downloads (sidecar queue, live progress)
+        ↓
+Automatic post-download (verify / extract if needed)
+        ↓
+Library (Install → Play)
+```
 
-### Fontes de dados
+---
 
-| Fonte | Papel |
-|-------|--------|
-| `queue.jobs` (Redux) | Jobs com download **concluído** |
-| `scan_default_download_path` | Pastas no disco |
+## Library
+
+The library does **not** use a `games` table or a dedicated Redux slice.
+
+### Data sources
+
+| Source | Role |
+|--------|------|
+| `queue.jobs` (Redux) | Jobs with **completed** download |
+| `scan_default_download_path` | Folders on disk |
 | `inspect_library_path(s)` | `hasGame`, `needsInstall`, `needsExtraction` |
-| `pathStateByKey` (React) | Cache de inspeção por job/pasta |
-| `libraryDedupe` | Um cartão por jogo (títulos equivalentes) |
+| `pathStateByKey` (React) | Inspection cache per job/folder |
+| `libraryDedupe` | One card per game (equivalent titles) |
 
-### Regras de negócio
+### Business rules
 
-| Regra | Implementação |
-|-------|----------------|
-| Só downloads **concluídos** na biblioteca | `jobBelongsInLibrary` — estados `completed`, `seeding`, `extracting`, `extracted`, `skipped` |
-| Downloads activos na tab **Downloads** | `downloading`, `pending`, `retrying`, `paused` não entram na biblioteca |
-| Um cartão por jogo | `libraryTitlesMatch` + `dedupeLibraryEntries` (ex.: `Stardew` = `Stardew Valley`) |
-| Excluir sempre disponível | Qualquer entrada pode ser removida (job + pastas relacionadas) |
-| Scan sob demanda | Ao abrir a tab, após `extract://status` ou `library://folder-changed` |
+| Rule | Implementation |
+|------|----------------|
+| Only **completed** downloads in the library | `jobBelongsInLibrary` — states `completed`, `seeding`, `extracting`, `extracted`, `skipped` |
+| Active downloads stay on **Downloads** | `downloading`, `pending`, `retrying`, `paused` do not enter the library |
+| One card per game | `libraryTitlesMatch` + `dedupeLibraryEntries` (e.g. `Stardew` = `Stardew Valley`) |
+| Delete always available | Any entry can be removed (job + related folders) |
+| On-demand scan | On tab open, after `extract://status` or `library://folder-changed` |
 
-### Deduplicação de títulos
+### Title deduplication
 
-`libraryGameKeyCandidates` e `libraryTitlePrefixMatch` em `normalizeTitleKey.ts` tratam:
+`libraryGameKeyCandidates` and `libraryTitlePrefixMatch` in `normalizeTitleKey.ts` handle:
 
-- Repack vs nome limpo (`Stardew Valley (v1.6.0)` vs `Stardew Valley`)
-- Pasta abreviada (`Stardew` vs título completo)
-- Abreviações (`SBSP` vs `SpongeBob SquarePants`)
+- Repack vs clean name (`Stardew Valley (v1.6.0)` vs `Stardew Valley`)
+- Short folder name (`Stardew` vs full title)
+- Abbreviations (`SBSP` vs `SpongeBob SquarePants`)
 
-### Exclusão
+### Deletion
 
-`resolveLibraryDeletePaths` apaga subpastas do jogo sem remover a pasta raiz de downloads. Se ficheiros estão bloqueados (instalador aberto, erro 32), o job é removido da biblioteca mas o toast avisa para fechar o Setup.
+`resolveLibraryDeletePaths` deletes game subfolders without removing the download root. If files are locked (installer open, error 32), the job is removed from the library but a toast asks to close Setup.
 
 ---
 
-## Downloads e pós-download
+## Downloads and post-download
 
 ### Sidecar
 
-O `download-engine` (HTTP local) gere a fila. O Rust observa progresso e emite `queue://job-progress`.
+`download-engine` (local HTTP) owns the queue. Rust watches progress and emits `queue://job-progress`.
 
-### Pós-download automático
+### Automatic post-download
 
-Watcher em `sidecar/extraction.rs` (ciclo ~2s):
+Watcher in `sidecar/extraction.rs` (~2s cycle):
 
-1. Job `completed` / `seeding` elegível → `process_job_post_download`
-2. **Verificar** payload (busca recursiva em subpastas — torrents)
-3. Se `setup.exe` encontrado → `skipped` (pronto para instalar)
-4. Se arquivo `.zip`/`.7z`/`.rar` → `process_job_extraction` (7-Zip)
-5. Eventos `extract://status` actualizam Redux
+1. Eligible `completed` / `seeding` job → `process_job_post_download`
+2. **Verify** payload (recursive search in subfolders — torrents)
+3. If `setup.exe` found → `skipped` (ready to install)
+4. If `.zip`/`.7z`/`.rar` archive → `process_job_extraction` (7-Zip)
+5. `extract://status` events update Redux
 
-### Estados na UI (Downloads)
+### UI states (Downloads)
 
-| Texto | Significado |
-|-------|-------------|
-| Transferindo… | Download em curso |
-| Preparando arquivos… | 100% mas pós-download ainda não terminou |
-| Extraindo arquivos… | 7-Zip a extrair |
-| Pronto para instalar | Verificação concluída, setup disponível |
-| Concluído | Job finalizado na fila |
+| Label | Meaning |
+|-------|---------|
+| Transferring… | Download in progress |
+| Preparing files… | 100% but post-download not finished |
+| Extracting files… | 7-Zip extracting |
+| Ready to install | Verification done, setup available |
+| Completed | Job finished in the queue |
 
-O botão **Extrair** manual foi removido — o processo é automático.
+The manual **Extract** button was removed — the process is automatic.
 
-`extractionStatus` no job (`skipped`, `verified`, `extracted`) evita ficar preso em "Preparando arquivos…".
+`extractionStatus` on the job (`skipped`, `verified`, `extracted`) avoids getting stuck on “Preparing files…”.
 
 ---
 
-## Sincronização da fila
+## Queue sync
 
-`useQueueSync` — **sem polling constante** quando não há downloads activos.
+`useQueueSync` — **no constant polling** when there are no active downloads.
 
-| Gatilho | Acção |
+| Trigger | Action |
 |---------|--------|
-| `queue://job-progress` | Actualização em tempo real no Redux |
-| `extract://status` | Estado de extração + refresh biblioteca |
-| Abrir tab Downloads/Biblioteca | `fetchJobs` |
-| Downloads **activos** | `fetchJobs` silencioso a cada **4s** (`POLL_ACTIVE_JOBS_MS`) |
-| Foco da janela | Reconciliação única |
+| `queue://job-progress` | Live Redux update |
+| `extract://status` | Extraction state + library refresh |
+| Open Downloads/Library tab | `fetchJobs` |
+| **Active** downloads | Silent `fetchJobs` every **4s** (`POLL_ACTIVE_JOBS_MS`) |
+| Window focus | Single reconciliation |
 
-Progresso visual vem sobretudo dos **eventos**, não de polling pesado.
+Visual progress comes mostly from **events**, not heavy polling.
 
 ---
 
 ## Frontend — Redux
 
-| Slice | Responsabilidade |
-|-------|------------------|
-| `sources` | Fontes Hydra, sync, import |
-| `queue` | Fila sidecar, progresso, jobs dismissed |
+| Slice | Responsibility |
+|-------|----------------|
+| `sources` | Hydra sources, sync, import |
+| `queue` | Sidecar queue, progress, dismissed jobs |
 
-Selectors em `queueSelectors.ts` (`selectActiveDownloadsCount`, etc.).
+Selectors in `queueSelectors.ts` (`selectActiveDownloadsCount`, etc.).
 
 ---
 
-## Backend — módulos Rust
+## Backend — Rust modules
 
-| Módulo | Responsabilidade |
-|--------|------------------|
-| `config` | URLs, trackers, binários |
-| `title` | Normalização (paridade TS ↔ Rust) |
+| Module | Responsibility |
+|--------|----------------|
+| `config` | URLs, trackers, binaries |
+| `title` | Normalization (TS ↔ Rust parity) |
 | `db` | Pool, migrations, batch queries |
-| `sidecar` | Engine HTTP, watcher, extração |
+| `sidecar` | HTTP engine, watcher, extraction |
 | `sources` | Hydra + hydralinks |
-| `catalog` | Pesquisa, detalhe, cache Steam opcional |
-| `covers` | Índice Steam local, precache, batch resolve |
+| `catalog` | Search, detail, optional Steam cache |
+| `covers` | Local Steam index, precache, batch resolve |
 | `library` | Scan, inspect, delete, launch roots, notify |
-| `launch` | Detecção e spawn de `.exe` |
-| `archive` | Busca recursiva de payloads (torrents) |
+| `launch` | Detect and spawn `.exe` |
+| `archive` | Recursive payload search (torrents) |
 
 ---
 
-## Eventos em tempo real
+## Real-time events
 
-| Evento | Payload | Emissor | Consumidor |
-|--------|---------|---------|------------|
+| Event | Payload | Emitter | Consumer |
+|-------|---------|---------|----------|
 | `queue://job-progress` | `JobProgressEvent` | `sidecar/engine.rs` | `queueSlice` |
 | `extract://status` | `ExtractStatusEvent` | `extraction.rs` | `queueSlice` + `libraryRefreshBridge` |
 | `library://folder-changed` | `()` | `library/watcher.rs` | `LibraryTab` |
-| `app://deep-link` | `DeepLinkPayload` | protocolo custom | `useDeepLinkNavigation` |
+| `app://deep-link` | `DeepLinkPayload` | custom protocol | `useDeepLinkNavigation` |
 
-Listeners de `extract://status` centralizados em `useAppBootstrap`.
+`extract://status` listeners are centralized in `useAppBootstrap`.
 
 ---
 
-## Base de dados (SQLite)
+## Database (SQLite)
 
-Pool **r2d2** (`DbPool`), máx. **6** conexões. `init_database_pool` no setup de `lib.rs`.
+**r2d2** pool (`DbPool`), max **6** connections. `init_database_pool` in `lib.rs` setup.
 
 ### PRAGMAs
 
 `journal_mode=WAL`, `synchronous=NORMAL`, `cache_size=-64000`, `temp_store=MEMORY`, `mmap_size=256MB`.
 
-### Regra async
+### Async rule
 
-Libertar conexão (`drop(conn)`) **antes** de `.await` em comandos com rede ou sidecar.
+Drop the connection (`drop(conn)`) **before** `.await` in commands that hit the network or sidecar.
 
-### Tabelas principais
+### Main tables
 
-| Tabela | Uso |
-|--------|-----|
-| `hydra_source_catalogs` | Catálogo importado |
-| `hydra_download_sources` | Fontes activas |
-| `download_jobs` | Jobs locais (legado/complementar) |
-| `extraction_log` | Estado pós-download por `job_id` |
-| `game_covers` | URL e path local de capas |
-| `steam_app_index` | AppID ↔ nome (lookup local) |
-| `steam_game_details` | Cache JSON de `appdetails` |
-| `catalog_steam_cache` | Resultados `storesearch` (24h) |
-| `library_game_roots` | Pasta manual de instalação |
-| `app_settings` | Configuração persistida |
+| Table | Use |
+|-------|-----|
+| `hydra_source_catalogs` | Imported catalog |
+| `hydra_download_sources` | Sources |
+| `download_jobs` | Local jobs (legacy/complementary) |
+| `extraction_log` | Post-download state per `job_id` |
+| `game_covers` | Cover URL and local path |
+| `steam_app_index` | AppID ↔ name (local lookup) |
+| `steam_game_details` | Cached `appdetails` JSON |
+| `catalog_steam_cache` | `storesearch` results (24h) |
+| `library_game_roots` | Manual install folder |
+| `app_settings` | Persisted configuration |
 
-### Índices
+### Indexes
 
-- `idx_hce_group_key` — agrupamento catálogo Hydra
-- `idx_game_covers_updated_at` — capas por recência
+- `idx_hce_group_key` — Hydra catalog grouping
+- `idx_game_covers_updated_at` — covers by recency
 - `idx_hce_source_title`, `idx_hce_source_group`
 - `idx_steam_app_index_name_norm`
 
-### Queries em batch
+### Batch queries
 
-| Função | Uso |
-|--------|-----|
-| `batch_get_extraction_logs` | `sidecar_list_jobs` — um SELECT para N jobs |
-| `batch_lookup_cover_rows` | `resolve_covers_for_titles` — chunks de 120 títulos |
+| Function | Use |
+|----------|-----|
+| `batch_get_extraction_logs` | `sidecar_list_jobs` — one SELECT for N jobs |
+| `batch_lookup_cover_rows` | `resolve_covers_for_titles` — chunks of 120 titles |
 
 ---
 
-## Steam e rede — evitar chamadas desnecessárias
+## Steam and network — avoid unnecessary calls
 
-Estratégia: **local primeiro, rede depois, cache agressivo**.
+Strategy: **local first, network later, aggressive cache**.
 
-### Índice local (`steam_app_index`)
+### Local index (`steam_app_index`)
 
-- Lista de appids Steam no SQLite
-- Refresh automático só se **vazio** ou **> 7 dias** (`maybe_refresh_steam_app_index` no arranque)
-- Capas resolvem por lookup local na maioria dos casos
+- Steam appids list in SQLite
+- Auto-refresh only if **empty** or **> 7 days** (`maybe_refresh_steam_app_index` on startup)
+- Covers resolve via local lookup in most cases
 
-### Explorar (pesquisa)
+### Discover (search)
 
 ```typescript
 // useDiscoverCatalog.ts
 includeSteam: false
-attachCovers: false
+onlyWithSources: true
+attachCovers: true
 ```
 
-A pesquisa usa **apenas fontes Hydra** — não chama `storesearch` em cada busca.
+Search uses **active sources only** (not disabled in settings) and cached local `.json` files — it does not call `storesearch` on every query. The user confirms the query with **Enter** or Search (`discoverSearchDraft` → `discoverSearch`).
 
-### Cache de pesquisa Steam (`catalog_steam_cache`)
+### Steam search cache (`catalog_steam_cache`)
 
-- TTL **24 horas** por query normalizada
-- Usado só quando `include_steam: true` (não é o caso do Explorar actual)
+- TTL **24 hours** per normalized query
+- Used only when `include_steam: true` (not the current Discover path)
 
-### Detalhe do jogo (`get_game_detail`)
+### Game detail (`get_game_detail`)
 
-- `appdetails` Steam: **1 chamada** por jogo na primeira abertura
-- Persistido em `steam_game_details` — não repete
+- Steam `appdetails`: **1 call** per game on first open
+- Persisted in `steam_game_details` — not repeated
 
-### Capas (`resolve_covers_for_titles`)
+### Covers (`resolve_covers_for_titles`)
 
-Ordem de resolução:
+Resolution order:
 
-1. Ficheiro local em disco
-2. Tabela `game_covers`
-3. Índice `steam_app_index` (sem API)
-4. Rede só para títulos em falta (máx. 3 em paralelo)
+1. Local file on disk
+2. `game_covers` table
+3. `steam_app_index` (no API)
+4. Network only for missing titles (max 3 in parallel)
 
-Frontend (`useGameCovers`): debounce 120ms, retry 15–30 min, batch lookup.
+Frontend (`useGameCovers`): 120ms debounce, 15–30 min retry, batch lookup.
 
-### O que ainda usa rede Steam
+### What still uses Steam network
 
-| Quando | O quê |
-|--------|--------|
-| Arranque (~1×/7 dias) | Atualizar índice de appids |
-| Primeira ficha do jogo | Sinopse, géneros, screenshots |
-| Capa em falta | CDN `steamstatic.com` (imagem, não API) |
-| Géneros no grid | Batch com cache (`resolve_game_genres_batch`) |
+| When | What |
+|------|------|
+| Startup (~1×/7 days) | Refresh appid index |
+| First game detail | Synopsis, genres, screenshots |
+| Missing cover | CDN `steamstatic.com` (image, not API) |
+| Genres in grid | Batch with cache (`resolve_game_genres_batch`) |
 
 ---
 
-## Configuração
+## Configuration
 
-Chaves em `src/shared/config/appSettings.ts`; persistência via `get_app_setting` / `set_app_setting`.
+Keys in `src/shared/config/appSettings.ts`; persistence via `get_app_setting` / `set_app_setting`.
 
-Variável opcional `STEAM_WEB_API_KEY` (ou `.env` em `%APPDATA%/.../config/`) para refresh do índice via Web API.
+| Key | Use |
+|-----|-----|
+| `disabled_hydra_source_ids` | JSON `string[]` — disabled source IDs (denylist). Active = not in this list. |
+| `default_download_path` | Default download folder |
+| `seed_torrents_enabled` | Seed after download |
+| `install_organization` | Install folder layout |
+| `after_install_action` | Action after install |
+| `remove_temp_files` | Remove temporary files |
+| `download_speed_limit_bps` | Speed limit |
+
+Source on/off state does **not** live in `hydra_download_sources`: only the denylist above. Bootstrap loads `disabled_hydra_source_ids` immediately on startup (before other deferred settings) so toggles do not overwrite an empty list.
+
+Optional `STEAM_WEB_API_KEY` (or `.env` under `%APPDATA%/.../config/`) for index refresh via Web API.
 
 ---
 
 ## CSS
 
-Estilos activos: `src/App.css`, `src/styles/premium-brutal.css`, `src/styles/index.css`.
+Active styles: `src/App.css`, `src/styles/premium-brutal.css`, `src/styles/index.css`.
 
-Toasts: classes `.app-toast`, `.app-toast--error`, `.app-toast--success`.
+Toasts: `.app-toast`, `.app-toast--error`, `.app-toast--success`.
