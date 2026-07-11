@@ -1067,6 +1067,29 @@ fn is_usable_setup_file(path: &Path) -> bool {
   size >= 50_000
 }
 
+fn normalize_executable_path(path: &Path) -> String {
+  path.to_string_lossy().replace('/', "\\").to_lowercase()
+}
+
+/// Verifica se um executável específico ainda está em execução (por caminho completo).
+pub fn is_executable_running(target: &Path) -> bool {
+  if target.as_os_str().is_empty() {
+    return false;
+  }
+  let target_norm = normalize_executable_path(target);
+  let mut system = sysinfo::System::new();
+  system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+  for process in system.processes().values() {
+    let Some(exe) = process.exe() else {
+      continue;
+    };
+    if normalize_executable_path(exe) == target_norm {
+      return true;
+    }
+  }
+  false
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

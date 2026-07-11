@@ -297,6 +297,15 @@ pub async fn launch_setup_from_path(app: AppHandle, payload: LaunchGamePayload) 
 }
 
 #[tauri::command]
+pub fn is_executable_running_at_path(path: String) -> bool {
+  let trimmed = path.trim();
+  if trimmed.is_empty() {
+    return false;
+  }
+  launch::is_executable_running(std::path::Path::new(trimmed))
+}
+
+#[tauri::command]
 pub async fn extract_library_folder(app: AppHandle, payload: LaunchGamePayload) -> Result<(), String> {
   let extraction = app.state::<ExtractionState>();
   if !extraction.try_acquire() {

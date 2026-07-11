@@ -26,6 +26,26 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Manager, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
+#[cfg(target_os = "windows")]
+fn clear_window_title_bar_icon(hwnd: windows::Win32::Foundation::HWND) {
+  use windows::Win32::Foundation::{LPARAM, WPARAM};
+  use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_SETICON, ICON_BIG, ICON_SMALL};
+
+  unsafe {
+    let _ = SendMessageW(
+      hwnd,
+      WM_SETICON,
+      Some(WPARAM(ICON_SMALL as usize)),
+      Some(LPARAM(0)),
+    );
+    let _ = SendMessageW(
+      hwnd,
+      WM_SETICON,
+      Some(WPARAM(ICON_BIG as usize)),
+      Some(LPARAM(0)),
+    );
+  }
+}
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   load_env_from_cwd();
@@ -86,6 +106,21 @@ pub fn run() {
 
       covers::maybe_refresh_steam_app_index(app.handle());
 
+      // Pré-aquece FitGirl/etc. em background para pesquisa quase imediata.
+      let warm_handle = app.handle().clone();
+      std::thread::spawn(move || {
+        crate::sources::hydralinks::warm_local_catalog_caches(&warm_handle);
+      });
+
+      let app_icon = app.default_window_icon().cloned();
+
+      if let Some(window) = app.get_webview_window("main") {
+        #[cfg(target_os = "windows")]
+        if let Ok(hwnd) = window.hwnd() {
+          clear_window_title_bar_icon(hwnd);
+        }
+      }
+
       // Pré-cache em disco só manual (Configurações) — evita competir com a UI no arranque.
       let show_item = MenuItem::with_id(app, "tray_show", "Mostrar janela", true, None::<&str>)?;
       let hide_item = MenuItem::with_id(app, "tray_hide", "Ocultar janela", true, None::<&str>)?;
@@ -93,9 +128,13 @@ pub fn run() {
       let tray_menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
 
       let app_handle = app.handle().clone();
-      let _tray = TrayIconBuilder::new()
+      let mut tray_builder = TrayIconBuilder::new()
         .menu(&tray_menu)
-        .show_menu_on_left_click(false)
+        .show_menu_on_left_click(false);
+      if let Some(icon) = app_icon {
+        tray_builder = tray_builder.icon(icon);
+      }
+      let _tray = tray_builder
         .on_menu_event(move |app, event| match event.id.as_ref() {
           "tray_show" => {
             if let Some(window) = app.get_webview_window("main") {
@@ -128,6 +167,13 @@ pub fn run() {
       Ok(())
     })
     .on_window_event(|window, event| {
+      #[cfg(target_os = "windows")]
+      if matches!(event, WindowEvent::Focused(true)) {
+        if let Ok(hwnd) = window.hwnd() {
+          clear_window_title_bar_icon(hwnd);
+        }
+      }
+
       if let WindowEvent::CloseRequested { api, .. } = event {
         let app_handle = window.app_handle().clone();
         let minimize = crate::db::open_database_connection(window.app_handle())
@@ -156,15 +202,6 @@ pub fn run() {
       search_game_catalog,
       resolve_game_genres_batch,
       get_game_detail,
-      toggle_favorite_catalog_entry,
-      list_favorite_catalog_entries,
-      create_collection,
-      rename_collection,
-      delete_collection,
-      list_collections,
-      add_to_collection,
-      remove_from_collection,
-      list_collection_entries,
       check_catalog_changes,
       set_default_download_path,
       get_default_download_path,
@@ -207,6 +244,7 @@ pub fn run() {
       inspect_library_paths,
       set_library_game_root,
       launch_setup_from_path,
+      is_executable_running_at_path,
       extract_library_folder
     ])
     .run(tauri::generate_context!())

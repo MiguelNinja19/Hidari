@@ -1,34 +1,78 @@
 use crate::catalog::steam_details::{cached_genres_for_title, resolve_steam_details_for_app};
-use crate::catalog::{normalize_match_text, stable_embedded_id};
+use crate::catalog::{stable_embedded_id, title_matches_query};
 use crate::db::{get_disabled_hydra_source_ids_from_conn, open_database_connection};
-use crate::dto::{CatalogGameDto, DownloadOptionDto, GameDetailDto, GetGameDetailPayload};
-use crate::sources::{list_download_options_for_group_key, list_hydra_sources, search_download_options_from_local_sources};
-use crate::title::catalog_game_display_title_from_group_key;
-use rusqlite::params;
+use crate::dto::{CatalogGameDto, DownloadOptionDto, GameDetailDto, GetGameDetailPayload, HydraSourceDto};
+use crate::sources::{
+  list_download_options_for_group_key, list_hydra_sources, load_cached_catalog_for_source,
+  search_download_options_from_local_sources,
+};
+use crate::title::{catalog_game_display_title_from_group_key, catalog_game_group_key};
 use tauri::AppHandle;
 
+fn filter_options_for_group_key(
+  options: Vec<DownloadOptionDto>,
+  group_key: &str,
+) -> Vec<DownloadOptionDto> {
+  options
+    .into_iter()
+    .filter(|option| catalog_game_group_key(&option.title) == group_key)
+    .collect()
+}
+
 fn find_catalog_game_by_group_key(
-  conn: &rusqlite::Connection,
+  app: &AppHandle,
+  sources: &[HydraSourceDto],
   group_key: &str,
 ) -> Option<CatalogGameDto> {
-  let row: (i64,) = conn
-    .query_row(
-      "SELECT COUNT(*) \
-       FROM hydra_catalog_entries hce \
-       WHERE hce.group_key = ?1",
-      params![group_key],
-      |row| Ok((row.get(0)?,)),
-    )
-    .ok()?;
-  let source_name: String = conn
-    .query_row(
-      "SELECT hds.name FROM hydra_catalog_entries hce \
-       JOIN hydra_download_sources hds ON hds.id = hce.source_id \
-       WHERE hce.group_key = ?1 LIMIT 1",
-      params![group_key],
-      |row| row.get(0),
-    )
-    .unwrap_or_else(|_| "Catálogo".to_string());
+  let group_key = group_key.trim();
+  if group_key.is_empty() {
+    return None;
+  }
+
+  let mut option_count = 0usize;
+  let mut source_name = String::from("Catálogo");
+  let mut found = false;
+  let query_canon = crate::title::canonical_catalog_group_key(group_key);
+
+  for source in sources {
+    let Some(catalog) = load_cached_catalog_for_source(app, source) else {
+      continue;
+    };
+    for download in &catalog.downloads {
+      let download_canon = crate::title::canonical_catalog_group_key(&download.group_key);
+      let matches = download.group_key == group_key
+        || download_canon == query_canon
+        || crate::title::catalog_search_group_keys_equivalent(&download_canon, &query_canon)
+        || crate::title::catalog_search_group_keys_equivalent(&query_canon, &download_canon);
+      if !matches {
+        continue;
+      }
+      found = true;
+      option_count += 1;
+      if source_name == "Catálogo" {
+        source_name = catalog
+          .name
+          .as_ref()
+          .map(|name| name.trim().to_string())
+          .filter(|name| !name.is_empty())
+          .unwrap_or_else(|| source.name.clone());
+      }
+    }
+  }
+
+  if !found {
+    // Ainda assim devolver o jogo se o group_key veio da pesquisa (API / cache parcial).
+    return Some(CatalogGameDto {
+      id: format!("source:{}", stable_embedded_id(group_key)),
+      title: catalog_game_display_title_from_group_key(group_key),
+      genre: source_name,
+      cover_url: None,
+      local_cover_path: None,
+      source: "source".to_string(),
+      option_count: None,
+      group_key: Some(group_key.to_string()),
+    });
+  }
 
   Some(CatalogGameDto {
     id: format!("source:{}", stable_embedded_id(group_key)),
@@ -37,43 +81,62 @@ fn find_catalog_game_by_group_key(
     cover_url: None,
     local_cover_path: None,
     source: "source".to_string(),
-    option_count: (row.0 > 1).then_some(row.0 as u32),
+    option_count: (option_count > 1).then_some(option_count as u32),
     group_key: Some(group_key.to_string()),
   })
 }
 
-fn find_catalog_game_by_title(conn: &rusqlite::Connection, title: &str) -> Option<CatalogGameDto> {
+fn find_catalog_game_by_title(
+  app: &AppHandle,
+  sources: &[HydraSourceDto],
+  title: &str,
+) -> Option<CatalogGameDto> {
   let trimmed = title.trim();
   if trimmed.is_empty() {
     return None;
   }
 
-  if let Ok(group_key) = conn.query_row(
-    "SELECT group_key FROM hydra_catalog_entries \
-     WHERE group_key != '' AND display_title = ?1 \
-     LIMIT 1",
-    params![trimmed],
-    |row| row.get::<_, String>(0),
-  ) {
-    if let Some(game) = find_catalog_game_by_group_key(conn, &group_key) {
-      return Some(game);
+  let exact_key = catalog_game_group_key(trimmed);
+  if !exact_key.is_empty() {
+    for source in sources {
+      let Some(catalog) = load_cached_catalog_for_source(app, source) else {
+        continue;
+      };
+      if catalog
+        .downloads
+        .iter()
+        .any(|download| download.group_key == exact_key)
+      {
+        return find_catalog_game_by_group_key(app, sources, &exact_key);
+      }
     }
   }
 
-  let norm = normalize_match_text(trimmed);
-  if norm.is_empty() {
-    return None;
+  let mut best: Option<(usize, String)> = None;
+  for source in sources {
+    let Some(catalog) = load_cached_catalog_for_source(app, source) else {
+      continue;
+    };
+    for download in &catalog.downloads {
+      if !title_matches_query(&download.title, trimmed) {
+        continue;
+      }
+      if download.group_key.is_empty() {
+        continue;
+      }
+      // Preferir a chave mais específica (mais longa) para evitar colapsar subtítulos.
+      let score = download.group_key.len();
+      if best
+        .as_ref()
+        .map(|(best_score, _)| score > *best_score)
+        .unwrap_or(true)
+      {
+        best = Some((score, download.group_key.clone()));
+      }
+    }
   }
-  let group_key: String = conn
-    .query_row(
-      "SELECT group_key FROM hydra_catalog_entries \
-       WHERE group_key != '' AND (title_norm LIKE ?1 || '%' OR display_title LIKE ?2 || '%') \
-       ORDER BY LENGTH(title_norm) ASC LIMIT 1",
-      params![norm, norm],
-      |row| row.get(0),
-    )
-    .ok()?;
-  find_catalog_game_by_group_key(conn, &group_key)
+
+  best.and_then(|(_, group_key)| find_catalog_game_by_group_key(app, sources, &group_key))
 }
 
 #[tauri::command]
@@ -93,38 +156,46 @@ pub async fn get_game_detail(
     .map(|value| value.trim().to_string())
     .filter(|value| !value.is_empty());
 
+  let hydra_sources = list_hydra_sources(&conn)?;
+  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
+  let active_sources: Vec<_> = hydra_sources
+    .into_iter()
+    .filter(|s| !disabled.contains(&s.id))
+    .collect();
+  drop(conn);
+
   let game = if let Some(group_key) = payload_group_key.as_deref() {
-    find_catalog_game_by_group_key(&conn, group_key)
+    find_catalog_game_by_group_key(&app, &active_sources, group_key)
   } else if let Some(title) = payload_title.as_deref() {
-    find_catalog_game_by_title(&conn, title)
+    find_catalog_game_by_title(&app, &active_sources, title)
   } else {
     None
   }
   .ok_or_else(|| "Jogo não encontrado no catálogo.".to_string())?;
 
-  let hydra_sources = list_hydra_sources(&conn)?;
-  let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
   let resolved_group_key = payload_group_key.or_else(|| game.group_key.clone());
 
-  let active_sources: Vec<_> = hydra_sources
-    .into_iter()
-    .filter(|s| !disabled.contains(&s.id))
-    .collect();
-
   let downloads = if let Some(group_key) = resolved_group_key {
-    let mut options = list_download_options_for_group_key(&conn, &active_sources, &group_key);
-    drop(conn);
-    if options.is_empty() {
-      search_download_options_from_local_sources(&app, &game.title, &active_sources).await
-    } else {
+    let options = list_download_options_for_group_key(&app, &active_sources, &group_key);
+    // Com opções locais, devolver já — não esperar API de fontes em falta (picker fluido).
+    if !options.is_empty() {
       options
+    } else {
+      filter_options_for_group_key(
+        search_download_options_from_local_sources(&app, &game.title, &active_sources).await,
+        &group_key,
+      )
     }
   } else {
-    drop(conn);
     search_download_options_from_local_sources(&app, &game.title, &active_sources).await
   };
 
-  let steam = resolve_steam_details_for_app(&app, &game.title).await;
+  let include_steam = payload.include_steam.unwrap_or(false);
+  let steam = if include_steam {
+    resolve_steam_details_for_app(&app, &game.title).await
+  } else {
+    None
+  };
   let steam_app_id = steam.as_ref().map(|s| s.app_id);
   let synopsis = steam.as_ref().and_then(|s| s.synopsis.clone());
   let screenshots = steam.as_ref().map(|s| s.screenshots.clone()).unwrap_or_default();

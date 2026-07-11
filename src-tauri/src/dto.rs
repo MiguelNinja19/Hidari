@@ -128,6 +128,7 @@ pub struct DownloadOptionDto {
 #[serde(rename_all = "camelCase")]
 pub struct SearchDownloadOptionsPayload {
   pub query: String,
+  pub group_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,6 +141,9 @@ pub struct SearchCatalogPayload {
   pub limit: Option<usize>,
   /// Quando false, não resolve capas na pesquisa (mais rápido; UI resolve depois).
   pub attach_covers: Option<bool>,
+  /// Quando true, só pesquisa JSON/cache local (primeira pintura rápida).
+  /// Quando false/omitido, junta API Hydra em paralelo.
+  pub local_only: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -172,6 +176,8 @@ pub struct CatalogGameDto {
 pub struct GetGameDetailPayload {
   pub group_key: Option<String>,
   pub title: Option<String>,
+  /// Quando false, não resolve sinopse/screenshots Steam (picker rápido).
+  pub include_steam: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -198,63 +204,6 @@ pub struct ResolveGenresBatchPayload {
 pub struct ResolvedGenreDto {
   pub title: String,
   pub genre: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToggleFavoritePayload {
-  pub catalog_key: String,
-  pub title: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FavoriteCatalogEntryDto {
-  pub catalog_key: String,
-  pub title: String,
-  pub added_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateCollectionPayload {
-  pub name: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RenameCollectionPayload {
-  pub id: String,
-  pub name: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionIdPayload {
-  pub id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionEntryPayload {
-  pub collection_id: String,
-  pub catalog_key: String,
-  pub title: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionDto {
-  pub id: String,
-  pub name: String,
-  pub entry_count: i64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionEntryDto {
-  pub catalog_key: String,
-  pub title: String,
 }
 
 #[derive(Debug, Serialize)]

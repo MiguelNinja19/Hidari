@@ -5,7 +5,23 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
-const STEAM_STORE_LOCALE: &str = "brazilian";
+const DEFAULT_STEAM_STORE_LOCALE: &str = "brazilian";
+const APP_LANGUAGE_SETTING_KEY: &str = "hidari.language";
+
+pub fn steam_store_locale_for_language(code: &str) -> &'static str {
+  match code.trim() {
+    "en" => "english",
+    "es" => "spanish",
+    "ru" => "russian",
+    _ => DEFAULT_STEAM_STORE_LOCALE,
+  }
+}
+
+fn read_app_steam_locale(conn: &Connection) -> String {
+  crate::db::read_app_setting(conn, APP_LANGUAGE_SETTING_KEY)
+    .map(|code| steam_store_locale_for_language(&code).to_string())
+    .unwrap_or_else(|| DEFAULT_STEAM_STORE_LOCALE.to_string())
+}
 
 fn default_steam_locale() -> String {
   String::new()
@@ -78,13 +94,13 @@ fn extract_trailer(movie: &SteamMovie) -> (Option<String>, Option<String>) {
   (url, movie.thumbnail.clone())
 }
 
-pub async fn fetch_steam_game_details(app_id: u32) -> Option<SteamGameDetails> {
+pub async fn fetch_steam_game_details(app_id: u32, locale: &str) -> Option<SteamGameDetails> {
   let client = reqwest::Client::builder()
     .timeout(Duration::from_secs(12))
     .build()
     .ok()?;
   let url = format!(
-    "https://store.steampowered.com/api/appdetails?appids={app_id}&l={STEAM_STORE_LOCALE}"
+    "https://store.steampowered.com/api/appdetails?appids={app_id}&l={locale}"
   );
   let response = client.get(&url).send().await.ok()?;
   if !response.status().is_success() {
@@ -116,7 +132,7 @@ pub async fn fetch_steam_game_details(app_id: u32) -> Option<SteamGameDetails> {
       .collect(),
     trailer_url,
     trailer_thumbnail,
-    locale: STEAM_STORE_LOCALE.to_string(),
+    locale: locale.to_string(),
     genres: data
       .genres
       .unwrap_or_default()
@@ -128,7 +144,11 @@ pub async fn fetch_steam_game_details(app_id: u32) -> Option<SteamGameDetails> {
   })
 }
 
-pub fn read_cached_steam_details(conn: &Connection, app_id: u32) -> Option<SteamGameDetails> {
+pub fn read_cached_steam_details(
+  conn: &Connection,
+  app_id: u32,
+  locale: &str,
+) -> Option<SteamGameDetails> {
   let now = SystemTime::now()
     .duration_since(UNIX_EPOCH)
     .ok()?
@@ -144,7 +164,7 @@ pub fn read_cached_steam_details(conn: &Connection, app_id: u32) -> Option<Steam
     return None;
   }
   let details: SteamGameDetails = serde_json::from_str(&json).ok()?;
-  if details.locale != STEAM_STORE_LOCALE {
+  if details.locale != locale {
     return None;
   }
   Some(details)
@@ -168,7 +188,8 @@ pub fn write_cached_steam_details(conn: &Connection, details: &SteamGameDetails)
 
 pub fn cached_genres_for_title(conn: &Connection, title: &str) -> Option<Vec<String>> {
   let app_id = crate::covers::lookup_steam_app_id_local(conn, title).map(|(id, _)| id)?;
-  let details = read_cached_steam_details(conn, app_id)?;
+  let locale = read_app_steam_locale(conn);
+  let details = read_cached_steam_details(conn, app_id, &locale)?;
   if details.genres.is_empty() {
     return None;
   }
@@ -180,12 +201,13 @@ pub async fn resolve_steam_details_for_app(
   title: &str,
 ) -> Option<SteamGameDetails> {
   let conn = open_database_connection(app).ok()?;
+  let locale = read_app_steam_locale(&conn);
   let app_id = lookup_steam_app_id_local(&conn, title).map(|(id, _)| id)?;
-  if let Some(cached) = read_cached_steam_details(&conn, app_id) {
+  if let Some(cached) = read_cached_steam_details(&conn, app_id, &locale) {
     return Some(cached);
   }
   drop(conn);
-  let details = fetch_steam_game_details(app_id).await?;
+  let details = fetch_steam_game_details(app_id, &locale).await?;
   if let Ok(conn) = open_database_connection(app) {
     write_cached_steam_details(&conn, &details);
   }

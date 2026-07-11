@@ -426,7 +426,12 @@ fn initialize_database(conn: &Connection) -> Result<(), String> {
   migrate_catalog_group_keys(conn)
 }
 fn migrate_catalog_group_keys(conn: &Connection) -> Result<(), String> {
-  const KEY: &str = "catalog_group_keys_v1";
+  migrate_catalog_group_keys_version(conn, "catalog_group_keys_v2")?;
+  migrate_catalog_group_keys_version(conn, "catalog_group_keys_v3")?;
+  migrate_catalog_group_keys_version(conn, "catalog_group_keys_v4")
+}
+
+fn migrate_catalog_group_keys_version(conn: &Connection, key: &str) -> Result<(), String> {
 
   let _ = conn.execute(
     "ALTER TABLE hydra_catalog_entries ADD COLUMN group_key TEXT NOT NULL DEFAULT ''",
@@ -441,7 +446,7 @@ fn migrate_catalog_group_keys(conn: &Connection) -> Result<(), String> {
     [],
   );
 
-  if read_app_setting(conn, KEY).is_some() {
+  if read_app_setting(conn, key).is_some() {
     return Ok(());
   }
 
@@ -451,15 +456,16 @@ fn migrate_catalog_group_keys(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| format!("migrate_group_keys_prepare: {e}"))?;
 
+  let mut last_id: i64 = 0;
   loop {
     let mut stmt = conn
       .prepare(
         "SELECT id, title FROM hydra_catalog_entries \
-         WHERE group_key = '' OR display_title = '' LIMIT 2000",
+         WHERE id > ?1 ORDER BY id ASC LIMIT 2000",
       )
       .map_err(|e| format!("migrate_group_keys_select: {e}"))?;
     let rows: Vec<(i64, String)> = stmt
-      .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+      .query_map(params![last_id], |row| Ok((row.get(0)?, row.get(1)?)))
       .map_err(|e| format!("migrate_group_keys_query: {e}"))?
       .filter_map(Result::ok)
       .collect();
@@ -467,6 +473,7 @@ fn migrate_catalog_group_keys(conn: &Connection) -> Result<(), String> {
       break;
     }
     for (id, title) in rows {
+      last_id = id;
       let group_key = crate::title::catalog_game_group_key(&title);
       let display_title = crate::title::clean_title_for_matching(&title);
       update
@@ -475,10 +482,14 @@ fn migrate_catalog_group_keys(conn: &Connection) -> Result<(), String> {
     }
   }
 
+  let _ = conn.execute(
+    "DELETE FROM app_settings WHERE key = 'catalog_group_keys_v1'",
+    [],
+  );
   conn
     .execute(
       "INSERT INTO app_settings (key, value) VALUES (?1, '1')",
-      params![KEY],
+      params![key],
     )
     .map_err(|e| format!("migrate_group_keys_mark: {e}"))?;
   Ok(())

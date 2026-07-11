@@ -5,10 +5,7 @@ pub use sources::*;
 pub use system::*;
 
 pub use crate::catalog::{
-  add_to_collection, check_catalog_changes, create_collection, delete_collection,
-  get_game_detail, list_collection_entries, list_collections, list_favorite_catalog_entries,
-  remove_from_collection, rename_collection, resolve_game_genres_batch, search_game_catalog,
-  toggle_favorite_catalog_entry,
+  check_catalog_changes, get_game_detail, resolve_game_genres_batch, search_game_catalog,
 };
 pub use crate::covers::{
   ensure_game_cover_cached,   get_cover_cache_stats, get_cover_precache_status,
@@ -19,7 +16,8 @@ pub use crate::covers::{
 };
 pub use crate::library::{
   delete_local_library_item, extract_library_folder, inspect_library_path,
-  inspect_library_paths, launch_game_from_path, launch_setup_from_path, scan_default_download_path,
+  inspect_library_paths, is_executable_running_at_path, launch_game_from_path,
+  launch_setup_from_path, scan_default_download_path,
   set_library_game_root,
 };
 pub use crate::queue::clear_completed_jobs;

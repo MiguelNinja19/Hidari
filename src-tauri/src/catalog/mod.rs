@@ -10,15 +10,11 @@ use std::hash::{Hash, Hasher};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
-pub mod favorites;
+pub mod catalog_changes;
 pub mod game_detail;
 pub mod steam_details;
 
-pub use favorites::{
-  add_to_collection, check_catalog_changes, create_collection, delete_collection,
-  list_collection_entries, list_collections, list_favorite_catalog_entries, record_catalog_snapshot,
-  remove_from_collection, rename_collection, toggle_favorite_catalog_entry,
-};
+pub use catalog_changes::{check_catalog_changes, record_catalog_snapshot};
 pub use game_detail::get_game_detail;
 
 const EMBEDDED_CATALOG_JSON: &str = include_str!("../../resources/embedded_catalog.json");
@@ -388,69 +384,129 @@ pub fn score_steam_title_match(steam_title: &str, reference_norm: &str) -> u32 {
     .count() as u32
 }
 
+/// Funde local + API. Se o cache já enche a janela, reserva ~1/3 para títulos só da rede
+/// (evita esconder resultados frescos da API).
+fn merge_local_and_api_catalog(
+  local: Vec<CatalogGameDto>,
+  api: Vec<CatalogGameDto>,
+  need: usize,
+) -> Vec<CatalogGameDto> {
+  let mut seen: HashSet<String> = HashSet::new();
+  let mut local_unique = Vec::new();
+  for game in local {
+    if seen.insert(game.title.to_lowercase()) {
+      local_unique.push(game);
+    }
+  }
+
+  let mut api_unique = Vec::new();
+  for game in api {
+    if seen.insert(game.title.to_lowercase()) {
+      api_unique.push(game);
+    }
+  }
+
+  if local_unique.len() >= need && !api_unique.is_empty() {
+    let reserve = (need / 3).max(3).min(api_unique.len()).min(need);
+    let keep_local = need.saturating_sub(reserve);
+    let mut out: Vec<CatalogGameDto> = local_unique.into_iter().take(keep_local).collect();
+    out.extend(api_unique.into_iter().take(reserve));
+    return out;
+  }
+
+  let mut out = local_unique;
+  out.extend(api_unique);
+  out.truncate(need);
+  out
+}
+
+/// Tempo máximo a esperar pela API Hydra na pesquisa do Discover.
+/// Local corre em paralelo e a UI pode pintar cache primeiro (`local_only`).
+const CATALOG_API_CATALOGUE_MS: u64 = 8_000;
+
 pub async fn search_catalog_from_sources(
   app: &AppHandle,
   query: &str,
   offset: usize,
   limit: usize,
   attach_covers: bool,
+  local_only: bool,
 ) -> Result<Vec<CatalogGameDto>, String> {
-  let app_bg = app.clone();
-  let query_bg = query.to_string();
-  let local_games = tokio::task::spawn_blocking({
-    let app = app_bg.clone();
-    let query = query_bg.clone();
-    move || search_catalog_from_sources_sync(&app, &query, offset, limit, false)
-  })
-  .await
-  .map_err(|error| format!("search_catalog_task: {error}"))??;
-
   let conn = open_database_connection(app)?;
   let hydra_sources = crate::sources::list_hydra_sources(&conn)?;
   let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
-  let api_sources: Vec<crate::dto::HydraSourceDto> = hydra_sources
+  let active_sources: Vec<crate::dto::HydraSourceDto> = hydra_sources
     .into_iter()
     .filter(|source| !disabled.contains(&source.id))
-    .filter(|source| !crate::sources::has_local_catalog(app, &source.id))
+    .collect();
+  drop(conn);
+
+  if active_sources.is_empty() {
+    return Ok(Vec::new());
+  }
+
+  // Janela [0, offset+limit) para fundir local+API sem perder títulos só da rede.
+  let need = offset.saturating_add(limit).max(limit);
+  let app_bg = app.clone();
+  let query_bg = query.to_string();
+
+  let local_fut = tokio::task::spawn_blocking({
+    let app = app_bg;
+    let query = query_bg.clone();
+    move || search_catalog_from_sources_sync(&app, &query, 0, need, false)
+  });
+
+  if local_only {
+    let mut merged = local_fut
+      .await
+      .map_err(|error| format!("search_catalog_task: {error}"))??;
+    let mut page: Vec<CatalogGameDto> = merged.drain(..).skip(offset).take(limit).collect();
+    if attach_covers {
+      crate::covers::attach_cover_urls_to_games(app, &mut page);
+    }
+    return Ok(page);
+  }
+
+  let api_sources: Vec<crate::dto::HydraSourceDto> = active_sources
+    .iter()
     .filter(|source| {
       source
         .api_source_id
         .as_ref()
         .is_some_and(|value| !value.is_empty())
     })
+    .cloned()
     .collect();
-  drop(conn);
 
-  let mut merged = local_games;
-  if !api_sources.is_empty() {
-    let api_games = crate::sources::search_catalog_games_via_api(
-      &api_sources,
-      &query_bg,
-      offset,
-      limit,
-    )
-    .await;
-    let mut seen: HashSet<String> = merged
-      .iter()
-      .map(|game| game.title.to_lowercase())
-      .collect();
-    for game in api_games {
-      let key = game.title.to_lowercase();
-      if seen.insert(key) {
-        merged.push(game);
+  let api_fut = async move {
+    if api_sources.is_empty() {
+      return Vec::new();
+    }
+    let api_future =
+      crate::sources::search_catalog_games_via_api(&api_sources, &query_bg, 0, need);
+    match tokio::time::timeout(Duration::from_millis(CATALOG_API_CATALOGUE_MS), api_future).await
+    {
+      Ok(games) => games,
+      Err(_) => {
+        eprintln!("hydra_catalogue_search_timeout: query={query_bg}");
+        Vec::new()
       }
     }
-  }
+  };
 
-  if merged.len() > limit {
-    merged.truncate(limit);
-  }
+  let api_handle = tokio::spawn(api_fut);
+  let local = local_fut
+    .await
+    .map_err(|error| format!("search_catalog_task: {error}"))??;
+  let api_games = api_handle.await.unwrap_or_else(|_| Vec::new());
+  let merged = merge_local_and_api_catalog(local, api_games, need);
 
+  let mut page: Vec<CatalogGameDto> = merged.into_iter().skip(offset).take(limit).collect();
   if attach_covers {
-    crate::covers::attach_cover_urls_to_games(app, &mut merged);
+    crate::covers::attach_cover_urls_to_games(app, &mut page);
   }
 
-  Ok(merged)
+  Ok(page)
 }
 
 pub(crate) fn looks_like_source_label(genre: &str) -> bool {
@@ -470,13 +526,6 @@ pub(crate) fn looks_like_source_label(genre: &str) -> bool {
   ]
   .iter()
   .any(|hint| value.contains(hint))
-}
-
-fn resolve_catalog_genre(conn: &Connection, title: &str) -> String {
-  if let Some(genres) = steam_details::cached_genres_for_title(conn, title) {
-    return genres.join(", ");
-  }
-  String::new()
 }
 
 #[tauri::command]
@@ -529,39 +578,43 @@ fn search_catalog_from_sources_sync(
   let hydra_sources = list_hydra_sources(&conn)?;
   let disabled = get_disabled_hydra_source_ids_from_conn(&conn)?;
 
-  let source_ids: Vec<String> = hydra_sources
+  let active_sources: Vec<_> = hydra_sources
     .into_iter()
     .filter(|source| !disabled.contains(&source.id))
-    .map(|source| source.id)
     .collect();
 
-  if source_ids.is_empty() {
+  if active_sources.is_empty() {
     return Ok(Vec::new());
   }
 
-  let hits = crate::sources::hydralinks::search_distinct_catalog_titles(
-    &conn, &source_ids, query, offset, limit,
+  // Fontes importadas: pesquisar nos .json locais (não no índice SQLite).
+  let hits = crate::sources::hydralinks::search_distinct_catalog_titles_from_json(
+    app,
+    &active_sources,
+    query,
+    offset,
+    limit,
   );
 
   let mut games = hits
     .into_iter()
-    .map(|hit| {
-      let genre = resolve_catalog_genre(&conn, &hit.title);
-      CatalogGameDto {
-        id: format!("source:{}", stable_embedded_id(&hit.group_key)),
-        title: hit.title,
-        genre,
-        cover_url: None,
-        local_cover_path: None,
-        source: "source".to_string(),
-        option_count: (hit.option_count > 1).then_some(hit.option_count as u32),
-        group_key: Some(hit.group_key),
-      }
+    .map(|hit| CatalogGameDto {
+      id: format!("source:{}", stable_embedded_id(&hit.group_key)),
+      title: hit.title,
+      genre: String::new(),
+      cover_url: None,
+      local_cover_path: None,
+      source: "source".to_string(),
+      option_count: (hit.option_count > 1).then_some(hit.option_count as u32),
+      group_key: Some(hit.group_key),
     })
     .collect::<Vec<_>>();
 
+  // Capas locais/índice Steam — rápido e evita lookup assíncrono no frontend.
+  crate::covers::attach_cover_urls_to_games(app, &mut games);
+
   if attach_covers {
-    crate::covers::attach_cover_urls_to_games(app, &mut games);
+    // Já anexámos acima; flag mantida por compatibilidade da API.
   }
 
   Ok(games)
@@ -581,7 +634,9 @@ pub async fn search_game_catalog(app: AppHandle, payload: SearchCatalogPayload) 
 
   if only_with_sources {
     let attach_covers = payload.attach_covers.unwrap_or(false);
-    return search_catalog_from_sources(&app, trimmed, offset, limit, attach_covers).await;
+    let local_only = payload.local_only.unwrap_or(false);
+    return search_catalog_from_sources(&app, trimmed, offset, limit, attach_covers, local_only)
+      .await;
   }
 
   let mut merged = filter_embedded_catalog(&query_norm);
