@@ -1,4 +1,4 @@
-use crate::catalog::{normalize_match_text, title_matches_query};
+use crate::catalog::{normalize_match_text, title_word_matches_query_word};
 use crate::config;
 use crate::db::open_database_connection;
 use crate::dto::{DownloadOptionDto, HydraSourceDto};
@@ -9,39 +9,193 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
-const MEMORY_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
-const SEARCH_RESULT_CACHE_TTL: Duration = Duration::from_secs(45);
 const MAX_TITLES_PER_SOURCE: usize = 32;
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct CatalogSearchCacheKey {
-  query_norm: String,
-  offset: usize,
-  limit: usize,
-  sources_hash: u64,
+#[derive(Debug, Clone)]
+struct FileFingerprint {
+  path: PathBuf,
+  modified_ms: u128,
+  len: u64,
 }
 
-struct CachedCatalogSearch {
-  hits: Vec<CatalogTitleHit>,
-  cached_at: Instant,
+#[derive(Debug, Clone)]
+pub struct IndexedDownload {
+  pub title: String,
+  pub title_norm: String,
+  pub group_key: String,
+  pub file_size: Option<String>,
+  pub uris: Vec<String>,
 }
 
-static CATALOG_SEARCH_CACHE: OnceLock<Mutex<HashMap<CatalogSearchCacheKey, CachedCatalogSearch>>> =
-  OnceLock::new();
-
-fn catalog_search_cache() -> &'static Mutex<HashMap<CatalogSearchCacheKey, CachedCatalogSearch>> {
-  CATALOG_SEARCH_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+#[derive(Debug, Clone)]
+pub struct CachedCatalog {
+  pub name: Option<String>,
+  pub downloads: Vec<IndexedDownload>,
+  /// Índices por prefixo de 2 chars de cada palavra do título (pesquisa rápida).
+  prefix_index: HashMap<String, Vec<usize>>,
+  fingerprint: Option<FileFingerprint>,
 }
 
-fn source_ids_hash(source_ids: &[String]) -> u64 {
-  let mut hasher = DefaultHasher::new();
-  for id in source_ids {
-    id.hash(&mut hasher);
+struct MemoryCacheEntry {
+  catalog: std::sync::Arc<CachedCatalog>,
+}
+
+fn memory_cache() -> &'static Mutex<HashMap<String, MemoryCacheEntry>> {
+  static CACHE: OnceLock<Mutex<HashMap<String, MemoryCacheEntry>>> = OnceLock::new();
+  CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn file_fingerprint(path: &Path) -> Option<FileFingerprint> {
+  let meta = std::fs::metadata(path).ok()?;
+  let modified_ms = meta
+    .modified()
+    .ok()?
+    .duration_since(UNIX_EPOCH)
+    .ok()?
+    .as_millis();
+  Some(FileFingerprint {
+    path: path.to_path_buf(),
+    modified_ms,
+    len: meta.len(),
+  })
+}
+
+fn index_catalog(catalog: HydraLinksCatalog, fingerprint: Option<FileFingerprint>) -> CachedCatalog {
+  let downloads: Vec<IndexedDownload> = catalog
+    .downloads
+    .into_iter()
+    .filter_map(|download| {
+      let title = download.title.trim().to_string();
+      if title.is_empty() {
+        return None;
+      }
+      let title_norm = normalize_match_text(&title);
+      if title_norm.is_empty() {
+        return None;
+      }
+      let group_key = crate::title::catalog_game_group_key(&title);
+      Some(IndexedDownload {
+        title,
+        title_norm,
+        group_key,
+        file_size: download.file_size,
+        uris: download.uris,
+      })
+    })
+    .collect();
+
+  let mut prefix_index: HashMap<String, Vec<usize>> = HashMap::new();
+  for (idx, download) in downloads.iter().enumerate() {
+    for word in download.title_norm.split_whitespace() {
+      let key: String = word.chars().take(2).collect();
+      if key.chars().count() < 2 {
+        continue;
+      }
+      prefix_index.entry(key).or_default().push(idx);
+    }
   }
-  hasher.finish()
+
+  CachedCatalog {
+    name: catalog.name,
+    downloads,
+    prefix_index,
+    fingerprint,
+  }
+}
+
+fn candidate_indices_for_query<'a>(
+  catalog: &'a CachedCatalog,
+  query_norm: &str,
+) -> Option<&'a [usize]> {
+  let first_word = query_norm.split_whitespace().next()?;
+  let key: String = first_word.chars().take(2).collect();
+  if key.chars().count() < 2 {
+    return None;
+  }
+  catalog.prefix_index.get(&key).map(Vec::as_slice)
+}
+
+fn catalog_from_cached(cached: &CachedCatalog) -> HydraLinksCatalog {
+  HydraLinksCatalog {
+    name: cached.name.clone(),
+    downloads: cached
+      .downloads
+      .iter()
+      .map(|download| HydraLinksDownload {
+        title: download.title.clone(),
+        file_size: download.file_size.clone(),
+        uris: download.uris.clone(),
+        upload_date: None,
+      })
+      .collect(),
+  }
+}
+
+fn title_norm_matches_query_norm(title_norm: &str, query_norm: &str) -> bool {
+  let title_words: Vec<&str> = title_norm.split_whitespace().collect();
+  let query_words: Vec<&str> = query_norm
+    .split_whitespace()
+    .filter(|word| !word.is_empty())
+    .collect();
+  if query_words.is_empty() {
+    return true;
+  }
+  query_words.iter().all(|query_word| {
+    if query_word.len() <= 2 {
+      return title_words.iter().any(|title_word| title_word == query_word);
+    }
+    title_words
+      .iter()
+      .any(|title_word| title_word_matches_query_word(title_word, query_word))
+  })
+}
+
+fn remember_cached(source_id: &str, catalog: CachedCatalog) {
+  if let Ok(mut cache) = memory_cache().lock() {
+    cache.insert(
+      source_id.to_string(),
+      MemoryCacheEntry {
+        catalog: std::sync::Arc::new(catalog),
+      },
+    );
+  }
+}
+
+fn remember_in_memory(source_id: &str, catalog: HydraLinksCatalog) {
+  remember_cached(source_id, index_catalog(catalog, None));
+}
+
+fn read_memory_cache_arc(source_id: &str) -> Option<std::sync::Arc<CachedCatalog>> {
+  let cache = memory_cache().lock().ok()?;
+  cache.get(source_id).map(|entry| entry.catalog.clone())
+}
+
+fn read_memory_cache(source_id: &str) -> Option<HydraLinksCatalog> {
+  let cached = read_memory_cache_arc(source_id)?;
+  Some(catalog_from_cached(&cached))
+}
+
+fn read_memory_cache_if_fresh(
+  source_id: &str,
+  fingerprint: Option<&FileFingerprint>,
+) -> Option<std::sync::Arc<CachedCatalog>> {
+  let cached = read_memory_cache_arc(source_id)?;
+  match (fingerprint, cached.fingerprint.as_ref()) {
+    (Some(expected), Some(actual))
+      if expected.path == actual.path
+        && expected.modified_ms == actual.modified_ms
+        && expected.len == actual.len =>
+    {
+      Some(cached)
+    }
+    (None, None) => Some(cached),
+    // Sem ficheiro no disco: cache em memória ainda serve (payload DB / API).
+    (None, Some(_)) => Some(cached),
+    _ => None,
+  }
 }
 
 /// Padrões LIKE amigáveis ao índice: primeira palavra como prefixo, restantes como contém.
@@ -63,10 +217,6 @@ pub fn build_catalog_title_norm_patterns(query_norm: &str) -> Vec<String> {
   patterns
 }
 
-fn catalog_group_keys_ready(conn: &Connection) -> bool {
-  crate::db::read_app_setting(conn, "catalog_group_keys_v1").is_some()
-}
-
 #[derive(Debug, Clone)]
 pub struct CatalogTitleHit {
   pub title: String,
@@ -75,226 +225,24 @@ pub struct CatalogTitleHit {
   pub option_count: usize,
 }
 
-/// Pesquisa paginada agrupada por jogo — uma entrada por título limpo (não por repack).
-pub fn search_distinct_catalog_titles(
-  conn: &Connection,
-  source_ids: &[String],
-  query: &str,
-  offset: usize,
-  limit: usize,
-) -> Vec<CatalogTitleHit> {
-  if source_ids.is_empty() || query.trim().len() < 2 || limit == 0 {
-    return Vec::new();
-  }
-  let query_norm = normalize_match_text(query);
-  if query_norm.is_empty() {
-    return Vec::new();
-  }
-
-  let cache_key = CatalogSearchCacheKey {
-    query_norm: query_norm.clone(),
-    offset,
-    limit,
-    sources_hash: source_ids_hash(source_ids),
-  };
-  if let Ok(guard) = catalog_search_cache().lock() {
-    if let Some(entry) = guard.get(&cache_key) {
-      if entry.cached_at.elapsed() < SEARCH_RESULT_CACHE_TTL {
-        return entry.hits.clone();
-      }
-    }
-  }
-
-  let hits = if catalog_group_keys_ready(conn) {
-    search_distinct_catalog_titles_sql(conn, source_ids, &query_norm, offset, limit)
-  } else {
-    search_distinct_catalog_titles_scan(conn, source_ids, query, &query_norm, offset, limit)
-  };
-
-  if let Ok(mut guard) = catalog_search_cache().lock() {
-    guard.retain(|_, entry| entry.cached_at.elapsed() < SEARCH_RESULT_CACHE_TTL);
-    guard.insert(
-      cache_key,
-      CachedCatalogSearch {
-        hits: hits.clone(),
-        cached_at: Instant::now(),
-      },
-    );
-  }
-
-  hits
-}
-
-fn search_distinct_catalog_titles_sql(
-  conn: &Connection,
-  source_ids: &[String],
-  query_norm: &str,
-  offset: usize,
-  limit: usize,
-) -> Vec<CatalogTitleHit> {
-  let patterns = build_catalog_title_norm_patterns(query_norm);
-  if patterns.is_empty() {
-    return Vec::new();
-  }
-
-  let source_placeholders = source_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-  let like_clauses = patterns
-    .iter()
-    .map(|_| "hce.title_norm LIKE ?")
-    .collect::<Vec<_>>()
-    .join(" AND ");
-  let fetch_limit = (offset + limit).min(64) as i64;
-
-  let sql = format!(
-    "SELECT MIN(hce.display_title) AS title, MIN(hds.name) AS source_name, \
-            hce.group_key, COUNT(*) AS option_count \
-     FROM hydra_catalog_entries hce \
-     JOIN hydra_download_sources hds ON hds.id = hce.source_id \
-     WHERE hce.source_id IN ({source_placeholders}) \
-       AND hce.group_key != '' \
-       AND {like_clauses} \
-     GROUP BY hce.group_key \
-     ORDER BY LENGTH(MIN(hce.display_title)) ASC \
-     LIMIT ? OFFSET ?"
-  );
-
-  let Ok(mut stmt) = conn.prepare(&sql) else {
-    return Vec::new();
-  };
-
-  let mut params: Vec<Box<dyn rusqlite::ToSql>> = source_ids
-    .iter()
-    .map(|id| Box::new(id.clone()) as Box<dyn rusqlite::ToSql>)
-    .collect();
-  for pattern in &patterns {
-    params.push(Box::new(pattern.clone()));
-  }
-  params.push(Box::new(fetch_limit));
-  params.push(Box::new(offset as i64));
-
-  let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-  stmt
-    .query_map(param_refs.as_slice(), |row| {
-      let group_key: String = row.get(2)?;
-      Ok(CatalogTitleHit {
-        title: crate::title::catalog_game_display_title_from_group_key(&group_key),
-        _source_name: row.get(1)?,
-        group_key,
-        option_count: row.get::<_, i64>(3)? as usize,
-      })
-    })
-    .map(|rows| rows.filter_map(Result::ok).collect())
-    .unwrap_or_default()
-}
-
-fn search_distinct_catalog_titles_scan(
-  conn: &Connection,
-  source_ids: &[String],
-  query: &str,
-  query_norm: &str,
-  offset: usize,
-  limit: usize,
-) -> Vec<CatalogTitleHit> {
-  let patterns = build_catalog_title_norm_patterns(query_norm);
-  if patterns.is_empty() {
-    return Vec::new();
-  }
-
-  let placeholders = source_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-  let like_clauses = patterns
-    .iter()
-    .map(|_| "hce.title_norm LIKE ?")
-    .collect::<Vec<_>>()
-    .join(" AND ");
-  let fetch_limit = ((offset + limit).saturating_mul(4) + 24).min(192) as i64;
-  let sql = format!(
-    "SELECT hce.title, hds.name FROM hydra_catalog_entries hce \
-     JOIN hydra_download_sources hds ON hds.id = hce.source_id \
-     WHERE hce.source_id IN ({placeholders}) AND {like_clauses} \
-     ORDER BY LENGTH(hce.title) ASC \
-     LIMIT ?"
-  );
-
-  let Ok(mut stmt) = conn.prepare(&sql) else {
-    return Vec::new();
-  };
-
-  let mut params: Vec<Box<dyn rusqlite::ToSql>> = source_ids
-    .iter()
-    .map(|id| Box::new(id.clone()) as Box<dyn rusqlite::ToSql>)
-    .collect();
-  for pattern in &patterns {
-    params.push(Box::new(pattern.clone()));
-  }
-  params.push(Box::new(fetch_limit));
-
-  let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-  let Ok(rows) = stmt.query_map(param_refs.as_slice(), |row| {
-    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-  }) else {
-    return Vec::new();
-  };
-
-  let target_groups = offset + limit + 8;
-  let mut groups: HashMap<String, CatalogTitleHit> = HashMap::new();
-
-  for row in rows.flatten() {
-    let (raw_title, _source_name) = row;
-    if !title_matches_query(&raw_title, query) {
-      continue;
-    }
-    let group_key = crate::title::catalog_game_group_key(&raw_title);
-    if group_key.is_empty() {
-      continue;
-    }
-
-    if let Some(hit) = groups.get_mut(&group_key) {
-      hit.option_count += 1;
-    } else {
-      groups.insert(
-        group_key.clone(),
-        CatalogTitleHit {
-          title: crate::title::catalog_game_display_title_from_group_key(&group_key),
-          _source_name,
-          group_key,
-          option_count: 1,
-        },
-      );
-    }
-
-    if groups.len() >= target_groups {
-      break;
-    }
-  }
-
-  let mut ordered: Vec<CatalogTitleHit> = groups.into_values().collect();
-  ordered.sort_by(|a, b| {
-    a.title
-      .len()
-      .cmp(&b.title.len())
-      .then_with(|| a.title.cmp(&b.title))
-  });
-  ordered.into_iter().skip(offset).take(limit).collect()
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HydraLinksCatalog {
+  pub name: Option<String>,
+  pub downloads: Vec<HydraLinksDownload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct HydraLinksCatalog {
-  name: Option<String>,
-  downloads: Vec<HydraLinksDownload>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HydraLinksDownload {
+pub struct HydraLinksDownload {
   #[serde(default)]
-  title: String,
+  pub title: String,
   #[serde(default, alias = "file_size")]
-  file_size: Option<String>,
+  pub file_size: Option<String>,
   #[serde(default, deserialize_with = "deserialize_uris_flexible")]
-  uris: Vec<String>,
+  pub uris: Vec<String>,
   #[serde(default, alias = "upload_date")]
-  upload_date: Option<String>,
+  pub upload_date: Option<String>,
 }
 
 fn deserialize_uris_flexible<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -319,16 +267,6 @@ where
     serde_json::Value::Null => Ok(Vec::new()),
     _ => Err(Error::custom("uris deve ser uma lista ou texto")),
   }
-}
-
-struct MemoryCacheEntry {
-  catalog: HydraLinksCatalog,
-  fetched_at: Instant,
-}
-
-fn memory_cache() -> &'static Mutex<HashMap<String, MemoryCacheEntry>> {
-  static CACHE: OnceLock<Mutex<HashMap<String, MemoryCacheEntry>>> = OnceLock::new();
-  CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn now_unix_ms() -> i64 {
@@ -579,25 +517,32 @@ Use um catálogo .json no formato Hydra (objeto com \"name\" e \"downloads\")."
 
 pub fn json_slug_from_url(url: &str) -> Option<String> {
   let trimmed = url.trim().trim_end_matches('/');
-  if let Some(file_name) = Path::new(trimmed).file_name().and_then(|name| name.to_str()) {
-    if file_name.to_lowercase().ends_with(".json") {
-      return Some(file_name.trim_end_matches(".json").to_string());
-    }
-  }
-  let file = trimmed.rsplit('/').next()?;
-  if !file.to_lowercase().ends_with(".json") {
+  let file = Path::new(trimmed)
+    .file_name()
+    .and_then(|name| name.to_str())
+    .or_else(|| trimmed.rsplit('/').next())?;
+  let lower = file.to_ascii_lowercase();
+  let stem = lower
+    .strip_suffix(".json")
+    .map(|value| value.to_string())?;
+  if stem.is_empty() {
     return None;
   }
-  Some(file.trim_end_matches(".json").to_string())
+  // Preserve original stem casing from the filename when possible.
+  let original_stem = file
+    .get(..stem.len())
+    .filter(|value| value.len() == stem.len())
+    .unwrap_or(stem.as_str());
+  Some(original_stem.to_string())
 }
 
 pub fn display_name_for_source_url(url: &str) -> String {
   if let Some(slug) = json_slug_from_url(url) {
-    return humanize_source_slug(&slug);
+    return polish_source_display_name(&slug);
   }
   if let Some(path) = resolve_local_catalog_path(url) {
     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-      return humanize_source_slug(stem);
+      return polish_source_display_name(stem);
     }
   }
   let lower = url.to_lowercase();
@@ -607,6 +552,38 @@ pub fn display_name_for_source_url(url: &str) -> String {
   "Fonte personalizada".to_string()
 }
 
+/// Nome amigável: prioriza o `name` do JSON, depois API, depois a URL.
+pub fn resolve_source_display_name(
+  catalog_name: Option<&str>,
+  api_name: Option<&str>,
+  url_or_path: &str,
+) -> String {
+  for candidate in [catalog_name, api_name] {
+    if let Some(name) = candidate.map(str::trim).filter(|value| !value.is_empty()) {
+      return polish_source_display_name(name);
+    }
+  }
+  display_name_for_source_url(url_or_path)
+}
+
+pub fn polish_source_display_name(name: &str) -> String {
+  let trimmed = name.trim();
+  if trimmed.is_empty() {
+    return "Fonte personalizada".to_string();
+  }
+
+  let without_ext = trimmed
+    .strip_suffix(".json")
+    .or_else(|| trimmed.strip_suffix(".JSON"))
+    .unwrap_or(trimmed)
+    .trim();
+  if without_ext.is_empty() {
+    return "Fonte personalizada".to_string();
+  }
+
+  humanize_source_slug(without_ext)
+}
+
 fn humanize_source_slug(slug: &str) -> String {
   match slug.to_ascii_lowercase().as_str() {
     "fitgirl" => return "FitGirl".to_string(),
@@ -614,12 +591,26 @@ fn humanize_source_slug(slug: &str) -> String {
     "dodi" => return "DODI".to_string(),
     "steamrip" => return "SteamRip".to_string(),
     "gog" => return "GOG".to_string(),
-    "onlinefix" => return "Online-Fix".to_string(),
+    "onlinefix" | "online-fix" => return "Online-Fix".to_string(),
+    "kaoskrew" | "kaos-krew" => return "KaOsKrew".to_string(),
+    "elamigos" => return "ElAmigos".to_string(),
+    "atop" => return "ATOP".to_string(),
+    "empress" => return "EMPRESS".to_string(),
     _ => {}
   }
 
+  // Já parece um nome legível (espaços ou maiúsculas no meio).
+  if slug.contains(' ')
+    || slug.chars().any(|c| c.is_ascii_uppercase()) && slug.chars().any(|c| c.is_ascii_lowercase())
+  {
+    return slug.to_string();
+  }
+
   let normalized = slug.replace(['-', '_'], " ");
-  if normalized.chars().all(|c| c.is_ascii_uppercase() || !c.is_alphabetic()) {
+  if normalized
+    .chars()
+    .all(|c| c.is_ascii_uppercase() || !c.is_alphabetic())
+  {
     return normalized;
   }
   normalized
@@ -673,6 +664,10 @@ fn read_catalog_file(path: &Path) -> Result<(HydraLinksCatalog, String), String>
 
 fn read_catalog_from_db(app: &AppHandle, source_id: &str) -> Option<HydraLinksCatalog> {
   let conn = open_database_connection(app).ok()?;
+  read_catalog_from_db_conn(&conn, source_id)
+}
+
+fn read_catalog_from_db_conn(conn: &Connection, source_id: &str) -> Option<HydraLinksCatalog> {
   conn
     .query_row(
       "SELECT payload_json FROM hydra_source_catalogs WHERE source_id = ?1",
@@ -741,14 +736,7 @@ fn rebuild_catalog_index(
       .map_err(|error| format!("could_not_insert_catalog_index: {error}"))?;
   }
 
-  clear_catalog_search_cache();
   Ok(())
-}
-
-fn clear_catalog_search_cache() {
-  if let Ok(mut guard) = catalog_search_cache().lock() {
-    guard.clear();
-  }
 }
 
 fn write_catalog_to_db(
@@ -792,25 +780,60 @@ pub fn delete_source_catalog(app: &AppHandle, source_id: &str) {
   }
 }
 
-fn remember_in_memory(source_id: &str, catalog: HydraLinksCatalog) {
-  if let Ok(mut cache) = memory_cache().lock() {
-    cache.insert(
-      source_id.to_string(),
-      MemoryCacheEntry {
-        catalog,
-        fetched_at: Instant::now(),
-      },
-    );
-  }
-}
+/// Remove o `.json` da fonte na pasta `catalogs/` da app (não apaga ficheiros fora dessa pasta).
+pub fn delete_source_catalog_json_file(app: &AppHandle, source: &crate::dto::HydraSourceDto) {
+  let Ok(cache_dir) = catalog_cache_dir(app) else {
+    return;
+  };
+  let Ok(cache_dir) = cache_dir.canonicalize() else {
+    return;
+  };
 
-fn read_memory_cache(source_id: &str) -> Option<HydraLinksCatalog> {
-  let cache = memory_cache().lock().ok()?;
-  let entry = cache.get(source_id)?;
-  if entry.fetched_at.elapsed() >= MEMORY_CACHE_TTL {
-    return None;
+  let mut candidates: Vec<PathBuf> = Vec::new();
+  if let Ok(path) = resolve_local_catalog_path_for_write(&source.url) {
+    candidates.push(path);
   }
-  Some(entry.catalog.clone())
+  if let Some(remote) = source
+    .remote_url
+    .as_deref()
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+  {
+    if let Ok(path) = catalog_cache_path_for_remote_url(app, remote) {
+      candidates.push(path);
+    }
+  }
+  if let Ok(path) = resolve_api_cache_json_path(app, &source.id, &source.url) {
+    candidates.push(path);
+  }
+
+  let mut seen = HashSet::new();
+  for path in candidates {
+    let Ok(canonical) = path.canonicalize() else {
+      continue;
+    };
+    if !seen.insert(canonical.clone()) {
+      continue;
+    }
+    if !canonical.starts_with(&cache_dir) {
+      continue;
+    }
+    if canonical
+      .extension()
+      .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    {
+      match std::fs::remove_file(&canonical) {
+        Ok(()) => eprintln!("catalog_json_deleted: {}", canonical.display()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+          eprintln!(
+            "catalog_json_delete_failed: {} — {error}",
+            canonical.display()
+          );
+        }
+      }
+    }
+  }
 }
 
 fn resolve_local_catalog_path_for_write(value: &str) -> Result<PathBuf, String> {
@@ -1008,14 +1031,20 @@ pub async fn sync_source_catalog_from_remote(
             let unchanged_hash =
               stored_payload_hash(&conn, source_id).as_deref() == Some(payload_hash(&body).as_str());
             if unchanged_fp && unchanged_hash && has_local_catalog(app, source_id) {
-              let count = conn
+              let local_count = conn
                 .query_row(
                   "SELECT COUNT(*) FROM hydra_catalog_entries WHERE source_id = ?1",
                   params![source_id],
                   |row| row.get::<_, i64>(0),
                 )
-                .unwrap_or(meta.download_count)
+                .unwrap_or(0)
                 .max(0) as usize;
+              // Prioridade: contagem da API Hydra.
+              let count = if meta.download_count > 0 {
+                meta.download_count.max(0) as usize
+              } else {
+                local_count
+              };
               return Ok((SyncCatalogOutcome::Unchanged(count), api_meta.clone()));
             }
           }
@@ -1183,7 +1212,13 @@ fn apply_downloaded_catalog_body(
     .map_err(|error| format!("Não foi possível gravar o arquivo local: {error}"))?;
 
   write_catalog_to_db(app, source_id, local_path.trim(), body, &catalog)?;
-  remember_in_memory(source_id, catalog);
+  remember_in_memory(source_id, catalog.clone());
+  if let Some(name) = catalog.name.as_deref() {
+    let display = resolve_source_display_name(Some(name), None, local_path);
+    if let Ok(conn) = open_database_connection(app) {
+      let _ = super::hydra::persist_hydra_source_display_name(&conn, source_id, &display);
+    }
+  }
   Ok((SyncCatalogOutcome::Updated(count), api_meta))
 }
 
@@ -1235,6 +1270,12 @@ pub fn finalize_local_catalog_import(
     &staged.catalog,
   )?;
   remember_in_memory(source_id, staged.catalog.clone());
+  if let Some(name) = staged.catalog.name.as_deref() {
+    let display = resolve_source_display_name(Some(name), None, staged.cache_path.as_str());
+    if let Ok(conn) = open_database_connection(app) {
+      let _ = super::hydra::persist_hydra_source_display_name(&conn, source_id, &display);
+    }
+  }
   Ok(())
 }
 
@@ -1287,20 +1328,16 @@ pub fn migrate_external_catalog_to_cache_if_needed(
   Ok(Some(cache_path_str))
 }
 
-/// Importa catálogo a partir de um ficheiro .json externo: copia para `catalogs/` e grava no SQLite.
-pub fn import_source_catalog_from_file(
-  app: &AppHandle,
-  source_id: &str,
-  file_path: &str,
-) -> Result<(usize, String), String> {
-  let staged = stage_local_catalog_for_import(app, file_path)?;
-  finalize_local_catalog_import(app, source_id, &staged)?;
-  Ok((staged.count, staged.cache_path))
-}
-
 pub fn has_local_catalog(app: &AppHandle, source_id: &str) -> bool {
   if read_memory_cache(source_id).is_some() {
     return true;
+  }
+  if let Ok(conn) = open_database_connection(app) {
+    if let Ok(source) = super::hydra::get_hydra_source_by_id(&conn, source_id) {
+      if resolve_local_catalog_path(&source.url).is_some() {
+        return true;
+      }
+    }
   }
   if read_catalog_from_db(app, source_id).is_some() {
     return true;
@@ -1320,7 +1357,8 @@ pub fn has_local_catalog(app: &AppHandle, source_id: &str) -> bool {
   false
 }
 
-/// Acrescenta resultados da API Hydra ao índice local (cache incremental).
+/// Acrescenta resultados da API Hydra ao índice local (cache incremental)
+/// e grava/atualiza o `.json` em `catalogs/` para a fonte aparecer na pasta.
 pub fn append_catalog_download_options(
   app: &AppHandle,
   source_id: &str,
@@ -1375,252 +1413,205 @@ pub fn append_catalog_download_options(
       inserted += 1;
     }
   }
+  drop(stmt);
 
-  if inserted > 0 {
-    let _ = conn.execute(
+  if inserted == 0 {
+    return Ok(0);
+  }
+
+  let source_name = conn
+    .query_row(
+      "SELECT name FROM hydra_download_sources WHERE id = ?1",
+      params![source_id],
+      |row| row.get::<_, String>(0),
+    )
+    .unwrap_or_else(|_| "Catálogo".to_string());
+
+  let catalog = catalog_from_indexed_entries(&conn, source_id, &source_name)?;
+  let body = serde_json::to_string_pretty(&catalog)
+    .map_err(|error| format!("could_not_encode_catalog_json: {error}"))?;
+  let hash = payload_hash(&body);
+
+  let cache_path = resolve_api_cache_json_path(app, source_id, source_ref)?;
+  if let Some(parent) = cache_path.parent() {
+    std::fs::create_dir_all(parent)
+      .map_err(|error| format!("could_not_create_catalogs_folder: {error}"))?;
+  }
+  std::fs::write(&cache_path, &body)
+    .map_err(|error| format!("could_not_write_catalog_json: {error}"))?;
+  let cache_path_str = cache_path.to_string_lossy().into_owned();
+
+  conn
+    .execute(
       "INSERT INTO hydra_source_catalogs (source_id, source_url, payload_json, payload_hash, fetched_at) \
-       VALUES (?1, ?2, '{}', '', ?3) \
+       VALUES (?1, ?2, ?3, ?4, ?5) \
        ON CONFLICT(source_id) DO UPDATE SET \
          source_url = excluded.source_url, \
+         payload_json = excluded.payload_json, \
+         payload_hash = excluded.payload_hash, \
          fetched_at = excluded.fetched_at",
-      params![source_id, source_ref, now_unix_ms()],
-    );
-    clear_catalog_search_cache();
-  }
+      params![source_id, cache_path_str, body, hash, now_unix_ms()],
+    )
+    .map_err(|error| format!("could_not_save_source_catalog: {error}"))?;
+
+  let _ = conn.execute(
+    "UPDATE hydra_download_sources SET url = ?1, download_count = ?2 WHERE id = ?3",
+    params![cache_path_str, catalog.downloads.len() as i64, source_id],
+  );
+
+  remember_in_memory(source_id, catalog);
 
   Ok(inserted)
 }
 
-fn load_catalog_local(app: &AppHandle, source_id: &str) -> Option<HydraLinksCatalog> {
-  if let Some(catalog) = read_memory_cache(source_id) {
-    return Some(catalog);
+fn catalog_from_indexed_entries(
+  conn: &Connection,
+  source_id: &str,
+  source_name: &str,
+) -> Result<HydraLinksCatalog, String> {
+  let mut stmt = conn
+    .prepare(
+      "SELECT title, file_size, uris_json FROM hydra_catalog_entries \
+       WHERE source_id = ?1 ORDER BY title COLLATE NOCASE",
+    )
+    .map_err(|error| format!("could_not_prepare_catalog_entries: {error}"))?;
+
+  let rows = stmt
+    .query_map(params![source_id], |row| {
+      Ok((
+        row.get::<_, String>(0)?,
+        row.get::<_, Option<String>>(1)?,
+        row.get::<_, String>(2)?,
+      ))
+    })
+    .map_err(|error| format!("could_not_query_catalog_entries: {error}"))?;
+
+  let mut by_title: HashMap<String, HydraLinksDownload> = HashMap::new();
+  for row in rows.flatten() {
+    let (title, file_size, uris_json) = row;
+    let uris: Vec<String> = serde_json::from_str(&uris_json).unwrap_or_default();
+    let entry = by_title
+      .entry(title.clone())
+      .or_insert_with(|| HydraLinksDownload {
+        title,
+        file_size: None,
+        uris: Vec::new(),
+        upload_date: None,
+      });
+    if entry
+      .file_size
+      .as_ref()
+      .map(String::as_str)
+      .unwrap_or("")
+      .is_empty()
+    {
+      if let Some(size) = file_size.filter(|value| !value.trim().is_empty()) {
+        entry.file_size = Some(size);
+      }
+    }
+    for uri in uris {
+      if !entry.uris.iter().any(|existing| existing == &uri) {
+        entry.uris.push(uri);
+      }
+    }
   }
 
-  let catalog = read_catalog_from_db(app, source_id)?;
-  remember_in_memory(source_id, catalog.clone());
-  Some(catalog)
+  let mut downloads: Vec<HydraLinksDownload> = by_title.into_values().collect();
+  downloads.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+
+  Ok(HydraLinksCatalog {
+    name: Some(source_name.to_string()),
+    downloads,
+  })
 }
 
-fn search_json_catalog_indexed(
+fn resolve_api_cache_json_path(
+  app: &AppHandle,
+  source_id: &str,
+  source_ref: &str,
+) -> Result<PathBuf, String> {
+  if let Ok(conn) = open_database_connection(app) {
+    if let Ok(url) = conn.query_row(
+      "SELECT url FROM hydra_download_sources WHERE id = ?1",
+      params![source_id],
+      |row| row.get::<_, String>(0),
+    ) {
+      if let Ok(path) = resolve_local_catalog_path_for_write(&url) {
+        return Ok(path);
+      }
+    }
+  }
+
+  if is_remote_catalog_url(source_ref) {
+    return catalog_cache_path_for_remote_url(app, source_ref);
+  }
+
+  if let Ok(path) = resolve_local_catalog_path_for_write(source_ref) {
+    return Ok(path);
+  }
+
+  let safe_name = source_id
+    .chars()
+    .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+    .collect::<String>();
+  Ok(catalog_cache_dir(app)?.join(format!("{safe_name}.json")))
+}
+
+pub fn load_cached_catalog_for_source(
+  app: &AppHandle,
   source: &HydraSourceDto,
+) -> Option<std::sync::Arc<CachedCatalog>> {
+  let path = resolve_local_catalog_path(&source.url);
+  let fingerprint = path.as_ref().and_then(|p| file_fingerprint(p));
+
+  if let Some(cached) = read_memory_cache_if_fresh(&source.id, fingerprint.as_ref()) {
+    return Some(cached);
+  }
+
+  if let Some(path) = path.as_ref() {
+    if let Ok((catalog, _)) = read_catalog_file(path) {
+      let fp = fingerprint.or_else(|| file_fingerprint(path));
+      let indexed = index_catalog(catalog, fp);
+      let arc = std::sync::Arc::new(indexed);
+      if let Ok(mut cache) = memory_cache().lock() {
+        cache.insert(
+          source.id.clone(),
+          MemoryCacheEntry {
+            catalog: arc.clone(),
+          },
+        );
+      }
+      return Some(arc);
+    }
+  }
+
+  if let Some(cached) = read_memory_cache_arc(&source.id) {
+    return Some(cached);
+  }
+
+  let catalog = read_catalog_from_db(app, &source.id)?;
+  let indexed = index_catalog(catalog, None);
+  let arc = std::sync::Arc::new(indexed);
+  if let Ok(mut cache) = memory_cache().lock() {
+    cache.insert(
+      source.id.clone(),
+      MemoryCacheEntry {
+        catalog: arc.clone(),
+      },
+    );
+  }
+  Some(arc)
+}
+
+fn options_from_cached(
+  source: &HydraSourceDto,
+  catalog: &CachedCatalog,
   query: &str,
-  conn: &Connection,
 ) -> Vec<DownloadOptionDto> {
   let query_norm = normalize_match_text(query);
   if query_norm.is_empty() {
     return Vec::new();
   }
-
-  let patterns = build_catalog_title_norm_patterns(&query_norm);
-  if patterns.is_empty() {
-    return Vec::new();
-  }
-
-  let like_clauses = patterns
-    .iter()
-    .map(|_| "title_norm LIKE ?")
-    .collect::<Vec<_>>()
-    .join(" AND ");
-  let sql = format!(
-    "SELECT title, file_size, uris_json FROM hydra_catalog_entries \
-     WHERE source_id = ?1 AND {like_clauses} LIMIT 120"
-  );
-
-  let Ok(mut stmt) = conn.prepare(&sql) else {
-    return Vec::new();
-  };
-
-  let mut params: Vec<Box<dyn rusqlite::ToSql>> =
-    vec![Box::new(source.id.clone()) as Box<dyn rusqlite::ToSql>];
-  for pattern in &patterns {
-    params.push(Box::new(pattern.clone()));
-  }
-  let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-  let rows = match stmt.query_map(param_refs.as_slice(), |row| {
-    Ok((
-      row.get::<_, String>(0)?,
-      row.get::<_, Option<String>>(1)?,
-      row.get::<_, String>(2)?,
-    ))
-  }) {
-    Ok(rows) => rows,
-    Err(_) => return Vec::new(),
-  };
-
-  let source_name = source.name.clone();
-  let mut options = Vec::new();
-  let mut seen_urls = HashSet::new();
-  let mut seen_titles = HashSet::new();
-
-  for row in rows.flatten() {
-    let (title, file_size, uris_json) = row;
-    if !title_matches_query(&title, query) {
-      continue;
-    }
-    let title_key = normalize_match_text(&title);
-    if title_key.is_empty() || !seen_titles.insert(title_key) {
-      continue;
-    }
-
-    let uris: Vec<String> = serde_json::from_str(&uris_json).unwrap_or_default();
-    for (idx, uri) in uris.iter().enumerate() {
-      let Some((download_type, mut url)) = classify_uri(uri) else {
-        continue;
-      };
-      if !seen_urls.insert(url.clone()) {
-        continue;
-      }
-      if download_type == "torrent" && url.to_ascii_lowercase().starts_with("magnet:?") {
-        url = super::enrich_magnet_url(&url);
-      }
-      let quality = file_size
-        .as_ref()
-        .map(|size| size.trim().to_string())
-        .filter(|size| !size.is_empty())
-        .unwrap_or_else(|| format!("Link {}", idx + 1));
-
-      options.push(DownloadOptionDto {
-        source_id: source.id.clone(),
-        source_name: source_name.clone(),
-        title: title.clone(),
-        download_type,
-        url,
-        quality,
-        cover_url: None,
-      });
-    }
-
-    if seen_titles.len() >= MAX_TITLES_PER_SOURCE {
-      return options;
-    }
-  }
-
-  options
-}
-
-/// Lista todas as opções de download indexadas para um jogo (mesmo group_key).
-pub fn list_download_options_for_group_key(
-  conn: &Connection,
-  sources: &[HydraSourceDto],
-  group_key: &str,
-) -> Vec<DownloadOptionDto> {
-  let group_key = group_key.trim();
-  if group_key.is_empty() || sources.is_empty() {
-    return Vec::new();
-  }
-
-  let placeholders = sources.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-  let sql = format!(
-    "SELECT hce.source_id, hce.title, hce.file_size, hce.uris_json \
-     FROM hydra_catalog_entries hce \
-     WHERE hce.group_key = ?1 AND hce.source_id IN ({placeholders}) \
-     ORDER BY hce.title COLLATE NOCASE"
-  );
-
-  let Ok(mut stmt) = conn.prepare(&sql) else {
-    return Vec::new();
-  };
-
-  let mut params: Vec<Box<dyn rusqlite::ToSql>> =
-    vec![Box::new(group_key.to_string()) as Box<dyn rusqlite::ToSql>];
-  for source in sources {
-    params.push(Box::new(source.id.clone()));
-  }
-  let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-
-  let source_names: HashMap<String, String> = sources
-    .iter()
-    .map(|source| (source.id.clone(), source.name.clone()))
-    .collect();
-
-  let rows = match stmt.query_map(param_refs.as_slice(), |row| {
-    Ok((
-      row.get::<_, String>(0)?,
-      row.get::<_, String>(1)?,
-      row.get::<_, Option<String>>(2)?,
-      row.get::<_, String>(3)?,
-    ))
-  }) {
-    Ok(rows) => rows,
-    Err(_) => return Vec::new(),
-  };
-
-  let mut options = Vec::new();
-  let mut seen_urls = HashSet::new();
-  let mut seen_titles = HashSet::new();
-
-  for row in rows.flatten() {
-    let (source_id, title, file_size, uris_json) = row;
-    let title_key = normalize_match_text(&title);
-    if title_key.is_empty() || !seen_titles.insert(title_key) {
-      continue;
-    }
-
-    let source_name = source_names
-      .get(&source_id)
-      .cloned()
-      .unwrap_or_else(|| "Catálogo".to_string());
-
-    let uris: Vec<String> = serde_json::from_str(&uris_json).unwrap_or_default();
-    for (idx, uri) in uris.iter().enumerate() {
-      let Some((download_type, mut url)) = classify_uri(uri) else {
-        continue;
-      };
-      if !seen_urls.insert(url.clone()) {
-        continue;
-      }
-      if download_type == "torrent" && url.to_ascii_lowercase().starts_with("magnet:?") {
-        url = super::enrich_magnet_url(&url);
-      }
-      let quality = file_size
-        .as_ref()
-        .map(|size| size.trim().to_string())
-        .filter(|size| !size.is_empty())
-        .unwrap_or_else(|| format!("Link {}", idx + 1));
-
-      options.push(DownloadOptionDto {
-        source_id: source_id.clone(),
-        source_name: source_name.clone(),
-        title: title.clone(),
-        download_type,
-        url,
-        quality,
-        cover_url: None,
-      });
-    }
-  }
-
-  options
-}
-
-pub fn search_json_catalog_source(
-  app: &AppHandle,
-  source: &HydraSourceDto,
-  query: &str,
-) -> Vec<DownloadOptionDto> {
-  if let Ok(conn) = open_database_connection(app) {
-    let indexed_count: i64 = conn
-      .query_row(
-        "SELECT COUNT(*) FROM hydra_catalog_entries WHERE source_id = ?1",
-        params![source.id],
-        |row| row.get(0),
-      )
-      .unwrap_or(0);
-    if indexed_count > 0 {
-      return search_json_catalog_indexed(source, query, &conn);
-    }
-
-    if let Some(catalog) = load_catalog_local(app, &source.id) {
-      if rebuild_catalog_index(&conn, &source.id, &catalog).is_ok() {
-        return search_json_catalog_indexed(source, query, &conn);
-      }
-    }
-  }
-
-  let Some(catalog) = load_catalog_local(app, &source.id) else {
-    return Vec::new();
-  };
 
   let source_name = catalog
     .name
@@ -1633,13 +1624,18 @@ pub fn search_json_catalog_source(
   let mut seen_urls = HashSet::new();
   let mut seen_titles = HashSet::new();
 
-  for download in &catalog.downloads {
-    if !title_matches_query(&download.title, query) {
+  let candidate_idxs = candidate_indices_for_query(catalog, &query_norm);
+  let iter: Box<dyn Iterator<Item = &IndexedDownload>> = if let Some(idxs) = candidate_idxs {
+    Box::new(idxs.iter().filter_map(|&i| catalog.downloads.get(i)))
+  } else {
+    Box::new(catalog.downloads.iter())
+  };
+
+  for download in iter {
+    if !title_norm_matches_query_norm(&download.title_norm, &query_norm) {
       continue;
     }
-
-    let title_key = normalize_match_text(&download.title);
-    if title_key.is_empty() || !seen_titles.insert(title_key) {
+    if download.title_norm.is_empty() || !seen_titles.insert(download.title_norm.clone()) {
       continue;
     }
 
@@ -1680,6 +1676,201 @@ pub fn search_json_catalog_source(
   }
 
   options
+}
+
+/// Lista opções de download para um jogo a partir dos `.json` locais (não SQLite).
+pub fn list_download_options_for_group_key(
+  app: &AppHandle,
+  sources: &[HydraSourceDto],
+  group_key: &str,
+) -> Vec<DownloadOptionDto> {
+  let group_key = group_key.trim();
+  if group_key.is_empty() || sources.is_empty() {
+    return Vec::new();
+  }
+  let query_canon = crate::title::canonical_catalog_group_key(group_key);
+
+  let mut options = Vec::new();
+  let mut seen_urls = HashSet::new();
+  let mut seen_source_titles = HashSet::new();
+
+  for source in sources {
+    let Some(catalog) = load_cached_catalog_for_source(app, source) else {
+      continue;
+    };
+    let source_name = catalog
+      .name
+      .as_ref()
+      .map(|name| name.trim().to_string())
+      .filter(|name| !name.is_empty())
+      .unwrap_or_else(|| source.name.clone());
+
+    for download in &catalog.downloads {
+      let download_canon = crate::title::canonical_catalog_group_key(&download.group_key);
+      let matches = download.group_key == group_key
+        || download_canon == query_canon
+        || crate::title::catalog_search_group_keys_equivalent(&download_canon, &query_canon)
+        || crate::title::catalog_search_group_keys_equivalent(&query_canon, &download_canon);
+      if !matches {
+        continue;
+      }
+      if download.title_norm.is_empty() {
+        continue;
+      }
+      let source_title_key = format!("{}\0{}", source.id, download.title_norm);
+      if !seen_source_titles.insert(source_title_key) {
+        continue;
+      }
+
+      for (idx, uri) in download.uris.iter().enumerate() {
+        let Some((download_type, mut url)) = classify_uri(uri) else {
+          continue;
+        };
+        if !seen_urls.insert(url.clone()) {
+          continue;
+        }
+        if download_type == "torrent" && url.to_ascii_lowercase().starts_with("magnet:?") {
+          url = super::enrich_magnet_url(&url);
+        }
+        let quality = download
+          .file_size
+          .as_ref()
+          .map(|size| size.trim().to_string())
+          .filter(|size| !size.is_empty())
+          .unwrap_or_else(|| format!("Link {}", idx + 1));
+
+        options.push(DownloadOptionDto {
+          source_id: source.id.clone(),
+          source_name: source_name.clone(),
+          title: download.title.clone(),
+          download_type,
+          url,
+          quality,
+          cover_url: None,
+        });
+      }
+    }
+  }
+
+  options.sort_by(|a, b| {
+    a.source_name
+      .to_lowercase()
+      .cmp(&b.source_name.to_lowercase())
+      .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+  });
+  options
+}
+
+pub fn search_json_catalog_source(
+  app: &AppHandle,
+  source: &HydraSourceDto,
+  query: &str,
+) -> Vec<DownloadOptionDto> {
+  // Fontes importadas (FitGirl, etc.): pesquisar no cache do .json, não no SQLite.
+  let Some(catalog) = load_cached_catalog_for_source(app, source) else {
+    return Vec::new();
+  };
+  options_from_cached(source, &catalog, query)
+}
+
+/// Pesquisa de títulos no Discover a partir dos `.json` locais (não do índice SQLite).
+pub fn search_distinct_catalog_titles_from_json(
+  app: &AppHandle,
+  sources: &[HydraSourceDto],
+  query: &str,
+  offset: usize,
+  limit: usize,
+) -> Vec<CatalogTitleHit> {
+  if sources.is_empty() || query.trim().len() < 2 || limit == 0 {
+    return Vec::new();
+  }
+
+  let query_norm = normalize_match_text(query);
+  if query_norm.is_empty() {
+    return Vec::new();
+  }
+
+  let mut groups: HashMap<String, CatalogTitleHit> = HashMap::new();
+
+  for source in sources {
+    let Some(catalog) = load_cached_catalog_for_source(app, source) else {
+      continue;
+    };
+    let source_name = catalog
+      .name
+      .as_ref()
+      .map(|name| name.trim().to_string())
+      .filter(|name| !name.is_empty())
+      .unwrap_or_else(|| source.name.clone());
+
+    let candidate_idxs = candidate_indices_for_query(&catalog, &query_norm);
+    let iter: Box<dyn Iterator<Item = &IndexedDownload>> = if let Some(idxs) = candidate_idxs {
+      Box::new(idxs.iter().filter_map(|&i| catalog.downloads.get(i)))
+    } else {
+      Box::new(catalog.downloads.iter())
+    };
+
+    for download in iter {
+      if !title_norm_matches_query_norm(&download.title_norm, &query_norm) {
+        continue;
+      }
+      if download.group_key.is_empty() {
+        continue;
+      }
+      let canonical_key =
+        crate::title::canonical_catalog_group_key(&download.group_key);
+      let bucket_key = groups
+        .keys()
+        .find(|existing| {
+          crate::title::catalog_search_group_keys_equivalent(existing, &canonical_key)
+            || crate::title::catalog_search_group_keys_equivalent(existing, &download.group_key)
+        })
+        .cloned()
+        .unwrap_or_else(|| canonical_key.clone());
+
+      if let Some(hit) = groups.get_mut(&bucket_key) {
+        hit.option_count = hit.option_count.saturating_add(1);
+      } else {
+        groups.insert(
+          bucket_key,
+          CatalogTitleHit {
+            title: crate::title::catalog_game_display_title_from_group_key(&canonical_key),
+            _source_name: source_name.clone(),
+            group_key: canonical_key,
+            option_count: 1,
+          },
+        );
+      }
+    }
+  }
+
+  let mut ordered: Vec<CatalogTitleHit> = groups.into_values().collect();
+  ordered.sort_by(|a, b| {
+    a.title
+      .len()
+      .cmp(&b.title.len())
+      .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+  });
+  ordered.into_iter().skip(offset).take(limit).collect()
+}
+
+/// Pré-carrega catálogos locais em memória (arranque / após import).
+pub fn warm_local_catalog_caches(app: &AppHandle) {
+  let Ok(conn) = open_database_connection(app) else {
+    return;
+  };
+  let Ok(sources) = super::hydra::list_hydra_sources(&conn) else {
+    return;
+  };
+  let disabled = crate::db::get_disabled_hydra_source_ids_from_conn(&conn).unwrap_or_default();
+  drop(conn);
+
+  for source in sources {
+    if disabled.contains(&source.id) {
+      continue;
+    }
+    let _ = load_cached_catalog_for_source(app, &source);
+  }
 }
 
 #[cfg(test)]
@@ -1769,6 +1960,26 @@ mod tests {
     assert_eq!(
       display_name_for_source_url("https://hydralinks.cloud/sources/fitgirl.json"),
       "FitGirl"
+    );
+    assert_eq!(
+      display_name_for_source_url("https://example.com/catalogs/empress.json"),
+      "EMPRESS"
+    );
+  }
+
+  #[test]
+  fn prefers_catalog_json_name_over_url_slug() {
+    assert_eq!(
+      resolve_source_display_name(
+        Some("FitGirl Repacks"),
+        None,
+        "https://cdn.example.com/abc123.json"
+      ),
+      "FitGirl Repacks"
+    );
+    assert_eq!(
+      resolve_source_display_name(Some("dodi.json"), None, "https://example.com/other.json"),
+      "DODI"
     );
   }
 

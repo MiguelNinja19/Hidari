@@ -212,6 +212,17 @@ pub fn persist_hydra_api_meta(
   local_source_id: &str,
   api: &HydraApiDownloadSource,
 ) -> Result<(), String> {
+  let display_name = super::hydralinks::resolve_source_display_name(
+    None,
+    Some(api.name.as_str()),
+    api.name.as_str(),
+  );
+  // Prioridade: quantidade reportada pela API Hydra.
+  let download_count = if api.download_count > 0 {
+    api.download_count
+  } else {
+    count_hydra_catalog_entries(conn, local_source_id) as i64
+  };
   conn
     .execute(
       "UPDATE hydra_download_sources SET \
@@ -220,13 +231,42 @@ pub fn persist_hydra_api_meta(
       params![
         api.id,
         api.fingerprint,
-        api.download_count,
+        download_count,
         api.status,
-        api.name,
+        display_name,
         local_source_id
       ],
     )
     .map_err(|error| format!("could_not_persist_hydra_api_meta: {error}"))?;
+  Ok(())
+}
+
+pub fn count_hydra_catalog_entries(conn: &Connection, source_id: &str) -> usize {
+  conn
+    .query_row(
+      "SELECT COUNT(*) FROM hydra_catalog_entries WHERE source_id = ?1",
+      params![source_id],
+      |row| row.get::<_, i64>(0),
+    )
+    .unwrap_or(0)
+    .max(0) as usize
+}
+
+pub fn persist_hydra_source_display_name(
+  conn: &Connection,
+  source_id: &str,
+  name: &str,
+) -> Result<(), String> {
+  let trimmed = name.trim();
+  if trimmed.is_empty() {
+    return Ok(());
+  }
+  conn
+    .execute(
+      "UPDATE hydra_download_sources SET name = ?1 WHERE id = ?2",
+      params![trimmed, source_id],
+    )
+    .map_err(|error| format!("could_not_persist_hydra_source_name: {error}"))?;
   Ok(())
 }
 
@@ -277,7 +317,8 @@ pub fn ensure_default_hydra_sources(_conn: &Connection) -> Result<(), String> {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct HydraCatalogueSearchResponse {
+pub(crate) struct HydraCatalogueSearchResponse {
+  #[allow(dead_code)]
   count: i64,
   edges: Vec<HydraCatalogueGame>,
 }
@@ -294,6 +335,7 @@ struct HydraCatalogueGame {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HydraGameRepack {
+  #[allow(dead_code)]
   pub id: String,
   pub title: String,
   pub file_size: Option<String>,
@@ -302,7 +344,7 @@ pub struct HydraGameRepack {
   pub download_source_name: String,
 }
 
-pub async fn hydra_catalogue_search(
+pub(crate) async fn hydra_catalogue_search(
   title: &str,
   fingerprints: &[String],
   take: usize,
