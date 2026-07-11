@@ -1,9 +1,3 @@
-export type AppPaths = {
-  appDataDir: string
-  appConfigDir: string
-  appCacheDir: string
-}
-
 export type Source = {
   id: string
   name: string
@@ -18,14 +12,6 @@ export type Source = {
 
 export type AddSourceInput = {
   url: string
-}
-
-export type SourceTestResult = {
-  sourceId: string
-  ok: boolean
-  statusCode?: number
-  latencyMs: number
-  message: string
 }
 
 export type SyncLocalSourceResult = {
@@ -54,4 +40,5 @@ export type CatalogChange = {
 
 export type SearchDownloadOptionsInput = {
   query: string
+  groupKey?: string
 }

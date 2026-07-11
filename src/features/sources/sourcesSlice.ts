@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { APP_LOCALE } from '../../shared/config/locale'
+import { isAppLanguage, localeForLanguage } from '../../shared/config/locale'
+import i18n from '../../shared/i18n'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import type {
   AddSourceInput,
@@ -88,7 +89,9 @@ const sourcesSlice = createSlice({
           item.downloadCount = action.payload.downloadCount
         }
         state.notice = action.payload.warning
-          ?? `${action.payload.downloadCount.toLocaleString(APP_LOCALE)} jogos atualizados.`
+          ?? `${action.payload.downloadCount.toLocaleString(
+            localeForLanguage(isAppLanguage(i18n.language) ? i18n.language : 'pt-BR'),
+          )} jogos atualizados.`
       })
       .addCase(syncSource.rejected, (state, action) => {
         state.error = action.error.message ?? 'Erro ao atualizar catálogo.'

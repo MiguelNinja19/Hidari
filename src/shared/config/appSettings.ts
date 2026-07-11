@@ -7,8 +7,7 @@ export const SETTING_KEY = {
   librarySort: 'library_sort',
 } as const
 
-export const LIBRARY_SORT_OPTIONS = ['title-asc', 'title-desc'] as const
-export type LibrarySort = (typeof LIBRARY_SORT_OPTIONS)[number]
+export type LibrarySort = 'title-asc' | 'title-desc'
 
 export function parseLibrarySort(value: string | null | undefined): LibrarySort {
   if (value === 'title-desc') return value
@@ -18,8 +17,7 @@ export function parseLibrarySort(value: string | null | undefined): LibrarySort 
 export const INSTALL_ORGANIZATION_DEFAULT = 'separate-folder'
 export const AFTER_INSTALL_ACTION_DEFAULT = 'ask'
 
-export const SPEED_LIMIT_OPTIONS = ['ilimitado', '50mb', '20mb', '10mb'] as const
-export type SpeedLimitKey = (typeof SPEED_LIMIT_OPTIONS)[number]
+export type SpeedLimitKey = 'ilimitado' | '50mb' | '20mb' | '10mb'
 
 const MB = 1024 * 1024
 

@@ -1,4 +1,10 @@
-import { APP_LOCALE } from '../../shared/config/locale'
+import { useTranslation } from 'react-i18next'
+import {
+  APP_LANGUAGES,
+  isAppLanguage,
+  type AppLanguage,
+} from '../../shared/config/locale'
+import { setAppLanguage } from '../../shared/i18n'
 import type { Source } from '../../shared/types/contracts'
 
 type SettingsPageProps = {
@@ -23,26 +29,22 @@ type SettingsPageProps = {
   handleSaveInstallSettings: () => Promise<void>
   onImportSource: () => Promise<void>
   onOpenCatalogsFolder: () => Promise<void>
-  onDeleteSource: (sourceId: string, sourceName: string) => Promise<void>
+  onDeleteSource: (sourceId: string, sourceName: string) => void | Promise<void>
   onSyncSource: (sourceId: string, sourceName: string) => Promise<void>
   onSyncAllSources: () => Promise<void>
   deletingSourceId: string | null
   syncingSourceId: string | null
   syncingAllSources: boolean
-  handleToggleSource: (sourceId: string) => void
+  handleToggleSource: (sourceId: string) => void | Promise<void>
   handleToggleRemoveTemp: (next: boolean) => Promise<void>
   handleToggleSeed: (enabled: boolean) => Promise<void>
   handleSpeedLimitChange: (value: string) => Promise<void>
-  formatSize: (bytes?: number) => string
-}
-
-function formatGameCount(count: number): string {
-  return count.toLocaleString(APP_LOCALE)
+  /** Enquanto false, os switches de fonte ficam desativados (settings ainda a carregar). */
+  disabledSourcesReady?: boolean
 }
 
 export function SettingsPage({
   defaultDownloadPath,
-  diskFreeBytes,
   installOrganization,
   afterInstallAction,
   sources,
@@ -69,32 +71,56 @@ export function SettingsPage({
   handleToggleRemoveTemp,
   handleToggleSeed,
   handleSpeedLimitChange,
-  formatSize,
   setDefaultDownloadPath,
   setInstallOrganization,
   setAfterInstallAction,
+  disabledSourcesReady = true,
 }: SettingsPageProps) {
-  const isManagingSources =
-    deletingSourceId !== null || syncingSourceId !== null || syncingAllSources
+  const { t, i18n } = useTranslation()
+  const currentLanguage: AppLanguage = isAppLanguage(i18n.language) ? i18n.language : 'pt-BR'
+  const isSyncingAll = syncingAllSources
 
   return (
     <section className="settings-page">
       <div className="settings-stack">
+        <section id="settings-language" className="settings-block settings-block--wide">
+          <header className="settings-block__head">
+            <div className="settings-block__head-copy">
+              <h2 className="settings-block__title">{t('settings.languageTitle')}</h2>
+            </div>
+          </header>
+          <div className="settings-block__body">
+            <label className="settings-field settings-field--stack">
+              <select
+                className="settings-input"
+                value={currentLanguage}
+                aria-label={t('settings.languageTitle')}
+                onChange={(event) => {
+                  const next = event.target.value
+                  if (isAppLanguage(next)) void setAppLanguage(next)
+                }}
+              >
+                {APP_LANGUAGES.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.nativeLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+
         <div className="settings-stack__row">
           <section id="settings-folder" className="settings-block">
             <header className="settings-block__head">
               <div className="settings-block__head-copy">
-                <h2 className="settings-block__title">Instalação</h2>
-                <p className="settings-block__desc">Defina onde os jogos serão salvos.</p>
+                <h2 className="settings-block__title">{t('settings.installTitle')}</h2>
               </div>
-              <span className="settings-block__meta">
-                {diskFreeBytes != null ? `${formatSize(diskFreeBytes)} livres` : '—'}
-              </span>
             </header>
 
             <div className="settings-block__body">
               <label className="settings-field settings-field--stack">
-                <span>Pasta de destino</span>
+                <span>{t('settings.destinationFolder')}</span>
                 <div className="settings-inline">
                   <input
                     className="settings-input"
@@ -107,34 +133,34 @@ export function SettingsPage({
                     type="button"
                     onClick={() => void handleSelectDefaultPath()}
                   >
-                    Procurar
+                    {t('common.browse')}
                   </button>
                 </div>
               </label>
 
               <div className="settings-field-grid">
                 <label className="settings-field">
-                  <span>Organização das pastas</span>
+                  <span>{t('settings.folderOrganization')}</span>
                   <select
                     className="settings-input"
                     value={installOrganization}
                     onChange={(event) => setInstallOrganization(event.target.value)}
                   >
-                    <option value="separate-folder">Uma pasta por jogo</option>
-                    <option value="single-folder">Todos na mesma pasta</option>
+                    <option value="separate-folder">{t('settings.orgSeparate')}</option>
+                    <option value="single-folder">{t('settings.orgSingle')}</option>
                   </select>
                 </label>
 
                 <label className="settings-field">
-                  <span>Após concluir instalação</span>
+                  <span>{t('settings.afterInstall')}</span>
                   <select
                     className="settings-input"
                     value={afterInstallAction}
                     onChange={(event) => setAfterInstallAction(event.target.value)}
                   >
-                    <option value="ask">Perguntar sempre</option>
-                    <option value="open-folder">Abrir pasta</option>
-                    <option value="launch-game">Iniciar jogo</option>
+                    <option value="ask">{t('settings.afterAsk')}</option>
+                    <option value="open-folder">{t('settings.afterOpenFolder')}</option>
+                    <option value="launch-game">{t('settings.afterLaunch')}</option>
                   </select>
                 </label>
               </div>
@@ -147,7 +173,7 @@ export function SettingsPage({
                 type="button"
                 onClick={() => void handleSaveInstallSettings()}
               >
-                Salvar
+                {t('common.save')}
               </button>
             </footer>
           </section>
@@ -155,20 +181,19 @@ export function SettingsPage({
           <section id="settings-downloads" className="settings-block">
             <header className="settings-block__head">
               <div className="settings-block__head-copy">
-                <h2 className="settings-block__title">Downloads</h2>
-                <p className="settings-block__desc">Velocidade e comportamento dos torrents.</p>
+                <h2 className="settings-block__title">{t('settings.downloadsTitle')}</h2>
               </div>
             </header>
 
             <div className="settings-block__body settings-block__body--tight">
               <label className="settings-toggle settings-toggle--select">
-                <span>Limite de velocidade</span>
+                <span>{t('settings.speedLimit')}</span>
                 <select
                   className="settings-input settings-input--narrow"
                   value={downloadSpeedLimit}
                   onChange={(event) => void handleSpeedLimitChange(event.target.value)}
                 >
-                  <option value="ilimitado">Ilimitado</option>
+                  <option value="ilimitado">{t('settings.speedUnlimited')}</option>
                   <option value="50mb">50 MB/s</option>
                   <option value="20mb">20 MB/s</option>
                   <option value="10mb">10 MB/s</option>
@@ -176,27 +201,21 @@ export function SettingsPage({
               </label>
 
               <div className="settings-toggle">
-                <div className="settings-toggle__copy">
-                  <span>Apagar arquivos temporários</span>
-                  <span className="settings-toggle__hint">Libera espaço após a instalação</span>
-                </div>
+                <span>{t('settings.removeTemp')}</span>
                 <button
                   type="button"
                   className={removeTemporaryFiles ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                  aria-label="Apagar arquivos temporários"
+                  aria-label={t('settings.removeTempAria')}
                   onClick={() => void handleToggleRemoveTemp(!removeTemporaryFiles)}
                 />
               </div>
 
               <div className="settings-toggle">
-                <div className="settings-toggle__copy">
-                  <span>Fazer seed após concluir</span>
-                  <span className="settings-toggle__hint">Continua compartilhando o torrent</span>
-                </div>
+                <span>{t('settings.seedAfter')}</span>
                 <button
                   type="button"
                   className={seedTorrentsEnabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                  aria-label="Fazer seed do torrent"
+                  aria-label={t('settings.seedAria')}
                   onClick={() => void handleToggleSeed(!seedTorrentsEnabled)}
                 />
               </div>
@@ -206,13 +225,6 @@ export function SettingsPage({
 
         <section id="settings-catalog" className="settings-block settings-block--wide">
           <header className="settings-block__head">
-            <div className="settings-block__head-copy">
-              <h2 className="settings-block__title">Catálogo</h2>
-              <p className="settings-block__desc">
-                Cole a URL oficial do hydralinks ou importe um arquivo .json local. Importações são
-                copiadas para a pasta interna — pode apagar o arquivo original depois.
-              </p>
-            </div>
             <div className="settings-block__head-actions">
               <button
                 type="button"
@@ -220,7 +232,7 @@ export function SettingsPage({
                 disabled={addingSource}
                 onClick={() => void onOpenCatalogsFolder()}
               >
-                Abrir pasta
+                {t('settings.openCatalogFolder')}
               </button>
               <button
                 type="button"
@@ -228,16 +240,24 @@ export function SettingsPage({
                 disabled={addingSource}
                 onClick={() => void onImportSource()}
               >
-                {addingSource ? 'Importando…' : 'Importar'}
+                {addingSource ? t('settings.importing') : t('common.import')}
               </button>
               {sources.length > 0 ? (
                 <button
                   type="button"
-                  className="btn btn-outline btn--compact"
-                  disabled={isManagingSources || sourcesLoading}
+                  className={`btn btn-outline btn--compact${isSyncingAll ? ' btn--busy' : ''}`}
+                  disabled={isSyncingAll || addingSource || sourcesLoading}
+                  aria-busy={isSyncingAll}
                   onClick={() => void onSyncAllSources()}
                 >
-                  {syncingAllSources ? 'Atualizando…' : 'Atualizar todas'}
+                  {isSyncingAll ? (
+                    <>
+                      <span className="btn__spinner" aria-hidden />
+                      {t('settings.syncingAll')}
+                    </>
+                  ) : (
+                    t('settings.syncAll')
+                  )}
                 </button>
               ) : null}
             </div>
@@ -245,7 +265,7 @@ export function SettingsPage({
 
           <div className="settings-block__body">
             <label className="settings-field settings-field--stack">
-              <span>URL do catálogo</span>
+              <span>{t('settings.catalogUrl')}</span>
               <div className="settings-inline">
                 <input
                   className="settings-input"
@@ -267,23 +287,18 @@ export function SettingsPage({
                   disabled={addingSource || !sourceUrlInput.trim()}
                   onClick={() => void onAddSourceByUrl()}
                 >
-                  {addingSource ? 'Adicionando…' : 'Adicionar'}
+                  {addingSource ? t('settings.adding') : t('common.add')}
                 </button>
               </div>
             </label>
 
-            {sources.length === 0 && !sourcesLoading ? (
-              <p className="settings-block__hint">
-                Nenhuma fonte ainda. Cole uma URL acima ou clique em Importar para escolher um .json
-                local.
-              </p>
-            ) : (
+            {sources.length > 0 ? (
               <div className="settings-source-table-wrap">
                 <ul className="settings-source-table settings-source-table--simple" role="list">
                   {sources.map((source) => {
                     const enabled = isSourceEnabled(source.id)
-                    const gameCount =
-                      source.downloadCount > 0 ? formatGameCount(source.downloadCount) : '—'
+                    const isSourceSyncing = syncingSourceId === source.id
+                    const isSourceDeleting = deletingSourceId === source.id
                     return (
                       <li
                         key={source.id}
@@ -292,43 +307,61 @@ export function SettingsPage({
                         <div className="settings-source-table__col settings-source-table__col--name">
                           <strong className="settings-source-row__name">{source.name}</strong>
                           <span className="settings-source-row__count-inline">
-                            {gameCount} jogos
+                            {source.downloadCount > 0
+                              ? t('settings.gamesCount', {
+                                  count: source.downloadCount.toLocaleString(i18n.language),
+                                })
+                              : t('settings.gamesCountEmpty')}
                           </span>
                         </div>
                         <div className="settings-source-table__col settings-source-table__col--on">
                           <button
                             type="button"
                             className={enabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                            disabled={isManagingSources}
+                            disabled={
+                              !disabledSourcesReady || isSourceSyncing || isSourceDeleting
+                            }
                             aria-pressed={enabled}
                             aria-label={
-                              enabled ? `Desativar ${source.name}` : `Ativar ${source.name}`
+                              enabled
+                                ? t('settings.disableSource', { name: source.name })
+                                : t('settings.enableSource', { name: source.name })
                             }
-                            onClick={() => handleToggleSource(source.id)}
+                            onClick={() => void handleToggleSource(source.id)}
                           />
                         </div>
                         <div className="settings-source-table__col settings-source-table__col--actions">
                           <div
                             className="settings-source-actions"
                             role="group"
-                            aria-label={`Ações de ${source.name}`}
+                            aria-label={t('settings.sourceActions', { name: source.name })}
                           >
                             <button
                               type="button"
-                              className="btn btn-outline btn--compact settings-source-actions__btn"
-                              disabled={isManagingSources}
+                              className={`btn btn-outline btn--compact settings-source-actions__btn${
+                                isSourceSyncing ? ' btn--busy' : ''
+                              }`}
+                              disabled={isSourceSyncing || isSourceDeleting}
+                              aria-busy={isSourceSyncing}
                               onClick={() => void onSyncSource(source.id, source.name)}
                             >
-                              {syncingSourceId === source.id ? '…' : 'Atualizar'}
+                              {isSourceSyncing ? (
+                                <>
+                                  <span className="btn__spinner" aria-hidden />
+                                  {t('settings.syncing')}
+                                </>
+                              ) : (
+                                t('common.sync')
+                              )}
                             </button>
                             <button
                               type="button"
                               className="btn btn-danger btn--compact settings-source-actions__btn"
-                              disabled={isManagingSources}
-                              aria-label={`Excluir ${source.name}`}
+                              disabled={isSourceSyncing || isSourceDeleting}
+                              aria-label={t('common.delete')}
                               onClick={() => void onDeleteSource(source.id, source.name)}
                             >
-                              {deletingSourceId === source.id ? '…' : 'Excluir'}
+                              {isSourceDeleting ? t('settings.deleting') : t('common.delete')}
                             </button>
                           </div>
                         </div>
@@ -337,10 +370,9 @@ export function SettingsPage({
                   })}
                 </ul>
               </div>
-            )}
+            ) : null}
           </div>
         </section>
-
       </div>
     </section>
   )

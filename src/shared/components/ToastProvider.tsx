@@ -16,6 +16,7 @@ type ToastState = {
   message: string
   variant: ToastVariant
   key: number
+  exiting: boolean
 }
 
 type ToastContextValue = {
@@ -28,29 +29,43 @@ const ToastContext = createContext<ToastContextValue | null>(null)
 
 const TOAST_DURATION_MS = 3200
 const ERROR_DURATION_MS = 5000
+const TOAST_EXIT_MS = 300
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null)
   const timerRef = useRef<number | null>(null)
   const keyRef = useRef(0)
 
-  const dismiss = useCallback(() => {
-    if (timerRef.current) window.clearTimeout(timerRef.current)
-    timerRef.current = null
-    setToast(null)
+  const clearTimer = useCallback(() => {
+    if (timerRef.current != null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
   }, [])
+
+  const dismissAnimated = useCallback(() => {
+    clearTimer()
+    setToast((prev) => {
+      if (!prev) return null
+      return { ...prev, exiting: true }
+    })
+    timerRef.current = window.setTimeout(() => {
+      setToast(null)
+      timerRef.current = null
+    }, TOAST_EXIT_MS)
+  }, [clearTimer])
 
   const showToast = useCallback(
     (message: string, variant: ToastVariant = 'info') => {
       const trimmed = message.trim()
       if (!trimmed) return
-      if (timerRef.current) window.clearTimeout(timerRef.current)
+      clearTimer()
       keyRef.current += 1
-      setToast({ message: trimmed, variant, key: keyRef.current })
+      setToast({ message: trimmed, variant, key: keyRef.current, exiting: false })
       const duration = variant === 'error' ? ERROR_DURATION_MS : TOAST_DURATION_MS
-      timerRef.current = window.setTimeout(dismiss, duration)
+      timerRef.current = window.setTimeout(dismissAnimated, duration)
     },
-    [dismiss],
+    [clearTimer, dismissAnimated],
   )
 
   const showError = useCallback((message: string) => showToast(message, 'error'), [showToast])
@@ -59,12 +74,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [showToast],
   )
 
-  useEffect(
-    () => () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current)
-    },
-    [],
-  )
+  useEffect(() => () => clearTimer(), [clearTimer])
 
   const value = useMemo(
     () => ({ showToast, showError, showSuccess }),
@@ -78,7 +88,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         ? createPortal(
             <div
               key={toast.key}
-              className={`app-toast app-toast--${toast.variant}`}
+              className={[
+                'app-toast',
+                `app-toast--${toast.variant}`,
+                toast.exiting ? 'app-toast--exit' : 'app-toast--enter',
+              ].join(' ')}
               role={toast.variant === 'error' ? 'alert' : 'status'}
               aria-live={toast.variant === 'error' ? 'assertive' : 'polite'}
             >

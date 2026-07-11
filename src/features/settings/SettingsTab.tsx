@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
-import { open, ask } from '@tauri-apps/plugin-dialog'
+import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { open } from '@tauri-apps/plugin-dialog'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { useAppSettings } from '../../app/context/AppSettingsContext'
-import { APP_LOCALE } from '../../shared/config/locale'
+import { APP_LOCALE, isAppLanguage, localeForLanguage } from '../../shared/config/locale'
+import i18n from '../../shared/i18n'
 import {
   addSource,
   deleteSource,
@@ -14,11 +16,12 @@ import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { SettingsPage } from './SettingsPage'
 import { SETTING_KEY, speedKeyToBps } from '../../shared/config/appSettings'
 import { formatUserError } from '../../shared/utils/formatUserError'
-import { formatSize } from '../../shared/utils/formatters'
 import { useToast } from '../../shared/components/ToastProvider'
+import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { useErrorToast } from '../../shared/hooks/useErrorToast'
 
 export function SettingsTab() {
+  const { t } = useTranslation()
   const dispatch = useAppDispatch()
   const {
     defaultDownloadPath,
@@ -35,6 +38,7 @@ export function SettingsTab() {
     setDownloadSpeedLimit,
     disabledSourceIds,
     setDisabledSourceIds,
+    disabledSourcesReady,
   } = useAppSettings()
   const sources = useAppSelector((state) => state.sources.items)
   const sourcesLoading = useAppSelector((state) => state.sources.loading)
@@ -43,12 +47,13 @@ export function SettingsTab() {
   const [addingSource, setAddingSource] = useState(false)
   const [sourceUrlInput, setSourceUrlInput] = useState('')
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
   const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null)
   const [syncingAllSources, setSyncingAllSources] = useState(false)
   const [diskFreeBytes, setDiskFreeBytes] = useState<number | null>(null)
   const { showError, showSuccess } = useToast()
 
-  useErrorToast(sourcesError, 'Falha ao carregar fontes.')
+  useErrorToast(sourcesError, t('settings.toastSourcesLoadError'))
 
   const isSourceEnabled = (sourceId: string) => !disabledSourceIds.includes(sourceId)
 
@@ -73,7 +78,7 @@ export function SettingsTab() {
     if (addingSource) return
     const url = sourceUrlInput.trim()
     if (!url) {
-      showError('Cole a URL do catálogo .json (ex.: hydralinks.cloud/sources/fitgirl.json).')
+      showError(t('settings.toastPasteUrl'))
       return
     }
 
@@ -81,9 +86,15 @@ export function SettingsTab() {
     try {
       const source = await dispatch(addSource({ url })).unwrap()
       setSourceUrlInput('')
-      showSuccess(`${source.downloadCount.toLocaleString(APP_LOCALE)} jogos adicionados.`)
+      showSuccess(
+        t('settings.toastGamesAdded', {
+          count: source.downloadCount.toLocaleString(
+            localeForLanguage(isAppLanguage(i18n.language) ? i18n.language : APP_LOCALE),
+          ),
+        }),
+      )
     } catch (error) {
-      showError(formatUserError(error, 'Falha ao adicionar a fonte pela URL.'))
+      showError(formatUserError(error, t('settings.toastAddSourceError')))
     } finally {
       setAddingSource(false)
     }
@@ -93,44 +104,70 @@ export function SettingsTab() {
     if (addingSource) return
     const selected = await open({
       multiple: false,
-      filters: [{ name: 'Catálogo JSON', extensions: ['json'] }],
+      filters: [{ name: t('settings.jsonCatalogFilter'), extensions: ['json'] }],
     })
     if (typeof selected !== 'string' || !selected.toLowerCase().endsWith('.json')) return
 
     setAddingSource(true)
     try {
       const source = await dispatch(addSource({ url: selected.trim() })).unwrap()
-      showSuccess(`${source.downloadCount.toLocaleString(APP_LOCALE)} jogos importados.`)
+      showSuccess(
+        t('settings.toastGamesImported', {
+          count: source.downloadCount.toLocaleString(
+            localeForLanguage(isAppLanguage(i18n.language) ? i18n.language : APP_LOCALE),
+          ),
+        }),
+      )
     } catch (error) {
-      showError(formatUserError(error, 'Falha ao importar a fonte.'))
+      showError(formatUserError(error, t('settings.toastImportError')))
     } finally {
       setAddingSource(false)
     }
   }
 
-  const handleDeleteSource = async (sourceId: string, sourceName: string) => {
-    const confirmed = await ask(
-      `Deseja excluir a fonte "${sourceName}"?\n\nIsso remove o catálogo da aplicação, mas não apaga o arquivo .json do seu disco.`,
-      { title: 'Remover fonte', kind: 'warning' },
-    )
-    if (!confirmed) return
+  const handleDeleteSource = useCallback((sourceId: string, sourceName: string) => {
+    setPendingDelete({ id: sourceId, name: sourceName })
+  }, [])
 
+  const handleCancelDeleteSource = useCallback(() => {
+    if (deletingSourceId) return
+    setPendingDelete(null)
+  }, [deletingSourceId])
+
+  const handleConfirmDeleteSource = useCallback(async () => {
+    if (!pendingDelete || deletingSourceId) return
+    const { id: sourceId } = pendingDelete
     setDeletingSourceId(sourceId)
     try {
       await dispatch(deleteSource(sourceId)).unwrap()
       const next = disabledSourceIds.filter((id) => id !== sourceId)
       setDisabledSourceIds(next)
-      void sourcesApi.setAppSetting(SETTING_KEY.disabledHydraSourceIds, JSON.stringify(next))
+      try {
+        await sourcesApi.setAppSetting(SETTING_KEY.disabledHydraSourceIds, JSON.stringify(next))
+      } catch (error) {
+        showError(formatUserError(error, t('settings.toastSourcesSaveError')))
+      }
+      setPendingDelete(null)
     } finally {
       setDeletingSourceId(null)
     }
-  }
+  }, [
+    pendingDelete,
+    deletingSourceId,
+    dispatch,
+    disabledSourceIds,
+    setDisabledSourceIds,
+    showError,
+    t,
+  ])
 
   const handleSyncSource = async (sourceId: string, sourceName: string) => {
+    if (syncingSourceId === sourceId || syncingAllSources) return
+    if (syncingSourceId !== null) return
     setSyncingSourceId(sourceId)
     try {
       await dispatch(syncSource(sourceId)).unwrap()
-      showSuccess(`Fonte ${sourceName} atualizada`)
+      showSuccess(t('settings.toastSourceUpdated', { name: sourceName }))
     } finally {
       setSyncingSourceId(null)
     }
@@ -138,10 +175,11 @@ export function SettingsTab() {
 
   const handleSyncAllSources = async () => {
     if (sources.length === 0 || syncingAllSources) return
+    if (syncingSourceId !== null) return
     setSyncingAllSources(true)
     try {
       await dispatch(syncAllSources()).unwrap()
-      showSuccess('Todas as fontes atualizadas')
+      showSuccess(t('settings.toastAllUpdated'))
       await dispatch(fetchSources())
     } finally {
       setSyncingAllSources(false)
@@ -152,14 +190,14 @@ export function SettingsTab() {
     try {
       await sourcesApi.openCatalogsCacheFolder()
     } catch (error) {
-      showError(formatUserError(error, 'Não foi possível abrir a pasta de catálogos.'))
+      showError(formatUserError(error, t('settings.toastOpenCatalogsError')))
     }
   }
 
   const handleSaveInstallSettings = async () => {
     const path = defaultDownloadPath.trim()
     if (!path) {
-      showError('Indique uma pasta de destino.')
+      showError(t('settings.toastDestinationRequired'))
       return
     }
     try {
@@ -169,7 +207,7 @@ export function SettingsTab() {
       const bytes = await sourcesApi.getDiskFreeBytesForPath(path)
       setDiskFreeBytes(bytes)
     } catch (error) {
-      showError(formatUserError(error, 'Falha ao salvar configurações de instalação.'))
+      showError(formatUserError(error, t('settings.toastInstallSaveError')))
     }
   }
 
@@ -177,7 +215,7 @@ export function SettingsTab() {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: 'Selecione a pasta padrão de downloads',
+      title: t('settings.toastSelectPathTitle'),
       defaultPath: defaultDownloadPath || undefined,
     })
     if (typeof selected === 'string') {
@@ -187,7 +225,7 @@ export function SettingsTab() {
         const bytes = await sourcesApi.getDiskFreeBytesForPath(selected)
         setDiskFreeBytes(bytes)
       } catch {
-        showError('Não foi possível salvar a pasta. Execute com "npm run tauri:dev".')
+        showError(t('settings.toastSavePathError'))
       }
     }
   }
@@ -198,7 +236,7 @@ export function SettingsTab() {
       await sourcesApi.setAppSetting(SETTING_KEY.removeTempFiles, next ? '1' : '0')
     } catch (error) {
       setRemoveTemporaryFiles(!next)
-      showError(formatUserError(error, 'Falha ao salvar opção de arquivos temporários.'))
+      showError(formatUserError(error, t('settings.toastTempSaveError')))
     }
   }
 
@@ -207,21 +245,24 @@ export function SettingsTab() {
     try {
       await sourcesApi.setAppSetting(SETTING_KEY.downloadSpeedLimitBps, String(speedKeyToBps(value)))
     } catch (error) {
-      showError(formatUserError(error, 'Falha ao salvar limite de velocidade.'))
+      showError(formatUserError(error, t('settings.toastSpeedSaveError')))
     }
   }
 
-  const handleToggleSource = (sourceId: string) => {
-    const isDisabled = disabledSourceIds.includes(sourceId)
+  const handleToggleSource = async (sourceId: string) => {
+    if (!disabledSourcesReady) return
+    const previous = disabledSourceIds
+    const isDisabled = previous.includes(sourceId)
     const next = isDisabled
-      ? disabledSourceIds.filter((x) => x !== sourceId)
-      : [...disabledSourceIds, sourceId]
+      ? previous.filter((x) => x !== sourceId)
+      : [...previous, sourceId]
     setDisabledSourceIds(next)
-    void sourcesApi.setAppSetting(SETTING_KEY.disabledHydraSourceIds, JSON.stringify(next)).catch(
-      (error) => {
-        showError(formatUserError(error, 'Falha ao salvar fontes ativas.'))
-      },
-    )
+    try {
+      await sourcesApi.setAppSetting(SETTING_KEY.disabledHydraSourceIds, JSON.stringify(next))
+    } catch (error) {
+      setDisabledSourceIds(previous)
+      showError(formatUserError(error, t('settings.toastSourcesSaveError')))
+    }
   }
 
   const handleToggleSeed = async (enabled: boolean) => {
@@ -230,44 +271,63 @@ export function SettingsTab() {
       await sourcesApi.setSeedTorrentsEnabled(enabled)
     } catch (error) {
       setSeedTorrentsEnabled(!enabled)
-      showError(formatUserError(error, 'Falha ao salvar preferência de semeadura.'))
+      showError(formatUserError(error, t('settings.toastSeedSaveError')))
     }
   }
 
   return (
-    <SettingsPage
-      defaultDownloadPath={defaultDownloadPath}
-      diskFreeBytes={diskFreeBytes}
-      installOrganization={installOrganization}
-      afterInstallAction={afterInstallAction}
-      sources={sources}
-      sourcesLoading={sourcesLoading}
-      removeTemporaryFiles={removeTemporaryFiles}
-      seedTorrentsEnabled={seedTorrentsEnabled}
-      downloadSpeedLimit={downloadSpeedLimit}
-      addingSource={addingSource}
-      sourceUrlInput={sourceUrlInput}
-      setSourceUrlInput={setSourceUrlInput}
-      onAddSourceByUrl={handleAddSourceByUrl}
-      isSourceEnabled={isSourceEnabled}
-      setDefaultDownloadPath={setDefaultDownloadPath}
-      setInstallOrganization={setInstallOrganization}
-      setAfterInstallAction={setAfterInstallAction}
-      handleSelectDefaultPath={handleSelectDefaultPath}
-      handleSaveInstallSettings={handleSaveInstallSettings}
-      onImportSource={handleImportSource}
-      onOpenCatalogsFolder={handleOpenCatalogsFolder}
-      onDeleteSource={handleDeleteSource}
-      onSyncSource={handleSyncSource}
-      onSyncAllSources={handleSyncAllSources}
-      deletingSourceId={deletingSourceId}
-      syncingSourceId={syncingSourceId}
-      syncingAllSources={syncingAllSources}
-      handleToggleSource={handleToggleSource}
-      handleToggleRemoveTemp={handleToggleRemoveTemp}
-      handleToggleSeed={handleToggleSeed}
-      handleSpeedLimitChange={handleSpeedLimitChange}
-      formatSize={formatSize}
-    />
+    <>
+      <SettingsPage
+        defaultDownloadPath={defaultDownloadPath}
+        diskFreeBytes={diskFreeBytes}
+        installOrganization={installOrganization}
+        afterInstallAction={afterInstallAction}
+        sources={sources}
+        sourcesLoading={sourcesLoading}
+        removeTemporaryFiles={removeTemporaryFiles}
+        seedTorrentsEnabled={seedTorrentsEnabled}
+        downloadSpeedLimit={downloadSpeedLimit}
+        addingSource={addingSource}
+        sourceUrlInput={sourceUrlInput}
+        setSourceUrlInput={setSourceUrlInput}
+        onAddSourceByUrl={handleAddSourceByUrl}
+        isSourceEnabled={isSourceEnabled}
+        setDefaultDownloadPath={setDefaultDownloadPath}
+        setInstallOrganization={setInstallOrganization}
+        setAfterInstallAction={setAfterInstallAction}
+        handleSelectDefaultPath={handleSelectDefaultPath}
+        handleSaveInstallSettings={handleSaveInstallSettings}
+        onImportSource={handleImportSource}
+        onOpenCatalogsFolder={handleOpenCatalogsFolder}
+        onDeleteSource={handleDeleteSource}
+        onSyncSource={handleSyncSource}
+        onSyncAllSources={handleSyncAllSources}
+        deletingSourceId={deletingSourceId}
+        syncingSourceId={syncingSourceId}
+        syncingAllSources={syncingAllSources}
+        handleToggleSource={handleToggleSource}
+        handleToggleRemoveTemp={handleToggleRemoveTemp}
+        handleToggleSeed={handleToggleSeed}
+        handleSpeedLimitChange={handleSpeedLimitChange}
+        disabledSourcesReady={disabledSourcesReady}
+      />
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={t('settings.deleteSourceTitle')}
+        description={
+          pendingDelete
+            ? t('settings.deleteSourceConfirm', { name: pendingDelete.name })
+            : ''
+        }
+        confirmLabel={
+          deletingSourceId ? t('settings.deleting') : t('common.delete')
+        }
+        cancelLabel={t('common.cancel')}
+        confirmVariant="danger"
+        busy={deletingSourceId !== null}
+        onConfirm={() => void handleConfirmDeleteSource()}
+        onCancel={handleCancelDeleteSource}
+      />
+    </>
   )
 }
