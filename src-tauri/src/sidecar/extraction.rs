@@ -364,6 +364,10 @@ pub async fn process_job_post_download(
     return mark_skipped(&app, "Download concluído — clique em INSTALAR para executar o setup.exe.");
   }
 
+  if archive::find_job_archive(&dest_path).is_some() {
+    return process_job_extraction(app, job_id, title, dest_path).await;
+  }
+
   mark_skipped(
     &app,
     "Download concluído. Clique em INSTALAR se houver setup.exe na pasta.",
@@ -446,7 +450,11 @@ pub async fn extract_job_archive(app: AppHandle, id: String) -> Result<(), Strin
   let title = job.title.clone();
   let dest_path = job.dest_path.clone();
 
-  let result = process_job_post_download(app_clone.clone(), job_id, title, dest_path).await;
+  let result = if archive::find_job_archive(&dest_path).is_some() {
+    process_job_extraction(app_clone.clone(), job_id.clone(), title, dest_path).await
+  } else {
+    process_job_post_download(app_clone.clone(), job_id.clone(), title, dest_path).await
+  };
   extraction.release();
 
   if let Err(ref error) = result {

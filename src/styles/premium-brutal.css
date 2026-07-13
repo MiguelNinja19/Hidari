@@ -240,6 +240,16 @@ h3 {
   border-color: #3f3f46;
 }
 
+.sidebar-link__badge--speed {
+  min-width: auto;
+  max-width: 4.75rem;
+  padding: 0 5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .main-panel {
   padding: var(--space-panel-y) var(--space-panel-x);
   background-color: var(--bg-main);

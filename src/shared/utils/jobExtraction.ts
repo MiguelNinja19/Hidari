@@ -37,6 +37,19 @@ export function jobNeedsExtraction(job: DownloadJob): boolean {
   return false
 }
 
+/** Mostrar botão Extrair (manual ou retry após falha). */
+export function jobCanExtract(job: DownloadJob): boolean {
+  const extraction = job.extractionStatus?.trim()
+  if (job.status === 'extracting' || extraction === 'extracting') return true
+  if (extraction === 'failed') return true
+  if (extraction === 'extracted' || extraction === 'skipped') return false
+  if (job.status === 'cancelled') return false
+  return (
+    jobNeedsExtraction(job) &&
+    (job.status === 'completed' || job.status === 'seeding')
+  )
+}
+
 export function jobPathsOverlap(a: string, b: string): boolean {
   const left = normalizeLibraryPath(a)
   const right = normalizeLibraryPath(b)

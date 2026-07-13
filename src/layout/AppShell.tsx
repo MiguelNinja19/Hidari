@@ -6,16 +6,28 @@ import type { NavTab } from './types'
 type AppShellProps = {
   activeTab: NavTab
   activeDownloadsCount: number
+  activeDownloadSpeedBps?: number
   onTabChange: (tab: NavTab) => void
   children: ReactNode
 }
 
-export function AppShell({ activeTab, activeDownloadsCount, onTabChange, children }: AppShellProps) {
+export function AppShell({
+  activeTab,
+  activeDownloadsCount,
+  activeDownloadSpeedBps = 0,
+  onTabChange,
+  children,
+}: AppShellProps) {
   return (
     <div className="app-frame">
       <TitleBar />
       <main className="nova-shell">
-        <Sidebar activeTab={activeTab} activeDownloadsCount={activeDownloadsCount} onTabChange={onTabChange} />
+        <Sidebar
+          activeTab={activeTab}
+          activeDownloadsCount={activeDownloadsCount}
+          activeDownloadSpeedBps={activeDownloadSpeedBps}
+          onTabChange={onTabChange}
+        />
         <section className="main-panel">
           <section
             className={`main-content${

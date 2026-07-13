@@ -1,3 +1,5 @@
+import { formatExtractionError } from './downloadErrorCodes'
+
 /** Códigos estáveis devolvidos pelo backend como `launch_error:<code>|...` */
 export const LAUNCH_ERROR_MESSAGES: Record<string, string> = {
   path_not_found:
@@ -28,9 +30,8 @@ export function formatLaunchError(error: unknown): string {
     const code = coded[1]!
     return LAUNCH_ERROR_MESSAGES[code] ?? (msg.split('|').slice(1).join('|') || msg)
   }
-  if (msg.includes('extraction_busy')) {
-    return 'Já existe uma extração em andamento. Aguarde terminar.'
-  }
+  const extraction = formatExtractionError(msg)
+  if (extraction) return extraction
   if (msg.includes('compactado') || msg.includes('no_archive_found')) {
     return LAUNCH_ERROR_MESSAGES.repack_needs_setup!
   }

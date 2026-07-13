@@ -67,15 +67,9 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
   Ok(removed)
 }
 
-/// Legacy table cosmetic reset — real recovery is `restore_persisted_queue_jobs`.
+/// Prepara tabelas — a retoma real fica em `restore_persisted_queue_jobs` (auto-resume).
 pub fn startup_queue_recovery(app: &AppHandle) {
   if let Ok(conn) = open_database_connection(app) {
-    let _ = conn.execute(
-      "UPDATE download_jobs SET status = 'pending', updated_at = CURRENT_TIMESTAMP \
-       WHERE status = 'downloading'",
-      [],
-    );
     let _ = persist::ensure_persisted_queue_table(&conn);
-    let _ = persist::mark_active_persisted_jobs_paused(&conn);
   }
 }

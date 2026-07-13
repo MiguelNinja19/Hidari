@@ -8,7 +8,11 @@ import { useDownloadNotifications } from './app/hooks/useDownloadNotifications'
 import { useQueueSync } from './app/hooks/useQueueSync'
 import { useKeyboardShortcuts } from './app/hooks/useKeyboardShortcuts'
 import { useAppUpdater } from './app/hooks/useAppUpdater'
-import { selectActiveDownloadsCount, selectQueueJobs } from './features/queue/queueSelectors'
+import {
+  selectActiveDownloadSpeedBps,
+  selectActiveDownloadsCount,
+  selectQueueJobs,
+} from './features/queue/queueSelectors'
 import { AppShell } from './layout/AppShell'
 import { PageCenterSpinner } from './shared/components/PageCenterSpinner'
 import type { DiscoverBridge } from './features/discover/DiscoverTab'
@@ -35,6 +39,7 @@ function App() {
   const queueError = useAppSelector((state) => state.queue.error)
   const sourcesCount = useAppSelector((state) => state.sources.items.length)
   const activeDownloadsCount = useAppSelector(selectActiveDownloadsCount)
+  const activeDownloadSpeedBps = useAppSelector(selectActiveDownloadSpeedBps)
   const { defaultDownloadPath } = useAppSettings()
 
   const {
@@ -92,6 +97,7 @@ function App() {
     <AppShell
       activeTab={activeTab}
       activeDownloadsCount={activeDownloadsCount}
+      activeDownloadSpeedBps={activeDownloadSpeedBps}
       onTabChange={setActiveTab}
     >
       <div style={tabStyle('discover')}>

@@ -303,14 +303,7 @@ pub async fn restore_persisted_queue_jobs(app: AppHandle) {
       continue;
     };
 
-    let should_keep_paused = job.status == "paused";
-    if should_keep_paused {
-      let _ = client
-        .post(format!("http://127.0.0.1:{port}/jobs/{new_id}/pause"))
-        .send()
-        .await;
-    }
-
+    // Não voltar a pausar no restore: ao reabrir a app os downloads devem continuar.
     if let Ok(conn) = open_database_connection(&app) {
       let _ = delete_persisted_queue_job(&conn, &job.id);
       let restored = PersistedQueueJob {
@@ -318,15 +311,11 @@ pub async fn restore_persisted_queue_jobs(app: AppHandle) {
         title: job.title.clone(),
         url: job.url.clone(),
         dest_path: job.dest_path.clone(),
-        status: if should_keep_paused {
-          "paused".to_string()
-        } else {
-          created
-            .get("status")
-            .and_then(|v| v.as_str())
-            .unwrap_or("pending")
-            .to_string()
-        },
+        status: created
+          .get("status")
+          .and_then(|v| v.as_str())
+          .unwrap_or("pending")
+          .to_string(),
         priority: job.priority,
         progress: job.progress,
         bytes_downloaded: job.bytes_downloaded,
@@ -349,5 +338,57 @@ pub async fn restore_persisted_queue_jobs(app: AppHandle) {
       new_id,
       job.status
     );
+  }
+
+  // Jobs que já estavam no sidecar como paused (fecho da app) → retomar.
+  resume_paused_sidecar_jobs(&client, port).await;
+}
+
+async fn resume_paused_sidecar_jobs(client: &reqwest::Client, port: u16) {
+  let Ok(response) = client
+    .get(format!("http://127.0.0.1:{port}/jobs"))
+    .send()
+    .await
+  else {
+    return;
+  };
+  let Ok(value) = response.json::<serde_json::Value>().await else {
+    return;
+  };
+  let rows = match value {
+    serde_json::Value::Array(items) => items,
+    serde_json::Value::Object(map) => map
+      .get("jobs")
+      .or_else(|| map.get("data"))
+      .and_then(|v| v.as_array())
+      .cloned()
+      .unwrap_or_default(),
+    _ => Vec::new(),
+  };
+
+  for row in rows {
+    let status = row.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if status != "paused" {
+      continue;
+    }
+    let Some(id) = row.get("id").and_then(|v| v.as_str()) else {
+      continue;
+    };
+    match client
+      .post(format!("http://127.0.0.1:{port}/jobs/{id}/resume"))
+      .send()
+      .await
+    {
+      Ok(resp) if resp.status().is_success() => {
+        log::info!("auto-resumed paused job on startup id={id}");
+      }
+      Ok(resp) => {
+        log::warn!(
+          "auto-resume failed id={id}: {}",
+          resp.status()
+        );
+      }
+      Err(error) => log::warn!("auto-resume failed id={id}: {error}"),
+    }
   }
 }

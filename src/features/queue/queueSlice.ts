@@ -146,8 +146,8 @@ const queueSlice = createSlice({
       job.totalBytes = merged.totalBytes
       job.progress = progress
       job.updatedAt = new Date().toISOString()
-      if (errorMsg) {
-        job.errorMsg = errorMsg
+      if (errorMsg != null) {
+        job.errorMsg = errorMsg.trim() ? errorMsg : null
       }
     },
     extractStatusReceived: (state, action: { payload: ExtractStatusEvent }) => {

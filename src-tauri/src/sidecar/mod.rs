@@ -1,6 +1,7 @@
 mod engine;
 mod extraction;
 mod commands;
+mod failover;
 
 pub use commands::{
   emit_deep_link_event, open_deep_link, open_local_path, remove_job_from_library,

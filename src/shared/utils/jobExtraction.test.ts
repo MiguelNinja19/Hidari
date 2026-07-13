@@ -42,6 +42,33 @@ describe('jobNeedsExtraction', () => {
   })
 })
 
+describe('jobCanExtract', () => {
+  it('mostra extrair em completed pendente', async () => {
+    const { jobCanExtract } = await import('./jobExtraction')
+    expect(jobCanExtract({ ...baseJob, status: 'completed' })).toBe(true)
+  })
+
+  it('mostra retry após falha de extração', async () => {
+    const { jobCanExtract } = await import('./jobExtraction')
+    expect(
+      jobCanExtract({ ...baseJob, status: 'completed', extractionStatus: 'failed' }),
+    ).toBe(true)
+  })
+
+  it('mostra durante extracting', async () => {
+    const { jobCanExtract } = await import('./jobExtraction')
+    expect(jobCanExtract({ ...baseJob, status: 'extracting' })).toBe(true)
+  })
+
+  it('não mostra após extracted ou cancelled', async () => {
+    const { jobCanExtract } = await import('./jobExtraction')
+    expect(
+      jobCanExtract({ ...baseJob, status: 'completed', extractionStatus: 'extracted' }),
+    ).toBe(false)
+    expect(jobCanExtract({ ...baseJob, status: 'cancelled' })).toBe(false)
+  })
+})
+
 describe('activeJobBlocksLibraryFolder', () => {
   const root = 'D:\\Games\\Downloads'
 

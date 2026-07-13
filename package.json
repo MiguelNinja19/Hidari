@@ -16,6 +16,7 @@
     "test:all": "npm test && npm run test:rust",
     "preview": "vite preview",
     "setup:binaries": "node scripts/setup-binaries.mjs",
+    "build:download-engine": "cargo build --release --manifest-path ../download-engine/Cargo.toml && node -e \"const fs=require('fs');const p=require('path');const src=p.resolve('../download-engine/target/release/download-engine.exe');for (const d of ['src-tauri','src-tauri/binaries']){fs.mkdirSync(d,{recursive:true});fs.copyFileSync(src,p.join(d,'download-engine.exe'));console.log('copied ->',p.join(d,'download-engine.exe'))}\"",
     "icon:build": "python scripts/build_hidari_icon.py && tauri icon hidari-icon-1024.png",
     "postinstall": "node scripts/setup-binaries.mjs"
   },

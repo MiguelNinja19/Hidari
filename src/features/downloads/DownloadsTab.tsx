@@ -5,6 +5,7 @@ import {
   cancelJob,
   clearCompletedJobs,
   pauseJob,
+  removeJobLocally,
   resumeJob,
 } from '../queue/queueSlice'
 import { queueApi } from '../../shared/api/tauri/queueApi'
@@ -68,6 +69,17 @@ function DownloadsTabContent({
       onCancelJob={async (id) => {
         await dispatch(cancelJob(id))
       }}
+      onRemoveJob={async (id) => {
+        await runJobAction(id, async () => {
+          await queueApi.removeJobFromLibrary(id)
+          dispatch(removeJobLocally(id))
+        })
+      }}
+      onExtractJob={async (id) => {
+        await runJobAction(id, async () => {
+          await queueApi.extractJob(id)
+        })
+      }}
       onClearCompleted={async () => {
         await dispatch(clearCompletedJobs())
       }}
@@ -83,6 +95,20 @@ function DownloadsTabContent({
           await Promise.all(active.map((job) => dispatch(pauseJob(job.id)).unwrap()))
         } catch (error) {
           showError(formatUserError(error, t('downloads.pauseAllError')))
+        } finally {
+          setActionBusyId(null)
+        }
+      }}
+      onResumeAll={async () => {
+        const paused = jobs.filter(
+          (job) => job.status === 'paused' || job.status === 'failed',
+        )
+        if (paused.length === 0) return
+        setActionBusyId('__all__')
+        try {
+          await Promise.all(paused.map((job) => dispatch(resumeJob(job.id)).unwrap()))
+        } catch (error) {
+          showError(formatUserError(error, t('downloads.resumeAllError')))
         } finally {
           setActionBusyId(null)
         }

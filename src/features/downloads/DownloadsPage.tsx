@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next'
 import { CatalogCover } from '../../shared/components/CatalogCover'
 import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
 import { formatDownloadError } from '../../shared/utils/downloadErrors'
+import { jobCanExtract } from '../../shared/utils/jobExtraction'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { ResolvedCover } from '../covers/useGameCovers'
@@ -18,8 +19,11 @@ type DownloadsPageProps = {
   onPauseJob: (jobId: string) => Promise<void>
   onResumeJob: (jobId: string) => Promise<void>
   onCancelJob: (jobId: string) => Promise<void>
+  onRemoveJob: (jobId: string) => Promise<void>
+  onExtractJob: (jobId: string) => Promise<void>
   onClearCompleted: () => Promise<void>
   onPauseAll: () => Promise<void>
+  onResumeAll: () => Promise<void>
   onOpenJobFolder: (jobId: string) => void
   onPlayJob: (jobId: string) => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
@@ -47,7 +51,7 @@ function queuePrimaryAction(
 
   if (job.status === 'paused' || job.status === 'failed') {
     return {
-      label: t('common.resume'),
+      label: job.status === 'failed' ? t('common.retry') : t('common.resume'),
       onClick: () => void onResumeJob(job.id),
       primary: false,
     }
@@ -97,8 +101,11 @@ export function DownloadsPage({
   onPauseJob,
   onResumeJob,
   onCancelJob,
+  onRemoveJob,
+  onExtractJob,
   onClearCompleted,
   onPauseAll,
+  onResumeAll,
   onOpenJobFolder,
   onPlayJob,
   resolveCover,
@@ -113,7 +120,9 @@ export function DownloadsPage({
   const canPauseAll = activeJobs.some((job) =>
     ['downloading', 'pending', 'retrying', 'seeding'].includes(job.status),
   )
+  const canResumeAll = activeJobs.some((job) => job.status === 'paused' || job.status === 'failed')
   const canClearCompleted = finishedCount > 0
+  const showHeaderActions = canPauseAll || canResumeAll || canClearCompleted
 
   const summary =
     activeJobs.length === 0
@@ -142,9 +151,16 @@ export function DownloadsPage({
       onPlayJob,
     )
     const canCancel =
-      job.status !== 'cancelled' && !['completed', 'extracted'].includes(job.status)
+      job.status !== 'cancelled' &&
+      job.status !== 'failed' &&
+      !['completed', 'extracted'].includes(job.status)
+    const canRemove = job.status === 'failed'
+    const canExtract = jobCanExtract(job)
+    const extracting =
+      job.status === 'extracting' || job.extractionStatus === 'extracting'
     const showFolder = job.destPath.trim().length > 0
     const verificationStatus = resolveJobVerificationStatus(job)
+    const busy = actionBusyId === job.id
 
     return (
       <li key={job.id} className="dl-row">
@@ -185,20 +201,24 @@ export function DownloadsPage({
           </div>
 
           <div
-            className={`dl-progress${metadataPhase ? ' dl-progress--pulse' : ''}`}
+            className={`dl-progress${metadataPhase || extracting ? ' dl-progress--pulse' : ''}`}
             role="progressbar"
-            aria-valuenow={metadataPhase ? undefined : progressWidth(job)}
+            aria-valuenow={metadataPhase || extracting ? undefined : progressWidth(job)}
             aria-valuemin={0}
             aria-valuemax={100}
           >
             <div
-              className={`dl-progress__fill${metadataPhase ? ' dl-progress__fill--indeterminate' : ''}`}
-              style={metadataPhase ? undefined : { width: `${progressWidth(job)}%` }}
+              className={`dl-progress__fill${
+                metadataPhase || extracting ? ' dl-progress__fill--indeterminate' : ''
+              }`}
+              style={metadataPhase || extracting ? undefined : { width: `${progressWidth(job)}%` }}
             />
           </div>
 
           <p className="dl-row__meta">{downloadRowDetail(job, downloadNow)}</p>
-          {job.errorMsg ? (
+          {job.errorMsg
+          && !job.errorMsg.includes('download_stalled_recovering')
+          && !job.errorMsg.includes('download_failover') ? (
             <p className="dl-row__error">{formatDownloadError(job.errorMsg)}</p>
           ) : null}
         </div>
@@ -208,26 +228,51 @@ export function DownloadsPage({
             <button
               type="button"
               className={`set-btn set-btn--compact${primary.primary ? ' set-btn--primary' : ' set-btn--secondary'}`}
-              disabled={primary.disabled}
+              disabled={primary.disabled || busy}
               onClick={primary.onClick}
             >
               {primary.label}
+            </button>
+          ) : null}
+          {canExtract ? (
+            <button
+              type="button"
+              className="set-btn set-btn--compact set-btn--primary"
+              disabled={busy || extracting}
+              onClick={() => void onExtractJob(job.id)}
+            >
+              {extracting || busy
+                ? t('downloads.extracting')
+                : job.extractionStatus === 'failed'
+                  ? t('downloads.retryExtract')
+                  : t('common.extract')}
             </button>
           ) : null}
           {showFolder ? (
             <button
               type="button"
               className="set-btn set-btn--compact set-btn--secondary"
-              disabled={actionBusyId === job.id}
+              disabled={busy}
               onClick={() => onOpenJobFolder(job.id)}
             >
               {t('common.openFolder')}
+            </button>
+          ) : null}
+          {canRemove ? (
+            <button
+              type="button"
+              className="set-btn set-btn--compact set-btn--danger"
+              disabled={busy}
+              onClick={() => void onRemoveJob(job.id)}
+            >
+              {t('common.delete')}
             </button>
           ) : null}
           {canCancel ? (
             <button
               type="button"
               className="set-btn set-btn--compact set-btn--danger"
+              disabled={busy}
               onClick={() => void onCancelJob(job.id)}
             >
               {t('common.cancel')}
@@ -245,8 +290,18 @@ export function DownloadsPage({
           <p className="dl-page__label">{t('nav.downloads')}</p>
           <p className="dl-page__desc">{summary}</p>
         </div>
-        {canPauseAll || canClearCompleted ? (
+        {showHeaderActions ? (
           <div className="dl-page__actions">
+            {canResumeAll ? (
+              <button
+                type="button"
+                className="set-btn set-btn--secondary"
+                disabled={actionBusyId === '__all__'}
+                onClick={() => void onResumeAll()}
+              >
+                {t('downloads.resumeAll')}
+              </button>
+            ) : null}
             {canPauseAll ? (
               <button
                 type="button"

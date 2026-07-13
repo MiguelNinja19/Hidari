@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatSpeed } from '../shared/utils/formatters'
 import type { NavTab } from './types'
 
 type TabDef = { id: NavTab; labelKey: string; icon: ReactNode }
@@ -53,11 +54,36 @@ const tabs: TabDef[] = [
 type SidebarProps = {
   activeTab: NavTab
   activeDownloadsCount: number
+  activeDownloadSpeedBps?: number
   onTabChange: (tab: NavTab) => void
 }
 
-export function Sidebar({ activeTab, activeDownloadsCount, onTabChange }: SidebarProps) {
+export function Sidebar({
+  activeTab,
+  activeDownloadsCount,
+  activeDownloadSpeedBps = 0,
+  onTabChange,
+}: SidebarProps) {
   const { t } = useTranslation()
+  const showSpeed = activeDownloadSpeedBps > 0
+  const speedLabel = showSpeed ? formatSpeed(activeDownloadSpeedBps) : null
+  const downloadsBadge =
+    activeDownloadsCount > 0
+      ? showSpeed
+        ? speedLabel
+        : activeDownloadsCount > 99
+          ? '99+'
+          : String(activeDownloadsCount)
+      : null
+  const downloadsAria =
+    activeDownloadsCount > 0
+      ? showSpeed
+        ? t('library.activeDownloadsSpeed', {
+            count: activeDownloadsCount,
+            speed: speedLabel,
+          })
+        : t('library.activeDownloads', { count: activeDownloadsCount })
+      : undefined
 
   return (
     <aside className="sidebar">
@@ -67,15 +93,26 @@ export function Sidebar({ activeTab, activeDownloadsCount, onTabChange }: Sideba
             key={tab.id}
             className={activeTab === tab.id ? 'sidebar-link sidebar-link--active' : 'sidebar-link'}
             type="button"
-            title={t(tab.labelKey)}
-            aria-label={t(tab.labelKey)}
+            title={
+              tab.id === 'downloads' && downloadsAria
+                ? downloadsAria
+                : t(tab.labelKey)
+            }
+            aria-label={
+              tab.id === 'downloads' && downloadsAria
+                ? `${t(tab.labelKey)} — ${downloadsAria}`
+                : t(tab.labelKey)
+            }
             onClick={() => onTabChange(tab.id)}
           >
             <span className="sidebar-link__icon">{tab.icon}</span>
             <span className="sidebar-link__label">{t(tab.labelKey)}</span>
-            {tab.id === 'downloads' && activeDownloadsCount > 0 ? (
-              <span className="sidebar-link__badge" aria-label={t('library.activeDownloads', { count: activeDownloadsCount })}>
-                {activeDownloadsCount > 99 ? '99+' : activeDownloadsCount}
+            {tab.id === 'downloads' && downloadsBadge ? (
+              <span
+                className={`sidebar-link__badge${showSpeed ? ' sidebar-link__badge--speed' : ''}`}
+                aria-hidden="true"
+              >
+                {downloadsBadge}
               </span>
             ) : null}
           </button>
