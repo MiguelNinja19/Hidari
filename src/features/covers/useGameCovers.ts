@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import { listen } from '@tauri-apps/api/event'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import type { CatalogGame, CoverPrecacheStatus, DownloadJob, GameCover } from '../../shared/types/contracts'
-import { coverTitleKey, coverTitleKeyCandidates, normalizeTitleKey } from '../../shared/utils/normalizeTitleKey'
+import { coverTitleKey, coverTitleKeyCandidates, coverStorageKeyAliases, normalizeTitleKey } from '../../shared/utils/normalizeTitleKey'
 import { scheduleDeferred } from '../../shared/utils/scheduleDeferred'
 
 export type CoverStatus = 'idle' | 'loading' | 'cached' | 'error'
@@ -17,18 +17,51 @@ const WARM_RETRY_MS = 30 * 60 * 1000
 const BATCH_LOOKUP_RETRY_MS = 15 * 60 * 1000
 const BATCH_DEBOUNCE_MS = 40
 const MAX_WARM_CONCURRENT = 4
+const INVALIDATE_COOLDOWN_MS = 10 * 60 * 1000
 
 type WarmTask = { title: string; coverUrl: string; key: string }
+
+function isSteamLibraryCoverUrl(url: string): boolean {
+  return /steamstatic|steamcdn|cdn\.akamai\.steamstatic|steamcommunity|library_600x900/i.test(
+    url,
+  )
+}
 
 function findSavedCover(
   title: string,
   savedCovers: Record<string, GameCover>,
 ): GameCover | null {
+  const matches: GameCover[] = []
+  const seen = new Set<string>()
   for (const key of coverTitleKeyCandidates(title)) {
     const row = savedCovers[key]
-    if (row) return row
+    if (!row || seen.has(row.titleKey)) continue
+    seen.add(row.titleKey)
+    matches.push(row)
   }
-  return null
+  if (matches.length === 0) return null
+  const catalog = matches.find((row) => !isSteamLibraryCoverUrl(row.coverUrl))
+  return catalog ?? matches[0] ?? null
+}
+
+function indexSavedCoverRows(
+  map: Record<string, GameCover>,
+  rows: GameCover[],
+): Record<string, GameCover> {
+  for (const row of rows) {
+    for (const key of coverStorageKeyAliases(row.titleKey)) {
+      const existing = map[key]
+      if (
+        existing &&
+        !isSteamLibraryCoverUrl(existing.coverUrl) &&
+        isSteamLibraryCoverUrl(row.coverUrl)
+      ) {
+        continue
+      }
+      map[key] = row
+    }
+  }
+  return map
 }
 
 function findCatalogCover(
@@ -91,6 +124,8 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
   const loadingKeysRef = useRef(new Set<string>())
   const batchInFlightRef = useRef(false)
   const batchTimerRef = useRef<number | null>(null)
+  const pendingBatchTitlesRef = useRef<string[]>([])
+  const invalidateAttemptAtRef = useRef(new Map<string, number>())
   const [loadingVersion, setLoadingVersion] = useState(0)
 
   useEffect(() => {
@@ -120,13 +155,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
     refreshTimerRef.current = window.setTimeout(() => {
       refreshTimerRef.current = null
       void sourcesApi.listGameCovers().then((rows) => {
-        setSavedCovers((prev) => {
-          const map = { ...prev }
-          for (const row of rows) {
-            map[row.titleKey] = row
-          }
-          return map
-        })
+        setSavedCovers((prev) => indexSavedCoverRows({ ...prev }, rows))
       })
     }, 350)
   }, [])
@@ -139,13 +168,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
   useEffect(() => {
     const loadSavedCovers = () => {
       void sourcesApi.listGameCovers().then((rows) => {
-        setSavedCovers((prev) => {
-          const map = { ...prev }
-          for (const row of rows) {
-            map[row.titleKey] = row
-          }
-          return map
-        })
+        setSavedCovers((prev) => indexSavedCoverRows({ ...prev }, rows))
       })
     }
 
@@ -205,11 +228,13 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
     [savedCovers, coverByTitleKey, loadingVersion],
   )
 
+  const resolveCoverRef = useRef(resolveCover)
+  useEffect(() => {
+    resolveCoverRef.current = resolveCover
+  }, [resolveCover])
+
   const patchSavedCover = useCallback((row: GameCover) => {
-    setSavedCovers((prev) => ({
-      ...prev,
-      [row.titleKey]: row,
-    }))
+    setSavedCovers((prev) => indexSavedCoverRows({ ...prev }, [row]))
   }, [])
 
   const patchSavedCoverRef = useRef(patchSavedCover)
@@ -264,7 +289,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
     (jobs: DownloadJob[]) => {
       const pending = jobs
         .map((job) => {
-          if (findSavedCover(job.title, savedCovers)) return null
+          if (findSavedCover(job.title, savedCoversRef.current)) return null
           const coverUrl = findCatalogCover(job.title, coverByTitleKey)?.coverUrl
           if (!coverUrl) return null
           return { title: job.title, coverUrl }
@@ -274,82 +299,96 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
       if (pending.length === 0) return
       warmCovers(pending)
     },
-    [coverByTitleKey, savedCovers, warmCovers],
+    [coverByTitleKey, warmCovers],
   )
+
+  const flushResolveCoversBatch = useCallback((titles: string[]) => {
+    const missing = titles.filter((title) => {
+      if (isCoverLookupPending(title, loadingKeysRef.current)) return false
+      const resolved = resolveCoverRef.current(title)
+      if (resolved.coverUrl || resolved.localPath) return false
+
+      const key = coverTitleKey(title)
+      const lastBatchAttempt = batchLookupAttemptAtRef.current.get(key) ?? 0
+      if (lastBatchAttempt > 0 && Date.now() - lastBatchAttempt < BATCH_LOOKUP_RETRY_MS) {
+        return false
+      }
+      return true
+    })
+    if (missing.length === 0) return
+
+    if (batchTimerRef.current != null) {
+      window.clearTimeout(batchTimerRef.current)
+    }
+
+    batchTimerRef.current = window.setTimeout(() => {
+      batchTimerRef.current = null
+
+      const pending = missing.filter(
+        (title) => !isCoverLookupPending(title, loadingKeysRef.current),
+      )
+      if (pending.length === 0) return
+
+      if (batchInFlightRef.current) {
+        pendingBatchTitlesRef.current.push(...pending)
+        return
+      }
+
+      for (const title of pending) {
+        markCoverLookupPending(title, loadingKeysRef.current)
+        batchLookupAttemptAtRef.current.set(coverTitleKey(title), Date.now())
+      }
+      setLoadingVersion((value) => value + 1)
+      batchInFlightRef.current = true
+
+      void sourcesApi
+        .resolveCoversForTitles(pending)
+        .then((rows) => {
+          for (const row of rows) {
+            const url = row.coverUrl?.trim()
+            if (!url) continue
+            if (!row.localCoverPath?.trim()) {
+              enqueueWarm(row.title, url)
+            }
+          }
+          setSavedCovers((prev) => {
+            const map = { ...prev }
+            const patched: GameCover[] = []
+            for (const row of rows) {
+              clearCoverLookupPending(row.title, loadingKeysRef.current)
+              if (!row.coverUrl?.trim()) continue
+              const key = coverTitleKey(row.title)
+              patched.push({
+                titleKey: key,
+                coverUrl: row.coverUrl,
+                localPath: row.localCoverPath ?? null,
+              })
+            }
+            return indexSavedCoverRows(map, patched)
+          })
+        })
+        .catch(() => {
+          for (const title of pending) {
+            clearCoverLookupPending(title, loadingKeysRef.current)
+          }
+        })
+        .finally(() => {
+          batchInFlightRef.current = false
+          setLoadingVersion((value) => value + 1)
+          const queued = pendingBatchTitlesRef.current
+          pendingBatchTitlesRef.current = []
+          if (queued.length > 0) {
+            flushResolveCoversBatch(queued)
+          }
+        })
+    }, BATCH_DEBOUNCE_MS)
+  }, [enqueueWarm])
 
   const resolveCoversBatch = useCallback(
     (titles: string[]) => {
-      const missing = titles.filter((title) => {
-        if (isCoverLookupPending(title, loadingKeysRef.current)) return false
-        const resolved = resolveCover(title)
-        if (resolved.coverUrl || resolved.localPath) return false
-
-        const key = coverTitleKey(title)
-        const lastBatchAttempt = batchLookupAttemptAtRef.current.get(key) ?? 0
-        if (lastBatchAttempt > 0 && Date.now() - lastBatchAttempt < BATCH_LOOKUP_RETRY_MS) {
-          return false
-        }
-        return true
-      })
-      if (missing.length === 0) return
-
-      if (batchTimerRef.current != null) {
-        window.clearTimeout(batchTimerRef.current)
-      }
-
-      batchTimerRef.current = window.setTimeout(() => {
-        batchTimerRef.current = null
-        if (batchInFlightRef.current) return
-
-        const pending = missing.filter(
-          (title) => !isCoverLookupPending(title, loadingKeysRef.current),
-        )
-        if (pending.length === 0) return
-
-        for (const title of pending) {
-          markCoverLookupPending(title, loadingKeysRef.current)
-          batchLookupAttemptAtRef.current.set(coverTitleKey(title), Date.now())
-        }
-        setLoadingVersion((value) => value + 1)
-        batchInFlightRef.current = true
-
-        void sourcesApi
-          .resolveCoversForTitles(pending)
-          .then((rows) => {
-            for (const row of rows) {
-              const url = row.coverUrl?.trim()
-              if (!url) continue
-              if (!row.localCoverPath?.trim()) {
-                enqueueWarm(row.title, url)
-              }
-            }
-            setSavedCovers((prev) => {
-              const map = { ...prev }
-              for (const row of rows) {
-                clearCoverLookupPending(row.title, loadingKeysRef.current)
-                if (!row.coverUrl?.trim()) continue
-                const key = coverTitleKey(row.title)
-                map[key] = {
-                  titleKey: key,
-                  coverUrl: row.coverUrl,
-                  localPath: row.localCoverPath ?? null,
-                }
-              }
-              return map
-            })
-          })
-          .catch(() => {
-            for (const title of pending) {
-              clearCoverLookupPending(title, loadingKeysRef.current)
-            }
-          })
-          .finally(() => {
-            batchInFlightRef.current = false
-            setLoadingVersion((value) => value + 1)
-          })
-      }, BATCH_DEBOUNCE_MS)
+      flushResolveCoversBatch(titles)
     },
-    [enqueueWarm, resolveCover],
+    [flushResolveCoversBatch],
   )
 
   const lookupCoverForTitle = useCallback(
@@ -357,7 +396,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
       const key = coverTitleKey(title)
       if (loadingKeysRef.current.has(key)) return
 
-      const resolved = resolveCover(title)
+      const resolved = resolveCoverRef.current(title)
       if (resolved.localPath || resolved.status === 'cached') {
         return
       }
@@ -389,12 +428,12 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
           setLoadingVersion((value) => value + 1)
         })
     },
-    [resolveCover, warmCover],
+    [warmCover],
   )
 
   const lookupMissingLibraryCover = useCallback(
     (title: string) => {
-      const resolved = resolveCover(title)
+      const resolved = resolveCoverRef.current(title)
       if (resolved.coverUrl || resolved.localPath) return
 
       const key = coverTitleKey(title)
@@ -403,23 +442,20 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
 
       resolveCoversBatch([title])
     },
-    [resolveCover, resolveCoversBatch],
+    [resolveCoversBatch],
   )
 
-  const invalidateLocalCover = useCallback(
-    (title: string, coverUrl?: string | null) => {
-      const key = coverTitleKey(title)
-      warmAttemptAtRef.current.delete(key)
-      void sourcesApi.invalidateGameCoverLocal(title).then(() => {
-        refreshCoversRef.current()
-        const url = coverUrl?.trim()
-        if (url) {
-          warmCover(title, url)
-        }
-      })
-    },
-    [warmCover],
-  )
+  const invalidateLocalCover = useCallback((title: string, _coverUrl?: string | null) => {
+    const key = coverTitleKey(title)
+    const last = invalidateAttemptAtRef.current.get(key) ?? 0
+    if (Date.now() - last < INVALIDATE_COOLDOWN_MS) return
+    invalidateAttemptAtRef.current.set(key, Date.now())
+
+    void sourcesApi.invalidateGameCoverLocal(title).then(() => {
+      refreshCoversRef.current()
+      // Não re-aquece já — o remoto continua a servir a UI; warm só no scroll/batch natural.
+    })
+  }, [])
 
   return {
     savedCovers,

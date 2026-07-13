@@ -1,56 +1,92 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { CATALOG_SEARCH_MIN_CHARS } from "../../shared/config/polling";
+import { sourcesApi } from "../../shared/api/tauri/sourcesApi";
+import { simplifySourceSearchQuery } from "../../shared/utils/titleMatching";
 import {
-  CATALOG_SEARCH_MIN_CHARS,
-} from '../../shared/config/polling'
-import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import { simplifySourceSearchQuery } from '../../shared/utils/titleMatching'
-import { cleanTitleForCover } from '../../shared/utils/normalizeTitleKey'
-import { formatUserError } from '../../shared/utils/formatUserError'
-import { useToast } from '../../shared/components/ToastProvider'
-import type { CatalogGame, DownloadOption, GetGameDetailInput } from '../../shared/types/contracts'
+  catalogGameGroupKey,
+  cleanTitleForCover,
+} from "../../shared/utils/normalizeTitleKey";
+import { formatUserError } from "../../shared/utils/formatUserError";
+import { useToast } from "../../shared/components/ToastProvider";
+import type {
+  CatalogGame,
+  DownloadOption,
+  GetGameDetailInput,
+} from "../../shared/types/contracts";
 
-const DISCOVER_PAGE_SIZE = 24
+const DISCOVER_PAGE_SIZE = 24;
 
+/** Mesma base de jogo (groupKey canónico ou título limpo) — evita local+API a duplicar. */
 function catalogDedupeKey(game: CatalogGame): string {
-  return (game.groupKey?.trim() || game.title).trim().toLowerCase()
+  const group = game.groupKey?.trim();
+  if (group) return catalogGameGroupKey(group);
+  return catalogGameGroupKey(game.title);
 }
 
-function mergeCatalogGames(base: CatalogGame[], incoming: CatalogGame[]): CatalogGame[] {
-  const seen = new Set(base.map(catalogDedupeKey))
-  const out = [...base]
-  for (const game of incoming) {
-    const key = catalogDedupeKey(game)
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push(game)
+function dedupeCatalogGames(games: CatalogGame[]): CatalogGame[] {
+  const seen = new Set<string>();
+  const out: CatalogGame[] = [];
+  for (const game of games) {
+    const key = catalogDedupeKey(game);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(game);
   }
-  return out
+  return out;
+}
+
+function mergeCatalogGames(
+  base: CatalogGame[],
+  incoming: CatalogGame[],
+): CatalogGame[] {
+  return dedupeCatalogGames([...base, ...incoming]);
 }
 
 const isDownloadableOption = (option: DownloadOption) =>
-  option.downloadType === 'torrent' ||
-  (option.downloadType === 'http' && !option.url.includes('fitgirl-repacks.site/'))
+  option.downloadType === "torrent" ||
+  (option.downloadType === "http" &&
+    !option.url.includes("fitgirl-repacks.site/"));
 
-async function fetchDownloadOptionsForGame(game: CatalogGame): Promise<{
-  downloadable: DownloadOption[]
-  rawCount: number
-}> {
-  const groupKey = game.groupKey?.trim() || undefined
-  const title = game.title.trim()
-  let rawCount = 0
+type DiscoverPickPayload = {
+  downloadable: DownloadOption[];
+  rawCount: number;
+  synopsis: string | null;
+  screenshots: string[];
+  enrichedGame: Partial<CatalogGame> | null;
+};
+
+async function fetchDownloadOptionsForGame(
+  game: CatalogGame,
+  language?: string,
+): Promise<DiscoverPickPayload> {
+  const groupKey = game.groupKey?.trim() || undefined;
+  const title = game.title.trim();
+  let rawCount = 0;
+  let synopsis: string | null = null;
+  let screenshots: string[] = [];
+  let enrichedGame: Partial<CatalogGame> | null = null;
 
   if (groupKey || title) {
     try {
       const detail = await sourcesApi.getGameDetail({
         groupKey,
         title: title || undefined,
-        includeSteam: false,
-      })
-      rawCount = detail.downloads.length
-      const fromDetail = detail.downloads.filter(isDownloadableOption)
+        includeSteam: true,
+        language,
+      });
+      rawCount = detail.downloads.length;
+      synopsis = detail.synopsis?.trim() || null;
+      screenshots = detail.screenshots.filter((url) => url.trim().length > 0);
+      enrichedGame = {
+        title: detail.game.title || undefined,
+        genre: detail.game.genre || undefined,
+        coverUrl: detail.game.coverUrl ?? undefined,
+        groupKey: detail.game.groupKey ?? undefined,
+      };
+      const fromDetail = detail.downloads.filter(isDownloadableOption);
       if (fromDetail.length > 0) {
-        return { downloadable: fromDetail, rawCount }
+        return { downloadable: fromDetail, rawCount, synopsis, screenshots, enrichedGame };
       }
     } catch {
       // fallback por título / groupKey abaixo
@@ -60,58 +96,64 @@ async function fetchDownloadOptionsForGame(game: CatalogGame): Promise<{
   const queries = [
     cleanTitleForCover(title),
     simplifySourceSearchQuery(cleanTitleForCover(title)),
-  ].filter((query, index, all) => query.length >= 2 && all.indexOf(query) === index)
+  ].filter(
+    (query, index, all) => query.length >= 2 && all.indexOf(query) === index,
+  );
 
   for (const query of queries) {
     const rows = await sourcesApi.searchDownloadOptions({
       query,
       groupKey,
-    })
-    rawCount = Math.max(rawCount, rows.length)
-    const downloadable = rows.filter(isDownloadableOption)
+    });
+    rawCount = Math.max(rawCount, rows.length);
+    const downloadable = rows.filter(isDownloadableOption);
     if (downloadable.length > 0) {
-      return { downloadable, rawCount }
+      return { downloadable, rawCount, synopsis, screenshots, enrichedGame };
     }
   }
 
-  return { downloadable: [], rawCount }
+  return { downloadable: [], rawCount, synopsis, screenshots, enrichedGame };
 }
 
 type UseDiscoverCatalogArgs = {
-  discoverSearch: string
-  enabledSourcesCount: number
-  enabledSourcesKey: string
-  defaultDownloadPath: string
-}
+  discoverSearch: string;
+  enabledSourcesCount: number;
+  enabledSourcesKey: string;
+  defaultDownloadPath: string;
+};
 
-function isCatalogGame(input: GetGameDetailInput | CatalogGame): input is CatalogGame {
-  return 'source' in input
+function isCatalogGame(
+  input: GetGameDetailInput | CatalogGame,
+): input is CatalogGame {
+  return "source" in input;
 }
 
 function catalogGameFromInput(
   input: GetGameDetailInput | CatalogGame,
   catalogGames: CatalogGame[],
 ): CatalogGame {
-  if (isCatalogGame(input)) return input
+  if (isCatalogGame(input)) return input;
 
-  const groupKey = input.groupKey?.trim()
-  const title = input.title?.trim() ?? ''
+  const groupKey = input.groupKey?.trim();
+  const title = input.title?.trim() ?? "";
   const fromCatalog = catalogGames.find(
     (game) =>
       (groupKey && game.groupKey === groupKey) ||
-      (title && game.title.localeCompare(title, undefined, { sensitivity: 'base' }) === 0),
-  )
-  if (fromCatalog) return fromCatalog
+      (title &&
+        game.title.localeCompare(title, undefined, { sensitivity: "base" }) ===
+          0),
+  );
+  if (fromCatalog) return fromCatalog;
 
   return {
     id: groupKey ? `group:${groupKey}` : `title:${title}`,
     title,
-    genre: '',
+    genre: "",
     coverUrl: null,
     localCoverPath: null,
-    source: 'catalog',
+    source: "catalog",
     groupKey: groupKey || null,
-  }
+  };
 }
 
 export function useDiscoverCatalog({
@@ -120,48 +162,60 @@ export function useDiscoverCatalog({
   enabledSourcesKey,
   defaultDownloadPath,
 }: UseDiscoverCatalogArgs) {
-  const { showError } = useToast()
-  const { t } = useTranslation()
-  const [catalogGames, setCatalogGames] = useState<CatalogGame[]>([])
-  const [catalogLoading, setCatalogLoading] = useState(false)
-  const [catalogLoadingMore, setCatalogLoadingMore] = useState(false)
-  const [catalogHasMore, setCatalogHasMore] = useState(false)
-  const [discoverBusy, setDiscoverBusy] = useState<string | null>(null)
-  const [discoverPickGame, setDiscoverPickGame] = useState<CatalogGame | null>(null)
-  const [discoverPickOptions, setDiscoverPickOptions] = useState<DownloadOption[]>([])
-  const [discoverPickLoading, setDiscoverPickLoading] = useState(false)
-  const [discoverPickError, setDiscoverPickError] = useState<string | null>(null)
+  const { showError } = useToast();
+  const { t, i18n } = useTranslation();
+  const [catalogGames, setCatalogGames] = useState<CatalogGame[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogLoadingMore, setCatalogLoadingMore] = useState(false);
+  const [catalogHasMore, setCatalogHasMore] = useState(false);
+  const [discoverBusy, setDiscoverBusy] = useState<string | null>(null);
+  const [discoverPickGame, setDiscoverPickGame] = useState<CatalogGame | null>(
+    null,
+  );
+  const [discoverPickOptions, setDiscoverPickOptions] = useState<
+    DownloadOption[]
+  >([]);
+  const [discoverPickSynopsis, setDiscoverPickSynopsis] = useState<
+    string | null
+  >(null);
+  const [discoverPickScreenshots, setDiscoverPickScreenshots] = useState<
+    string[]
+  >([]);
+  const [discoverPickLoading, setDiscoverPickLoading] = useState(false);
+  const [discoverPickError, setDiscoverPickError] = useState<string | null>(
+    null,
+  );
 
   const displayCatalogSource = useMemo(() => {
-    const q = discoverSearch.trim()
-    if (q.length < CATALOG_SEARCH_MIN_CHARS) return []
-    return catalogGames
-  }, [catalogGames, discoverSearch])
+    const q = discoverSearch.trim();
+    if (q.length < CATALOG_SEARCH_MIN_CHARS) return [];
+    return catalogGames;
+  }, [catalogGames, discoverSearch]);
 
-  const searchRequestIdRef = useRef(0)
+  const searchRequestIdRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false
-    const query = discoverSearch.trim()
+    let cancelled = false;
+    const query = discoverSearch.trim();
     if (query.length < CATALOG_SEARCH_MIN_CHARS) {
-      setCatalogGames([])
-      setCatalogLoading(false)
-      setCatalogLoadingMore(false)
-      setCatalogHasMore(false)
-      return
+      setCatalogGames([]);
+      setCatalogLoading(false);
+      setCatalogLoadingMore(false);
+      setCatalogHasMore(false);
+      return;
     }
 
     if (enabledSourcesCount === 0) {
-      setCatalogGames([])
-      setCatalogLoading(false)
-      setCatalogLoadingMore(false)
-      setCatalogHasMore(false)
-      return
+      setCatalogGames([]);
+      setCatalogLoading(false);
+      setCatalogLoadingMore(false);
+      setCatalogHasMore(false);
+      return;
     }
 
-    const requestQuery = query
-    const requestId = ++searchRequestIdRef.current
-    setCatalogLoading(true)
+    const requestQuery = query;
+    const requestId = ++searchRequestIdRef.current;
+    setCatalogLoading(true);
 
     void (async () => {
       const applyIfCurrent = (fn: () => void) => {
@@ -170,9 +224,9 @@ export function useDiscoverCatalog({
           searchRequestIdRef.current === requestId &&
           discoverSearch.trim() === requestQuery
         ) {
-          fn()
+          fn();
         }
-      }
+      };
 
       try {
         // 1) Cache/JSON local — UI imediata
@@ -184,56 +238,79 @@ export function useDiscoverCatalog({
           localOnly: true,
           offset: 0,
           limit: DISCOVER_PAGE_SIZE + 1,
-        })
+        });
         applyIfCurrent(() => {
-          setCatalogHasMore(localRows.length > DISCOVER_PAGE_SIZE)
-          setCatalogGames(localRows.slice(0, DISCOVER_PAGE_SIZE))
-          setCatalogLoading(false)
-        })
+          setCatalogHasMore(localRows.length > DISCOVER_PAGE_SIZE);
+          setCatalogGames(dedupeCatalogGames(localRows.slice(0, DISCOVER_PAGE_SIZE)));
+          setCatalogLoading(false);
+        });
 
-        // 2) API Hydra em paralelo no backend — enriquece sem bloquear a primeira pintura
+        // 2) API Hydra — títulos novos + gravação no cache local
         const fullRows = await sourcesApi.searchGameCatalog({
           query: requestQuery,
           includeSteam: false,
           onlyWithSources: true,
-          attachCovers: true,
+          attachCovers: false,
           localOnly: false,
           offset: 0,
           limit: DISCOVER_PAGE_SIZE + 1,
-        })
+        });
         applyIfCurrent(() => {
-          setCatalogGames(fullRows.slice(0, DISCOVER_PAGE_SIZE))
-          setCatalogHasMore(fullRows.length > DISCOVER_PAGE_SIZE)
-        })
+          setCatalogGames((prev) => {
+            const prevByKey = new Map(
+              prev.map((game) => [catalogDedupeKey(game), game]),
+            );
+            const merged = fullRows.slice(0, DISCOVER_PAGE_SIZE).map((row) => {
+              const existing = prevByKey.get(catalogDedupeKey(row));
+              if (!existing) return row;
+              return {
+                ...row,
+                coverUrl: row.coverUrl?.trim() || existing.coverUrl,
+                localCoverPath:
+                  row.localCoverPath?.trim() || existing.localCoverPath,
+                groupKey: row.groupKey?.trim() || existing.groupKey,
+              };
+            });
+            return dedupeCatalogGames(merged);
+          });
+          setCatalogHasMore(
+            fullRows.length > DISCOVER_PAGE_SIZE ||
+              localRows.length > DISCOVER_PAGE_SIZE,
+          );
+        });
       } catch (error) {
         applyIfCurrent(() => {
-          showError(formatUserError(error, t('discover.searchError')))
-          setCatalogLoading(false)
-        })
+          showError(formatUserError(error, t("discover.searchError")));
+          setCatalogLoading(false);
+        });
       } finally {
         applyIfCurrent(() => {
-          setCatalogLoading(false)
-        })
+          setCatalogLoading(false);
+        });
       }
-    })()
+    })();
 
     return () => {
-      cancelled = true
-    }
-  }, [discoverSearch, enabledSourcesCount, enabledSourcesKey, showError, t])
+      cancelled = true;
+    };
+  }, [discoverSearch, enabledSourcesCount, enabledSourcesKey, showError, t]);
+
+  const loadMoreInFlightRef = useRef(false);
 
   const loadMoreCatalog = useCallback(async () => {
-    const query = discoverSearch.trim()
+    const query = discoverSearch.trim();
     if (
       query.length < CATALOG_SEARCH_MIN_CHARS ||
       catalogLoading ||
       catalogLoadingMore ||
+      loadMoreInFlightRef.current ||
       !catalogHasMore
     ) {
-      return
+      return;
     }
 
-    setCatalogLoadingMore(true)
+    loadMoreInFlightRef.current = true;
+    setCatalogLoadingMore(true);
     try {
       const rows = await sourcesApi.searchGameCatalog({
         query,
@@ -243,88 +320,121 @@ export function useDiscoverCatalog({
         localOnly: false,
         offset: catalogGames.length,
         limit: DISCOVER_PAGE_SIZE + 1,
-      })
-      setCatalogHasMore(rows.length > DISCOVER_PAGE_SIZE)
-      setCatalogGames((prev) => mergeCatalogGames(prev, rows.slice(0, DISCOVER_PAGE_SIZE)))
+      });
+      setCatalogHasMore(rows.length > DISCOVER_PAGE_SIZE);
+      setCatalogGames((prev) =>
+        mergeCatalogGames(prev, rows.slice(0, DISCOVER_PAGE_SIZE)),
+      );
     } catch (error) {
-      showError(formatUserError(error, t('discover.loadMoreError')))
+      showError(formatUserError(error, t("discover.loadMoreError")));
     } finally {
-      setCatalogLoadingMore(false)
+      loadMoreInFlightRef.current = false;
+      setCatalogLoadingMore(false);
     }
-  }, [catalogGames.length, catalogHasMore, catalogLoading, catalogLoadingMore, discoverSearch, showError, t])
+  }, [
+    catalogGames.length,
+    catalogHasMore,
+    catalogLoading,
+    catalogLoadingMore,
+    discoverSearch,
+    showError,
+    t,
+  ]);
 
   const closeDiscoverPicker = useCallback(() => {
-    setDiscoverPickGame(null)
-    setDiscoverPickOptions([])
-    setDiscoverPickError(null)
-    setDiscoverPickLoading(false)
-  }, [])
+    setDiscoverPickGame(null);
+    setDiscoverPickOptions([]);
+    setDiscoverPickSynopsis(null);
+    setDiscoverPickScreenshots([]);
+    setDiscoverPickError(null);
+    setDiscoverPickLoading(false);
+  }, []);
 
   const reportPickError = useCallback(
     (message: string) => {
-      setDiscoverPickError(message)
-      showError(message)
+      setDiscoverPickError(message);
+      showError(message);
     },
     [showError],
-  )
+  );
 
   const openDiscoverPicker = useCallback(
     (game: CatalogGame) => {
-      setDiscoverPickGame(game)
-      setDiscoverPickOptions([])
-      setDiscoverPickError(null)
-      setDiscoverPickLoading(true)
+      setDiscoverPickGame(game);
+      setDiscoverPickOptions([]);
+      setDiscoverPickSynopsis(null);
+      setDiscoverPickScreenshots([]);
+      setDiscoverPickError(null);
+      setDiscoverPickLoading(true);
 
       void (async () => {
         if (enabledSourcesCount === 0) {
-          reportPickError(t('discover.noActiveSourcesPick'))
-          setDiscoverPickLoading(false)
-          return
+          reportPickError(t("discover.noActiveSourcesPick"));
+          setDiscoverPickLoading(false);
+          return;
         }
 
         const hasPath =
-          defaultDownloadPath.trim().length > 0 || (await sourcesApi.getDefaultDownloadPath())
+          defaultDownloadPath.trim().length > 0 ||
+          (await sourcesApi.getDefaultDownloadPath());
         if (!hasPath) {
-          reportPickError(t('discover.noDownloadPath'))
-          setDiscoverPickLoading(false)
-          return
+          reportPickError(t("discover.noDownloadPath"));
+          setDiscoverPickLoading(false);
+          return;
         }
 
         try {
-          const { downloadable, rawCount } = await fetchDownloadOptionsForGame(game)
-          setDiscoverPickOptions(downloadable)
+          const { downloadable, synopsis, screenshots, enrichedGame } =
+            await fetchDownloadOptionsForGame(game, i18n.language);
+          setDiscoverPickOptions(downloadable);
+          setDiscoverPickSynopsis(synopsis);
+          setDiscoverPickScreenshots(screenshots);
+          if (enrichedGame) {
+            setDiscoverPickGame((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    title: enrichedGame.title?.trim() || prev.title,
+                    genre: enrichedGame.genre?.trim() || prev.genre,
+                    coverUrl: enrichedGame.coverUrl ?? prev.coverUrl,
+                    groupKey: enrichedGame.groupKey ?? prev.groupKey,
+                  }
+                : prev,
+            );
+          }
           if (downloadable.length === 0) {
-            reportPickError(
-              rawCount > 0 ? t('discover.pickInvalidOptions') : t('discover.pickNoDownloads'),
-            )
+            // Não mostrar "No downloads found" — remover da lista e voltar.
+            const removeKey = catalogDedupeKey(game);
+            setCatalogGames((prev) =>
+              prev.filter((row) => catalogDedupeKey(row) !== removeKey),
+            );
+            setDiscoverPickGame(null);
+            setDiscoverPickOptions([]);
+            setDiscoverPickSynopsis(null);
+            setDiscoverPickScreenshots([]);
+            setDiscoverPickError(null);
+            return;
           }
         } catch {
-          setDiscoverPickOptions([])
-          reportPickError(t('discover.pickFetchError'))
+          setDiscoverPickOptions([]);
+          setDiscoverPickSynopsis(null);
+          setDiscoverPickScreenshots([]);
+          reportPickError(t("discover.pickFetchError"));
         } finally {
-          setDiscoverPickLoading(false)
+          setDiscoverPickLoading(false);
         }
-      })()
+      })();
     },
-    [defaultDownloadPath, enabledSourcesCount, reportPickError, t],
-  )
+    [defaultDownloadPath, enabledSourcesCount, i18n.language, reportPickError, t],
+  );
 
   const openGameDetail = useCallback(
     (input: GetGameDetailInput | CatalogGame) => {
-      const game = catalogGameFromInput(input, catalogGames)
-      openDiscoverPicker(game)
+      const game = catalogGameFromInput(input, catalogGames);
+      openDiscoverPicker(game);
     },
     [catalogGames, openDiscoverPicker],
-  )
-
-  useEffect(() => {
-    if (!discoverPickGame) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeDiscoverPicker()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [discoverPickGame, closeDiscoverPicker])
+  );
 
   return {
     catalogGames,
@@ -336,11 +446,13 @@ export function useDiscoverCatalog({
     setDiscoverBusy,
     discoverPickGame,
     discoverPickOptions,
+    discoverPickSynopsis,
+    discoverPickScreenshots,
     discoverPickLoading,
     discoverPickError,
     displayCatalogSource,
     closeDiscoverPicker,
     openDiscoverPicker,
     openGameDetail,
-  }
+  };
 }

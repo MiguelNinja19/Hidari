@@ -35,6 +35,49 @@ describe('resolveLibraryDeletePaths', () => {
     const paths = resolveLibraryDeletePaths(item, [], 'D:\\Games\\Downloads')
     expect(paths).toEqual(['D:\\Games\\Downloads\\Stardew Valley'])
   })
+
+  it('também apaga ficheiros .torrent e .aria2 relacionados', () => {
+    const items: LocalLibraryItem[] = [
+      {
+        name: 'Stardew',
+        path: 'D:\\Games\\Downloads\\Stardew',
+        isDir: true,
+        sizeBytes: 0,
+        modifiedAt: 1,
+      },
+      {
+        name: 'Stardew.torrent',
+        path: 'D:\\Games\\Downloads\\Stardew.torrent',
+        isDir: false,
+        sizeBytes: 1200,
+        modifiedAt: 2,
+      },
+      {
+        name: 'Stardew.aria2',
+        path: 'D:\\Games\\Downloads\\Stardew.aria2',
+        isDir: false,
+        sizeBytes: 80,
+        modifiedAt: 3,
+      },
+      {
+        name: 'OutroJogo.torrent',
+        path: 'D:\\Games\\Downloads\\OutroJogo.torrent',
+        isDir: false,
+        sizeBytes: 900,
+        modifiedAt: 4,
+      },
+    ]
+
+    const paths = resolveLibraryDeletePaths(jobItem, items, 'D:\\Games\\Downloads')
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'D:\\Games\\Downloads\\Stardew',
+        'D:\\Games\\Downloads\\Stardew.torrent',
+        'D:\\Games\\Downloads\\Stardew.aria2',
+      ]),
+    )
+    expect(paths).not.toContain('D:\\Games\\Downloads\\OutroJogo.torrent')
+  })
 })
 
 describe('isFileLockDeleteError', () => {

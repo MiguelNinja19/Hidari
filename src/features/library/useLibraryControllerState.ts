@@ -482,6 +482,8 @@ export function useLibraryControllerState({
           (job) =>
             !jobBelongsInLibrary(job) &&
             job.status !== 'cancelled' &&
+            job.status !== 'verify_failed' &&
+            job.status !== 'failed' &&
             libraryTitlesMatch(job.title, item.name),
         )
         if (hasIncompleteJob) return false

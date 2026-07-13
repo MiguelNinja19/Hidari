@@ -122,6 +122,8 @@ export function useDiscoverControllerState({
     discoverPickLoading: discover.discoverPickLoading,
     discoverPickError: discover.discoverPickError,
     discoverPickOptions: discover.discoverPickOptions,
+    discoverPickSynopsis: discover.discoverPickSynopsis,
+    discoverPickScreenshots: discover.discoverPickScreenshots,
     discoverBusy: discover.discoverBusy,
     enabledSourcesCount,
     sources,

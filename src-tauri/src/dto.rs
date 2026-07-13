@@ -178,6 +178,8 @@ pub struct GetGameDetailPayload {
   pub title: Option<String>,
   /// Quando false, não resolve sinopse/screenshots Steam (picker rápido).
   pub include_steam: Option<bool>,
+  /// Idioma da UI (`en` / `es` / `ru` / `pt-BR`) para sinopse Steam.
+  pub language: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

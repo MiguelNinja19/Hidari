@@ -41,10 +41,30 @@ On first run, Rust compiles dependencies (may take a few minutes).
 
 ## User flow
 
-1. **Settings** — download folder + import a `.json` source (or HydraLinks URL)
+1. **Settings** — download folder + add at least one catalog source (see below)
 2. **Discover** — type a game name → **Enter** or Search → pick a version → enqueue
 3. **Downloads** — watch progress; post-download is **automatic**
 4. **Library** — **Install** (setup) → **Play**
+
+### How to add sources
+
+Catalog sources are `.json` files in the Hydra / HydraLinks format.
+
+1. Go to **Settings** → **Catalog sources**.
+2. Click **Add source** to open the guide modal, then **Open sources** to open [https://library.hydra.wiki/sources/](https://library.hydra.wiki/sources/) in your browser, pick a source, and copy its `.json` URL.
+3. Choose one method:
+   - **By URL** — paste e.g. `https://hydralinks.cloud/sources/fitgirl.json` → **Add**.
+   - **By file** — **Import .json** → pick a local `.json`. The app copies it to an internal folder; the original can be removed.
+4. Keep the source **enabled** (toggle). Discover only searches active sources.
+5. Use **Sync** / **Sync all** if the listed game count is missing or outdated.
+
+Example public catalog URLs follow the pattern:
+
+```text
+https://hydralinks.cloud/sources/<name>.json
+```
+
+Source browser: [https://library.hydra.wiki/sources/](https://library.hydra.wiki/sources/).
 
 ### Active / inactive sources
 

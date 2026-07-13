@@ -9,10 +9,12 @@ const DEFAULT_STEAM_STORE_LOCALE: &str = "brazilian";
 const APP_LANGUAGE_SETTING_KEY: &str = "hidari.language";
 
 pub fn steam_store_locale_for_language(code: &str) -> &'static str {
-  match code.trim() {
-    "en" => "english",
-    "es" => "spanish",
-    "ru" => "russian",
+  let normalized = code.trim().to_ascii_lowercase().replace('_', "-");
+  match normalized.as_str() {
+    "en" | "en-us" | "en-gb" => "english",
+    "es" | "es-es" | "es-mx" | "es-419" => "spanish",
+    "ru" | "ru-ru" => "russian",
+    "pt" | "pt-br" | "pt-pt" => DEFAULT_STEAM_STORE_LOCALE,
     _ => DEFAULT_STEAM_STORE_LOCALE,
   }
 }
@@ -21,6 +23,15 @@ fn read_app_steam_locale(conn: &Connection) -> String {
   crate::db::read_app_setting(conn, APP_LANGUAGE_SETTING_KEY)
     .map(|code| steam_store_locale_for_language(&code).to_string())
     .unwrap_or_else(|| DEFAULT_STEAM_STORE_LOCALE.to_string())
+}
+
+fn resolve_steam_locale(conn: &Connection, language: Option<&str>) -> String {
+  language
+    .map(str::trim)
+    .filter(|code| !code.is_empty())
+    .map(steam_store_locale_for_language)
+    .map(str::to_string)
+    .unwrap_or_else(|| read_app_steam_locale(conn))
 }
 
 fn default_steam_locale() -> String {
@@ -199,9 +210,10 @@ pub fn cached_genres_for_title(conn: &Connection, title: &str) -> Option<Vec<Str
 pub async fn resolve_steam_details_for_app(
   app: &tauri::AppHandle,
   title: &str,
+  language: Option<&str>,
 ) -> Option<SteamGameDetails> {
   let conn = open_database_connection(app).ok()?;
-  let locale = read_app_steam_locale(&conn);
+  let locale = resolve_steam_locale(&conn, language);
   let app_id = lookup_steam_app_id_local(&conn, title).map(|(id, _)| id)?;
   if let Some(cached) = read_cached_steam_details(&conn, app_id, &locale) {
     return Some(cached);

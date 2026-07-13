@@ -16,12 +16,13 @@ use crate::sidecar::{
   emit_extract_status, ensure_sidecar_running, process_job_extraction, process_job_post_download,
 };
 use crate::state::ExtractionState;
+use crate::title::{clean_title_for_matching, normalize_title_key};
 use crate::{archive, db};
 use rusqlite::params;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri::Manager;
 use std::time::UNIX_EPOCH;
@@ -68,6 +69,97 @@ pub fn scan_default_download_path(app: AppHandle) -> Result<Vec<LocalLibraryItem
   Ok(items)
 }
 
+fn is_torrent_sidecar_name(name: &str) -> bool {
+  let lower = name.to_ascii_lowercase();
+  lower.ends_with(".torrent") || lower.ends_with(".aria2")
+}
+
+fn torrent_sidecar_stem(name: &str) -> String {
+  let lower = name.to_ascii_lowercase();
+  if let Some(stem) = lower.strip_suffix(".torrent") {
+    return name[..stem.len()].to_string();
+  }
+  if let Some(stem) = lower.strip_suffix(".aria2") {
+    return name[..stem.len()].to_string();
+  }
+  name.to_string()
+}
+
+fn torrent_sidecar_matches_title(stem: &str, title: &str) -> bool {
+  let stem_key = normalize_title_key(&clean_title_for_matching(stem));
+  let title_key = normalize_title_key(&clean_title_for_matching(title));
+  if stem_key.is_empty() || title_key.is_empty() {
+    return false;
+  }
+  if stem_key == title_key {
+    return true;
+  }
+  title_key.starts_with(&stem_key) || stem_key.starts_with(&title_key)
+}
+
+/// Remove ficheiros `.torrent` / `.aria2` associados a um download (pasta ou título).
+pub fn cleanup_torrent_sidecar_files(dest_path: &str, title: &str) {
+  let target = PathBuf::from(dest_path.trim());
+  if dest_path.trim().is_empty() {
+    return;
+  }
+
+  let folder = if target.is_dir() {
+    target.clone()
+  } else {
+    target
+      .parent()
+      .map(Path::to_path_buf)
+      .unwrap_or_else(|| target.clone())
+  };
+  if !folder.is_dir() {
+    return;
+  }
+
+  let folder_name = folder
+    .file_name()
+    .and_then(|name| name.to_str())
+    .unwrap_or("")
+    .to_string();
+
+  let mut search_dirs = vec![folder.clone()];
+  if let Some(parent) = folder.parent() {
+    if parent.is_dir() {
+      search_dirs.push(parent.to_path_buf());
+    }
+  }
+
+  for dir in search_dirs {
+    let Ok(entries) = fs::read_dir(&dir) else {
+      continue;
+    };
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if !path.is_file() {
+        continue;
+      }
+      let name = entry.file_name().to_string_lossy().to_string();
+      if !is_torrent_sidecar_name(&name) {
+        continue;
+      }
+      let stem = torrent_sidecar_stem(&name);
+      let matches = torrent_sidecar_matches_title(&stem, title)
+        || (!folder_name.is_empty()
+          && (stem.eq_ignore_ascii_case(&folder_name)
+            || torrent_sidecar_matches_title(&stem, &folder_name)));
+      if !matches {
+        continue;
+      }
+      if let Err(error) = fs::remove_file(&path) {
+        log::warn!(
+          "could_not_remove_torrent_sidecar {}: {error}",
+          path.display()
+        );
+      }
+    }
+  }
+}
+
 #[tauri::command]
 pub fn delete_local_library_item(
   app: AppHandle,
@@ -96,12 +188,26 @@ pub fn delete_local_library_item(
     return Err("cannot_delete_default_download_root".to_string());
   }
 
+  let title_hint = target
+    .file_stem()
+    .and_then(|name| name.to_str())
+    .unwrap_or("")
+    .to_string();
+  let parent_for_cleanup = target.parent().map(Path::to_path_buf);
+
   if canonical_target.is_dir() {
     std::fs::remove_dir_all(&canonical_target)
       .map_err(|error| format!("could_not_delete_directory: {error}"))?;
   } else {
     std::fs::remove_file(&canonical_target)
       .map_err(|error| format!("could_not_delete_file: {error}"))?;
+  }
+
+  // Apaga .torrent / .aria2 irmãos na pasta de downloads (o aria2 deixa-os fora da pasta do jogo).
+  if !title_hint.is_empty() {
+    if let Some(parent) = parent_for_cleanup {
+      cleanup_torrent_sidecar_files(&parent.to_string_lossy(), &title_hint);
+    }
   }
 
   Ok(())

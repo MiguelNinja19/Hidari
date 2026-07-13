@@ -124,6 +124,16 @@ function canonicalCatalogGroupKey(groupKey: string): string {
   return tokens.join(' ')
 }
 
+/** Alias de chaves de capa (repack barulhento → nome limpo do jogo). */
+export function coverStorageKeyAliases(titleKey: string): string[] {
+  const trimmed = titleKey.trim()
+  if (!trimmed) return []
+  const aliases = [trimmed]
+  const canonical = canonicalCatalogGroupKey(trimmed)
+  if (canonical && canonical !== trimmed) aliases.push(canonical)
+  return aliases
+}
+
 function stripColonUpdateSuffix(title: string): string {
   const trimmed = title.trim()
   const idx = trimmed.indexOf(':')

@@ -13,9 +13,21 @@ fn filter_options_for_group_key(
   options: Vec<DownloadOptionDto>,
   group_key: &str,
 ) -> Vec<DownloadOptionDto> {
+  let group_key = group_key.trim();
+  if group_key.is_empty() {
+    return options;
+  }
+  let query_canon = crate::title::canonical_catalog_group_key(group_key);
   options
     .into_iter()
-    .filter(|option| catalog_game_group_key(&option.title) == group_key)
+    .filter(|option| {
+      let option_key = catalog_game_group_key(&option.title);
+      let option_canon = crate::title::canonical_catalog_group_key(&option_key);
+      option_key == group_key
+        || option_canon == query_canon
+        || crate::title::catalog_search_group_keys_equivalent(&option_canon, &query_canon)
+        || crate::title::catalog_search_group_keys_equivalent(&query_canon, &option_canon)
+    })
     .collect()
 }
 
@@ -175,24 +187,33 @@ pub async fn get_game_detail(
 
   let resolved_group_key = payload_group_key.or_else(|| game.group_key.clone());
 
-  let downloads = if let Some(group_key) = resolved_group_key {
-    let options = list_download_options_for_group_key(&app, &active_sources, &group_key);
-    // Com opções locais, devolver já — não esperar API de fontes em falta (picker fluido).
+  let downloads = if let Some(group_key) = resolved_group_key.as_deref() {
+    let options = list_download_options_for_group_key(&app, &active_sources, group_key);
+    // Com opções locais, devolver já — não esperar API (picker fluido).
     if !options.is_empty() {
       options
     } else {
-      filter_options_for_group_key(
-        search_download_options_from_local_sources(&app, &game.title, &active_sources).await,
-        &group_key,
-      )
+      let searched =
+        search_download_options_from_local_sources(&app, &game.title, &active_sources).await;
+      let filtered = filter_options_for_group_key(searched.clone(), group_key);
+      if !filtered.is_empty() {
+        filtered
+      } else {
+        // group_key pode divergir ligeiramente do título do repack — manter matches por título.
+        searched
+          .into_iter()
+          .filter(|option| title_matches_query(&option.title, &game.title))
+          .collect()
+      }
     }
   } else {
     search_download_options_from_local_sources(&app, &game.title, &active_sources).await
   };
 
   let include_steam = payload.include_steam.unwrap_or(false);
+  let language = payload.language.as_deref();
   let steam = if include_steam {
-    resolve_steam_details_for_app(&app, &game.title).await
+    resolve_steam_details_for_app(&app, &game.title, language).await
   } else {
     None
   };

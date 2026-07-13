@@ -25,6 +25,25 @@ export function isBenignDeleteError(error: unknown): boolean {
   )
 }
 
+function pathBaseName(path: string): string {
+  const normalized = path.replace(/[/\\]+$/, '')
+  const sep = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+  return sep >= 0 ? normalized.slice(sep + 1) : normalized
+}
+
+function isTorrentSidecarFile(name: string): boolean {
+  return /\.(torrent|aria2)$/i.test(name)
+}
+
+function torrentSidecarStem(name: string): string {
+  return name.replace(/\.(torrent|aria2)$/i, '')
+}
+
+function torrentSidecarMatchesTitle(stem: string, title: string): boolean {
+  if (!stem.trim() || !title.trim()) return false
+  return libraryTitlesMatch(stem, title)
+}
+
 export function resolveLibraryDeletePaths(
   item: LibraryEntry,
   folders: LocalLibraryItem[],
@@ -56,6 +75,23 @@ export function resolveLibraryDeletePaths(
 
   for (const job of relatedJobs) {
     pushPath(job.destPath)
+  }
+
+  const deletedDirNames = [...paths].map(pathBaseName).filter(Boolean)
+
+  for (const entry of folders) {
+    if (entry.isDir || !isTorrentSidecarFile(entry.name)) continue
+    const stem = torrentSidecarStem(entry.name)
+    const matchesTitle =
+      torrentSidecarMatchesTitle(stem, item.title) ||
+      relatedJobs.some((job) => torrentSidecarMatchesTitle(stem, job.title))
+    const matchesDeletedDir = deletedDirNames.some(
+      (dirName) =>
+        dirName.toLowerCase() === stem.toLowerCase() || libraryTitlesMatch(stem, dirName),
+    )
+    if (matchesTitle || matchesDeletedDir) {
+      pushPath(entry.path)
+    }
   }
 
   return [...paths]

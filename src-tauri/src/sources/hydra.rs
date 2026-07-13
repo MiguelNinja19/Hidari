@@ -593,10 +593,12 @@ pub async fn search_download_options_via_api(
 }
 
 pub async fn search_catalog_games_via_api(
+  app: &tauri::AppHandle,
   sources: &[HydraSourceDto],
   query: &str,
   offset: usize,
   limit: usize,
+  exclude_keys: &HashSet<String>,
 ) -> Vec<CatalogGameDto> {
   let query = query.trim();
   if query.len() < 2 || limit == 0 {
@@ -616,6 +618,19 @@ pub async fn search_catalog_games_via_api(
     return Vec::new();
   }
 
+  let api_ids: Vec<String> = api_sources
+    .iter()
+    .filter_map(|source| source.api_source_id.clone())
+    .collect();
+  let source_by_api_id: HashMap<String, HydraSourceDto> = api_sources
+    .iter()
+    .filter_map(|source| {
+      source
+        .api_source_id
+        .as_ref()
+        .map(|api_id| (api_id.clone(), (*source).clone()))
+    })
+    .collect();
   let fingerprints: Vec<String> = api_sources
     .iter()
     .filter_map(|source| {
@@ -627,8 +642,16 @@ pub async fn search_catalog_games_via_api(
     })
     .collect();
 
-  let take = limit.max(5);
-  let catalogue = match hydra_catalogue_search(query, &fingerprints, take, offset).await {
+  // Sem fingerprints a API devolve o catálogo global (jogos sem download nas fontes
+  // activas). Só pesquisamos localmente nesse caso.
+  if fingerprints.is_empty() {
+    eprintln!("hydra_catalogue_search_skipped: no content fingerprints for active sources");
+    return Vec::new();
+  }
+
+  // Pedir mais candidatos — muitos não têm download nas fontes activas ou já estão no local.
+  let fetch_take = (limit.saturating_mul(3)).max(16).min(48);
+  let catalogue = match hydra_catalogue_search(query, &fingerprints, fetch_take, offset).await {
     Ok(value) => value,
     Err(error) => {
       eprintln!("hydra_catalogue_search_failed: {error}");
@@ -636,21 +659,104 @@ pub async fn search_catalog_games_via_api(
     }
   };
 
-  catalogue
+  let mut games = Vec::with_capacity(limit.min(catalogue.edges.len()));
+  let mut by_source: HashMap<String, Vec<DownloadOptionDto>> = HashMap::new();
+  let mut pending: Vec<HydraCatalogueGame> = catalogue
     .edges
     .into_iter()
-    .map(|game| {
-      let id = format!("hydra:{}:{}", game.shop, game.object_id);
-      CatalogGameDto {
-        id,
-        title: game.title,
-        genre: String::new(),
-        cover_url: game.library_image_url,
-        local_cover_path: None,
-        source: "hydra_api".to_string(),
-        option_count: None,
-        group_key: None,
-      }
+    .filter(|game| {
+      let key = crate::title::catalog_game_group_key(&game.title);
+      let canonical = crate::title::canonical_catalog_group_key(&key);
+      !exclude_keys.contains(&key) && !exclude_keys.contains(&canonical)
     })
-    .collect()
+    .collect();
+
+  while !pending.is_empty() && games.len() < limit {
+    let batch_size = pending.len().min(4);
+    let batch: Vec<HydraCatalogueGame> = pending.drain(..batch_size).collect();
+    let mut handles = Vec::with_capacity(batch.len());
+
+    for game in batch {
+      let api_ids = api_ids.clone();
+      let source_by_api_id = source_by_api_id.clone();
+      handles.push(tokio::spawn(async move {
+        let repacks = match hydra_game_download_sources(&game.shop, &game.object_id, &api_ids).await
+        {
+          Ok(value) => value,
+          Err(error) => {
+            eprintln!(
+              "hydra_game_download_sources_failed: {} ({}/{}) — {error}",
+              game.title, game.shop, game.object_id
+            );
+            return None;
+          }
+        };
+
+        let mut options = Vec::new();
+        for repack in &repacks {
+          if repack.uris.is_empty() {
+            continue;
+          }
+          if !api_ids.is_empty() && !api_ids.iter().any(|id| id == &repack.download_source_id) {
+            continue;
+          }
+          options.extend(repack_to_download_option(repack, &source_by_api_id));
+        }
+        if options.is_empty() {
+          return None;
+        }
+
+        let option_count = options.len();
+        let group_key = crate::title::catalog_game_group_key(&game.title);
+        let dto = CatalogGameDto {
+          id: format!("hydra:{}:{}", game.shop, game.object_id),
+          title: game.title,
+          genre: String::new(),
+          cover_url: game.library_image_url,
+          local_cover_path: None,
+          source: "hydra_api".to_string(),
+          option_count: (option_count > 1).then_some(option_count as u32),
+          group_key: (!group_key.is_empty()).then_some(group_key),
+        };
+        Some((dto, options))
+      }));
+    }
+
+    for handle in handles {
+      if let Ok(Some((game, options))) = handle.await {
+        for option in options {
+          by_source
+            .entry(option.source_id.clone())
+            .or_default()
+            .push(option);
+        }
+        games.push(game);
+        if games.len() >= limit {
+          break;
+        }
+      }
+    }
+  }
+
+  // Gravar downloads da API no JSON/SQLite local → próximas pesquisas usam cache.
+  for (source_id, source_options) in by_source {
+    if let Some(source) = sources.iter().find(|item| item.id == source_id) {
+      let source_ref = source
+        .remote_url
+        .as_deref()
+        .unwrap_or(source.url.as_str());
+      if let Ok(inserted) = super::hydralinks::append_catalog_download_options(
+        app,
+        &source_id,
+        source_ref,
+        &source_options,
+      ) {
+        if inserted > 0 {
+          eprintln!("catalog_api_cache_appended: {source_id} +{inserted}");
+        }
+      }
+    }
+  }
+
+  games
 }

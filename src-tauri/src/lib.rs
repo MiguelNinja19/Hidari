@@ -15,7 +15,7 @@ mod state;
 mod title;
 
 use commands::*;
-use queue::startup_queue_recovery;
+use queue::{persist::restore_persisted_queue_jobs, startup_queue_recovery};
 use sidecar::{
   emit_deep_link_event, graceful_app_quit, spawn_download_engine, spawn_extraction_watcher,
   spawn_sidecar_progress_watcher,
@@ -100,6 +100,22 @@ pub fn run() {
       }
       startup_queue_recovery(app.handle());
       spawn_download_engine(app.handle().clone());
+      {
+        let restore_app = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+          // Wait for download-engine port before rehydrating paused/active jobs.
+          for _ in 0..40 {
+            if crate::sidecar::ensure_sidecar_running(restore_app.clone())
+              .await
+              .is_ok()
+            {
+              break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+          }
+          restore_persisted_queue_jobs(restore_app).await;
+        });
+      }
       spawn_sidecar_progress_watcher(app.handle().clone());
       spawn_extraction_watcher(app.handle().clone());
       crate::library::watcher::spawn_download_folder_watcher(app.handle().clone());
@@ -198,6 +214,7 @@ pub fn run() {
       get_download_sources,
       remove_download_source,
       open_catalogs_cache_folder,
+      open_external_url,
       search_download_options,
       search_game_catalog,
       resolve_game_genres_batch,

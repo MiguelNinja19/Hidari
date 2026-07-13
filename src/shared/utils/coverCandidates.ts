@@ -5,9 +5,13 @@ export function extractSteamAppId(coverUrl?: string | null): string | null {
   return coverUrl.match(/\/steam\/apps\/(\d+)\//)?.[1] ?? null
 }
 
+/** Um único candidato principal — menos retries HTTP e menos flicker. */
 export function buildCoverCandidates(coverUrl?: string | null): string[] {
   if (!coverUrl) return []
-  const appId = extractSteamAppId(coverUrl)
-  if (!appId) return [coverUrl]
-  return [...new Set([...steamLibraryCoverUrls(appId), coverUrl])]
+  const trimmed = coverUrl.trim()
+  if (!trimmed) return []
+  const appId = extractSteamAppId(trimmed)
+  if (!appId) return [trimmed]
+  const [primary] = steamLibraryCoverUrls(appId)
+  return primary && primary !== trimmed ? [primary] : [trimmed]
 }

@@ -67,6 +67,8 @@ export function Sidebar({ activeTab, activeDownloadsCount, onTabChange }: Sideba
             key={tab.id}
             className={activeTab === tab.id ? 'sidebar-link sidebar-link--active' : 'sidebar-link'}
             type="button"
+            title={t(tab.labelKey)}
+            aria-label={t(tab.labelKey)}
             onClick={() => onTabChange(tab.id)}
           >
             <span className="sidebar-link__icon">{tab.icon}</span>

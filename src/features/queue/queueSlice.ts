@@ -158,7 +158,7 @@ const queueSlice = createSlice({
       if (status === 'verified' || status === 'verify_failed') {
         job.extractionStatus = status
         if (status === 'verify_failed') {
-          job.status = status
+          // Mantém completed/seeding/extracted — senão o jogo some da Biblioteca.
           if (message) job.errorMsg = message
         }
         return
@@ -169,10 +169,20 @@ const queueSlice = createSlice({
         job.progress = 100
         return
       }
+      if (status === 'failed') {
+        job.extractionStatus = 'failed'
+        if (message) job.errorMsg = message
+        // Não demove um download já concluído para fora da Biblioteca.
+        if (
+          !['completed', 'seeding', 'extracted', 'skipped', 'extracting'].includes(job.status)
+        ) {
+          job.status = 'failed'
+        }
+        return
+      }
       job.status = status
       job.extractionStatus = status
       if (status === 'extracted') job.progress = 100
-      if (status === 'failed' && message) job.errorMsg = message
     },
     removeJobLocally: (state, action: { payload: string }) => {
       const id = action.payload
@@ -213,7 +223,15 @@ const queueSlice = createSlice({
           (job) =>
             !incomingIds.has(job.id) &&
             !dismissed.has(job.id) &&
-            ['extracting', 'extracted', 'failed'].includes(job.status),
+            [
+              'extracting',
+              'extracted',
+              'failed',
+              'completed',
+              'seeding',
+              'skipped',
+              'verify_failed',
+            ].includes(job.status),
         )
         state.jobs = [...incoming, ...localOnly.map((job) => normalizeJob(job))]
       })

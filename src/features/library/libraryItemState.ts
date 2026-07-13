@@ -60,6 +60,8 @@ const LIBRARY_JOB_STATUSES = new Set([
   'extracting',
   'extracted',
   'skipped',
+  // Download terminou; falha só na verificação não deve esconder o jogo.
+  'verify_failed',
 ])
 
 /** Job ainda na fila de downloads — não deve aparecer na biblioteca. */

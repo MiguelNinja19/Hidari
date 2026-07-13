@@ -650,6 +650,10 @@ fn classify_uri(uri: &str) -> Option<(String, String)> {
   None
 }
 
+fn count_usable_uris(uris: &[String]) -> usize {
+  uris.iter().filter(|uri| classify_uri(uri).is_some()).count()
+}
+
 fn read_catalog_file(path: &Path) -> Result<(HydraLinksCatalog, String), String> {
   let raw = std::fs::read_to_string(path).map_err(|error| {
     format!(
@@ -1817,6 +1821,11 @@ pub fn search_distinct_catalog_titles_from_json(
       if download.group_key.is_empty() {
         continue;
       }
+      // Só listar títulos com pelo menos um link utilizável (magnet/http).
+      let usable = count_usable_uris(&download.uris);
+      if usable == 0 {
+        continue;
+      }
       let canonical_key =
         crate::title::canonical_catalog_group_key(&download.group_key);
       let bucket_key = groups
@@ -1829,7 +1838,7 @@ pub fn search_distinct_catalog_titles_from_json(
         .unwrap_or_else(|| canonical_key.clone());
 
       if let Some(hit) = groups.get_mut(&bucket_key) {
-        hit.option_count = hit.option_count.saturating_add(1);
+        hit.option_count = hit.option_count.saturating_add(usable);
       } else {
         groups.insert(
           bucket_key,
@@ -1837,7 +1846,7 @@ pub fn search_distinct_catalog_titles_from_json(
             title: crate::title::catalog_game_display_title_from_group_key(&canonical_key),
             _source_name: source_name.clone(),
             group_key: canonical_key,
-            option_count: 1,
+            option_count: usable,
           },
         );
       }

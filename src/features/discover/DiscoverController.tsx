@@ -17,6 +17,8 @@ export type DiscoverControllerValue = {
   discoverPickLoading: boolean
   discoverPickError: string | null
   discoverPickOptions: DownloadOption[]
+  discoverPickSynopsis: string | null
+  discoverPickScreenshots: string[]
   discoverBusy: string | null
   enabledSourcesCount: number
   sources: Source[]

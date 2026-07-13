@@ -10,7 +10,7 @@ import {
   bpsToSpeedKey,
   SETTING_KEY,
 } from '../../shared/config/appSettings'
-import { isAppLanguage, LANGUAGE_STORAGE_KEY } from '../../shared/config/locale'
+import { isAppLanguage } from '../../shared/config/locale'
 import { setAppLanguage, default as i18n } from '../../shared/i18n'
 import { scheduleDeferred } from '../../shared/utils/scheduleDeferred'
 type BootstrapSettings = {
@@ -86,10 +86,10 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     const cancelSettingsDefer = scheduleDeferred(() => {
       void (async () => {
         try {
-          const lang = await sourcesApi.getAppSetting(LANGUAGE_STORAGE_KEY)
-          if (isAppLanguage(lang) && lang !== i18n.language) {
-            await setAppLanguage(lang)
-          }
+          // UI (localStorage/i18n) é a fonte de verdade; sincroniza para o SQLite
+          // para sinopses Steam usarem o mesmo idioma (en/es/ru/pt-BR).
+          const uiLang = isAppLanguage(i18n.language) ? i18n.language : 'pt-BR'
+          await setAppLanguage(uiLang)
 
           const enabled = await sourcesApi.getSeedTorrentsEnabled()
           setSeedTorrentsEnabled(enabled)
@@ -113,12 +113,26 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     let unlistenExtract: (() => void) | undefined
     void tauriClient.listenJobProgress((event) => {
       dispatch(jobProgressReceived(event))
+      if (
+        event.status === 'completed' ||
+        event.status === 'seeding' ||
+        event.status === 'extracted'
+      ) {
+        notifyLibraryRefreshNeeded()
+      }
     }).then((fn) => {
       unlistenJob = fn
     })
     void tauriClient.listenExtractStatus((event) => {
       dispatch(extractStatusReceived(event))
-      if (event.status === 'extracted' || event.status === 'completed' || event.status === 'failed') {
+      if (
+        event.status === 'extracted' ||
+        event.status === 'completed' ||
+        event.status === 'failed' ||
+        event.status === 'skipped' ||
+        event.status === 'verified' ||
+        event.status === 'verify_failed'
+      ) {
         notifyLibraryRefreshNeeded()
       }
     }).then((fn) => {

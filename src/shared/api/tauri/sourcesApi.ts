@@ -34,6 +34,8 @@ export const sourcesApi = {
     tauriClient.invoke<void>('remove_download_source', { payload: { id } }),
   openCatalogsCacheFolder: () =>
     tauriClient.invoke<string>('open_catalogs_cache_folder'),
+  openExternalUrl: (url: string) =>
+    tauriClient.invoke<void>('open_external_url', { url }),
   searchDownloadOptions: (payload: SearchDownloadOptionsInput) =>
     tauriClient.invoke<DownloadOption[]>('search_download_options', { payload }),
   searchGameCatalog: (payload: SearchCatalogInput) =>

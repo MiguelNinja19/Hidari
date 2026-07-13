@@ -241,6 +241,7 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
       [],
     )
     .ok();
+  crate::queue::persist::ensure_persisted_queue_table(conn)?;
   Ok(())
 }
 

@@ -60,6 +60,35 @@ describe('queueSlice', () => {
     expect(state.jobs[0]?.progress).toBe(100)
   })
 
+  it('verify_failed não remove job completed da biblioteca', () => {
+    const state = queueReducer(
+      { jobs: [baseJob], ...baseState },
+      extractStatusReceived({
+        jobId: 'job-1',
+        status: 'verify_failed',
+        message: 'verify_no_file',
+      }),
+    )
+
+    expect(state.jobs[0]?.status).toBe('completed')
+    expect(state.jobs[0]?.extractionStatus).toBe('verify_failed')
+    expect(state.jobs[0]?.errorMsg).toBe('verify_no_file')
+  })
+
+  it('preserva completed local quando sidecar não devolve o job', () => {
+    const state = queueReducer(
+      { jobs: [baseJob], ...baseState },
+      {
+        type: fetchJobs.fulfilled.type,
+        payload: [],
+        meta: { arg: { silent: true } },
+      },
+    )
+
+    expect(state.jobs).toHaveLength(1)
+    expect(state.jobs[0]?.status).toBe('completed')
+  })
+
   it('guarda bytes e progresso bruto do sidecar', () => {
     const state = queueReducer(
       {

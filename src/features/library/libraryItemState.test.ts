@@ -130,6 +130,7 @@ describe('libraryItemState', () => {
     expect(jobBelongsInLibrary(active)).toBe(false)
     expect(jobBelongsInLibrary({ status: 'downloading' } as DownloadJob)).toBe(false)
     expect(jobBelongsInLibrary({ status: 'failed' } as DownloadJob)).toBe(false)
+    expect(jobBelongsInLibrary({ status: 'verify_failed' } as DownloadJob)).toBe(true)
     expect(jobBelongsInLibrary(done)).toBe(true)
     expect(jobBelongsInLibrary({ status: 'extracted' } as DownloadJob)).toBe(true)
     expect(jobBelongsInLibrary({ status: 'seeding' } as DownloadJob)).toBe(true)

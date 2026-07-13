@@ -1,6 +1,6 @@
 use super::{
   clear_cover_precache_skips, download_and_cache_cover, is_usable_cover_file,
-  mark_cover_resolve_skip, should_skip_cover_resolve, upsert_game_cover,
+  mark_cover_resolve_skip, should_skip_cover_resolve, upsert_game_cover_if_absent,
 };
 use crate::catalog::{embedded_cover_for_title, fetch_steam_cover_url_for_title};
 use crate::covers::steam_index;
@@ -255,7 +255,7 @@ async fn run_cover_precache_once(app: AppHandle, state: CoverPrecacheState) {
       match resolve_cover_url_for_title(&app, &title).await {
         Some(url) => {
           if let Ok(conn) = open_database_connection(&app) {
-            let _ = upsert_game_cover(&conn, &title, &url);
+            let _ = upsert_game_cover_if_absent(&conn, &title, &url);
           }
           match download_and_cache_cover(&app, &title, &url).await {
             Ok(Some(_)) => outcome_downloaded = true,
@@ -399,7 +399,7 @@ pub async fn resolve_cover_url(app: &AppHandle, title: &str) -> Option<String> {
 
   if let Ok(conn) = open_database_connection(app) {
     if let Some(ref url) = resolved {
-      let _ = upsert_game_cover(&conn, trimmed, url);
+      let _ = upsert_game_cover_if_absent(&conn, trimmed, url);
     } else {
       mark_cover_resolve_skip(&conn, &title_key);
     }
@@ -450,7 +450,7 @@ pub fn bulk_resolve_catalog_covers_from_index(app: &AppHandle) -> Result<usize, 
     let Some(url) = resolve_cover_url_local(&conn, &title) else {
       continue;
     };
-    let _ = super::upsert_game_cover(&conn, &title, &url)?;
+    let _ = super::upsert_game_cover_if_absent(&conn, &title, &url)?;
     resolved += 1;
   }
   Ok(resolved)
@@ -585,7 +585,15 @@ async fn resolve_cover_batch_item(
     }
 
     if let Some(url) = resolve_cover_url_local(&conn, &trimmed) {
-      let _ = upsert_game_cover(&conn, &trimmed, &url);
+      let _ = upsert_game_cover_if_absent(&conn, &trimmed, &url);
+      if let Some((stored_url, local)) = super::lookup_cover_row_for_title(&conn, &trimmed) {
+        return crate::dto::ResolvedCoverBatchItem {
+          title: trimmed,
+          cover_url: Some(stored_url),
+          local_cover_path: local
+            .filter(|path| is_usable_cover_file(Path::new(path), &covers_dir)),
+        };
+      }
       return crate::dto::ResolvedCoverBatchItem {
         title: trimmed,
         cover_url: Some(url),
@@ -639,12 +647,11 @@ pub async fn resolve_covers_for_titles(
   let mut lookup_keys: Vec<String> = Vec::new();
   let mut title_keys: Vec<(String, String, String)> = Vec::with_capacity(unique.len());
   for title in &unique {
-    let key = crate::title::normalize_title_key(title);
-    let group = crate::title::catalog_game_group_key(title);
-    lookup_keys.push(key.clone());
-    if group != key {
-      lookup_keys.push(group.clone());
+    for key in crate::title::cover_title_key_candidates(title) {
+      lookup_keys.push(key);
     }
+    let key = crate::title::cover_storage_key(title);
+    let group = crate::title::catalog_game_group_key(title);
     title_keys.push((title.clone(), key, group));
   }
   lookup_keys.sort_unstable();
@@ -655,21 +662,44 @@ pub async fn resolve_covers_for_titles(
   for (title, key, group) in title_keys {
     let row = batch
       .get(&key)
-      .or_else(|| batch.get(&group));
+      .or_else(|| batch.get(&group))
+      .cloned()
+      .or_else(|| {
+        crate::title::cover_title_key_candidates(&title)
+          .into_iter()
+          .find_map(|candidate| batch.get(&candidate).cloned())
+      });
     if let Some(row) = row {
       out.push(crate::dto::ResolvedCoverBatchItem {
         title: title.clone(),
-        cover_url: Some(row.url.clone()),
-        local_cover_path: row.local_path.clone(),
+        cover_url: Some(row.url),
+        local_cover_path: row.local_path,
+      });
+      continue;
+    }
+    if let Some((url, local)) = super::lookup_cover_row_for_title(&conn, &title) {
+      out.push(crate::dto::ResolvedCoverBatchItem {
+        title: title.clone(),
+        cover_url: Some(url),
+        local_cover_path: local.filter(|path| is_usable_cover_file(Path::new(path), &covers_dir)),
       });
       continue;
     }
     if let Some(url) = resolve_cover_url_local(&conn, &title) {
-      let _ = upsert_game_cover(&conn, &title, &url);
+      let _ = upsert_game_cover_if_absent(&conn, &title, &url);
+      let (cover_url, local_cover_path) =
+        if let Some((stored_url, local)) = super::lookup_cover_row_for_title(&conn, &title) {
+          (
+            stored_url,
+            local.filter(|path| is_usable_cover_file(Path::new(path), &covers_dir)),
+          )
+        } else {
+          (url, None)
+        };
       out.push(crate::dto::ResolvedCoverBatchItem {
         title: title.clone(),
-        cover_url: Some(url),
-        local_cover_path: None,
+        cover_url: Some(cover_url),
+        local_cover_path,
       });
       continue;
     }

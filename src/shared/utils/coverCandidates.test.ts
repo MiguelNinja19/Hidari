@@ -17,16 +17,16 @@ describe('extractSteamAppId', () => {
 })
 
 describe('buildCoverCandidates', () => {
-  it('inclui variantes Steam CDN', () => {
+  it('usa só a capa library principal da Steam', () => {
     const url =
       'https://cdn.cloudflare.steamstatic.com/steam/apps/42/header.jpg'
     const candidates = buildCoverCandidates(url)
-    expect(candidates.length).toBeGreaterThan(1)
-    expect(candidates.some((c) => c.includes('library_600x900.jpg'))).toBe(true)
-    expect(candidates.some((c) => c.includes('library_600x900_2x.jpg'))).toBe(true)
+    expect(candidates).toEqual([
+      'https://cdn.cloudflare.steamstatic.com/steam/apps/42/library_600x900.jpg',
+    ])
   })
 
-  it('deduplica URLs iguais', () => {
+  it('mantém URL não-Steam intacta', () => {
     const url = 'https://example.com/only.jpg'
     expect(buildCoverCandidates(url)).toEqual([url])
   })

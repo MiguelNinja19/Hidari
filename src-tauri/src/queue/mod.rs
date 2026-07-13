@@ -1,5 +1,8 @@
+pub mod persist;
+
 use crate::db::{get_extraction_status, open_database_connection};
 use crate::dto::SidecarJobWatcher;
+use crate::queue::persist::delete_persisted_queue_job;
 use crate::sidecar::ensure_sidecar_running;
 use rusqlite::params;
 use tauri::AppHandle;
@@ -50,6 +53,7 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
       "DELETE FROM extraction_log WHERE job_id = ?1",
       params![job.id],
     );
+    let _ = delete_persisted_queue_job(&conn, &job.id);
     removed.push(job.id);
   }
 
@@ -63,7 +67,7 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
   Ok(removed)
 }
 
-/// On startup, reset jobs that were interrupted mid-download back to pending
+/// Legacy table cosmetic reset — real recovery is `restore_persisted_queue_jobs`.
 pub fn startup_queue_recovery(app: &AppHandle) {
   if let Ok(conn) = open_database_connection(app) {
     let _ = conn.execute(
@@ -71,5 +75,7 @@ pub fn startup_queue_recovery(app: &AppHandle) {
        WHERE status = 'downloading'",
       [],
     );
+    let _ = persist::ensure_persisted_queue_table(&conn);
+    let _ = persist::mark_active_persisted_jobs_paused(&conn);
   }
 }

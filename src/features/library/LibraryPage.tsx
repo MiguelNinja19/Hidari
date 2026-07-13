@@ -1,8 +1,10 @@
 import type { TFunction } from 'i18next'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { localeForLanguage, isAppLanguage, type AppLanguage } from '../../shared/config/locale'
 import type { LibraryStatusMeta } from './libraryItemState'
 import { CatalogCover } from '../../shared/components/CatalogCover'
+import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { LibraryGameCard } from './LibraryGameCard'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { LibrarySortToggle } from './LibrarySortToggle'
@@ -55,7 +57,7 @@ function buildLibraryActions(
     installBusyId: string | null
     installingKeys: ReadonlySet<string>
     handlePlayLibraryItem: (item: LibraryEntry) => Promise<void>
-    handleInstallItem: (item: LibraryEntry) => Promise<void>
+    requestInstallConfirm: (item: LibraryEntry) => void
     handlePickGameInstallFolder: LibraryControllerValue['handlePickGameInstallFolder']
     handleDeleteLibraryItem: (item: LibraryEntry) => void
     onResumeItem: (id: string) => Promise<void>
@@ -105,6 +107,14 @@ function buildLibraryActions(
   if (ctx.canInstall) {
     const isInstallBusy =
       ctx.installBusyId === ctx.key || ctx.installingKeys.has(ctx.key)
+    secondary.push({
+      id: 'install-menu',
+      label: isInstallBusy ? t('library.installing') : t('common.install'),
+      title: isInstallBusy ? t('library.installingTitle') : t('library.installTitle'),
+      variant: 'primary',
+      disabled: isInstallBusy,
+      onClick: () => ctx.requestInstallConfirm(item),
+    })
     addOpenFolder()
     if (ctx.canLocate) addLocate()
     if (ctx.canDelete) addDelete()
@@ -115,13 +125,21 @@ function buildLibraryActions(
         title: isInstallBusy ? t('library.installingTitle') : t('library.installTitle'),
         variant: 'primary',
         disabled: isInstallBusy,
-        onClick: () => void ctx.handleInstallItem(item),
+        onClick: () => ctx.requestInstallConfirm(item),
       },
       secondary,
     }
   }
 
   if (ctx.canPlay) {
+    secondary.push({
+      id: 'play-menu',
+      label: ctx.playBusyId === ctx.key ? t('library.playStarting') : t('common.play'),
+      title: t('library.playTitle'),
+      variant: 'primary',
+      disabled: ctx.playBusyId === ctx.key,
+      onClick: () => void ctx.handlePlayLibraryItem(item),
+    })
     addOpenFolder()
     if (ctx.canDelete) addDelete()
     return {
@@ -176,7 +194,7 @@ function buildLibraryActions(
         title: t('library.locateTitle'),
         variant: 'primary',
         disabled: true,
-        onClick: () => {},
+        onClick: () => { },
       },
       secondary: [],
     }
@@ -248,12 +266,21 @@ export function LibraryPage() {
   } = useLibraryItemHelpers()
   const onResumeItem = useLibraryResumeItem()
   const onOpenLocalPath = useOpenLocalPath()
+  const [pendingInstall, setPendingInstall] = useState<LibraryEntry | null>(null)
 
+  const requestInstallConfirm = useCallback((item: LibraryEntry) => {
+    setPendingInstall(item)
+  }, [])
+
+  const confirmInstallBusy =
+    pendingInstall != null &&
+    (installBusyId === busyKey(pendingInstall) ||
+      installingKeys.has(busyKey(pendingInstall)))
   return (
     <section className="library-page">
       <header className="library-toolbar">
         <SearchInput
-          className="library-toolbar__search browse-search browse-search--bar"
+          className="library-toolbar__search browse-search browse-search--soft"
           value={libraryFilter}
           placeholder={t('library.filterPlaceholder')}
           searchFocusId="library"
@@ -288,7 +315,7 @@ export function LibraryPage() {
               installBusyId,
               installingKeys,
               handlePlayLibraryItem,
-              handleInstallItem,
+              requestInstallConfirm,
               handlePickGameInstallFolder,
               handleDeleteLibraryItem,
               onResumeItem,
@@ -297,6 +324,9 @@ export function LibraryPage() {
             })
 
             const statusLine = libraryStatusLine(statusMeta, primary, t, currentLanguage)
+            const hasCover =
+              cover.status !== 'error' &&
+              Boolean(cover.localPath?.trim() || cover.coverUrl?.trim())
 
             return (
               <li key={item.id} className="library-grid__item">
@@ -311,6 +341,7 @@ export function LibraryPage() {
                   ]
                     .filter(Boolean)
                     .join(' · ')}
+                  showTitle={!hasCover}
                   metaLine={statusLine}
                   cover={
                     <CatalogCover
@@ -331,6 +362,28 @@ export function LibraryPage() {
           })}
         </ul>
       ) : null}
+
+      <ConfirmDialog
+        open={pendingInstall !== null}
+        title={t('library.installConfirmTitle')}
+        description={
+          pendingInstall
+            ? t('library.installConfirmBody', {
+                title: cleanTitleForDisplay(pendingInstall.title),
+              })
+            : ''
+        }
+        confirmLabel={t('common.install')}
+        cancelLabel={t('common.cancel')}
+        confirmVariant="primary"
+        busy={confirmInstallBusy}
+        onConfirm={() => {
+          const item = pendingInstall
+          setPendingInstall(null)
+          if (item) void handleInstallItem(item)
+        }}
+        onCancel={() => setPendingInstall(null)}
+      />
     </section>
   )
 }

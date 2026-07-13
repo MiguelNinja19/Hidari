@@ -222,7 +222,7 @@ pub fn upsert_game_cover(
   title: &str,
   cover_url: &str,
 ) -> Result<Option<String>, String> {
-  let title_key = title::normalize_title_key(title);
+  let title_key = title::cover_storage_key(title);
   if title_key.is_empty() || !is_plausible_cover_url(cover_url) {
     return Ok(None);
   }
@@ -250,6 +250,18 @@ pub fn upsert_game_cover(
   Ok(stale_local)
 }
 
+/// Grava capa só se ainda não existir nenhuma para este jogo (não substitui Hydra/catálogo pela Steam).
+pub fn upsert_game_cover_if_absent(
+  conn: &Connection,
+  title: &str,
+  cover_url: &str,
+) -> Result<Option<String>, String> {
+  if lookup_cover_row_for_title(conn, title).is_some() {
+    return Ok(None);
+  }
+  upsert_game_cover(conn, title, cover_url)
+}
+
 const COVER_SKIP_RETRY_SECS: i64 = 7 * 86400;
 
 pub fn lookup_cover_row(conn: &Connection, title_key: &str) -> Option<(String, Option<String>)> {
@@ -269,22 +281,123 @@ pub fn lookup_cover_row(conn: &Connection, title_key: &str) -> Option<(String, O
   })
 }
 
-/// Procura capa pelo título bruto ou pelo nome base do jogo (repack/versão no título).
+/// Procura capa pelo título bruto, chave canónica ou variante de repack já gravada.
 pub fn lookup_cover_row_for_title(conn: &Connection, title: &str) -> Option<(String, Option<String>)> {
   let trimmed = title.trim();
   if trimmed.is_empty() {
     return None;
   }
-  let key = title::normalize_title_key(trimmed);
-  if let Some(row) = lookup_cover_row(conn, &key) {
-    return Some(row);
+  for key in title::cover_title_key_candidates(trimmed) {
+    if let Some(row) = lookup_cover_row(conn, &key) {
+      return Some(row);
+    }
   }
-  let group = title::catalog_game_group_key(trimmed);
-  if group != key {
-    lookup_cover_row(conn, &group)
-  } else {
-    None
+  lookup_related_cover_row(conn, &title::cover_storage_key(trimmed))
+}
+
+fn lookup_related_cover_row(
+  conn: &Connection,
+  group: &str,
+) -> Option<(String, Option<String>)> {
+  if group.is_empty() {
+    return None;
   }
+  let mut stmt = conn
+    .prepare(
+      "SELECT title_key, cover_url, local_path FROM game_covers \
+       WHERE title_key = ?1 OR title_key LIKE ?2",
+    )
+    .ok()?;
+  let like = format!("{group} %");
+  let rows = stmt
+    .query_map(params![group, like], |row| {
+      Ok((
+        row.get::<_, String>(0)?,
+        row.get::<_, String>(1)?,
+        row.get::<_, Option<String>>(2)?,
+      ))
+    })
+    .ok()?;
+
+  for row in rows.flatten() {
+    let (key, url, local) = row;
+    if !is_plausible_cover_url(&url) {
+      continue;
+    }
+    if cover_keys_same_game(group, &key) {
+      return Some((url, local));
+    }
+  }
+  None
+}
+
+fn is_cover_key_noise_token(token: &str) -> bool {
+  let t = token.to_lowercase();
+  if t.chars().all(|c| c.is_ascii_digit()) && t.len() <= 4 {
+    return true;
+  }
+  if t.starts_with('v')
+    && t.len() > 1
+    && t.chars().skip(1).all(|c| c.is_ascii_digit() || c == '.')
+  {
+    return true;
+  }
+  if t.contains('.') && t.chars().all(|c| c.is_ascii_digit() || c == '.') {
+    return true;
+  }
+  if matches!(
+    t.as_str(),
+    "fitgirl"
+      | "dodi"
+      | "empress"
+      | "reloaded"
+      | "codex"
+      | "plaza"
+      | "skidrow"
+      | "gog"
+      | "online"
+      | "fix"
+      | "crack"
+      | "cracked"
+      | "portable"
+      | "repost"
+      | "repack"
+      | "update"
+      | "updates"
+      | "dlc"
+      | "dlcs"
+      | "bonus"
+      | "bonuses"
+      | "build"
+      | "builds"
+      | "patch"
+      | "multi"
+  ) {
+    return true;
+  }
+  if t.starts_with("multi") && t.len() <= 8 {
+    return true;
+  }
+  title::canonical_catalog_group_key(&t).is_empty()
+}
+
+fn cover_keys_same_game(group: &str, stored_key: &str) -> bool {
+  if stored_key == group {
+    return true;
+  }
+  if title::canonical_catalog_group_key(stored_key) == group {
+    return true;
+  }
+  if title::catalog_search_group_keys_equivalent(group, stored_key) {
+    return true;
+  }
+  let Some(rest) = stored_key.strip_prefix(group) else {
+    return false;
+  };
+  if !rest.starts_with(' ') {
+    return false;
+  }
+  rest.split_whitespace().all(is_cover_key_noise_token)
 }
 
 pub fn should_skip_cover_resolve(conn: &Connection, title_key: &str) -> bool {
@@ -331,7 +444,7 @@ pub async fn download_and_cache_cover(
   title: &str,
   cover_url: &str,
 ) -> Result<Option<String>, String> {
-  let title_key = title::normalize_title_key(title);
+  let title_key = title::cover_storage_key(title);
   if title_key.is_empty() {
     return Ok(None);
   }
@@ -414,14 +527,10 @@ pub fn list_game_covers(app: AppHandle) -> Result<Vec<GameCoverDto>, String> {
 #[tauri::command]
 pub async fn ensure_game_cover_cached(app: AppHandle, title: String) -> Result<Option<String>, String> {
   let conn = open_database_connection(&app)?;
-  let title_key = title::normalize_title_key(&title);
-  let (cover_url, local_path): (String, Option<String>) = match conn.query_row(
-    "SELECT cover_url, local_path FROM game_covers WHERE title_key = ?1",
-    params![title_key],
-    |row| Ok((row.get(0)?, row.get(1)?)),
-  ) {
-    Ok(row) => row,
-    Err(_) => return Ok(None),
+  let title_key = title::cover_storage_key(&title);
+  let (cover_url, local_path): (String, Option<String>) = match lookup_cover_row_for_title(&conn, &title) {
+    Some(row) => row,
+    None => return Ok(None),
   };
   drop(conn);
 
@@ -444,24 +553,22 @@ pub async fn ensure_game_cover_cached(app: AppHandle, title: String) -> Result<O
 
 #[tauri::command]
 pub fn invalidate_game_cover_local(app: AppHandle, title: String) -> Result<(), String> {
-  let title_key = title::normalize_title_key(&title);
+  let title_key = title::cover_storage_key(&title);
   if title_key.is_empty() {
     return Ok(());
   }
   let conn = open_database_connection(&app)?;
-  let local_path: Option<String> = conn
-    .query_row(
-      "SELECT local_path FROM game_covers WHERE title_key = ?1",
-      params![title_key],
-      |row| row.get(0),
-    )
-    .unwrap_or(None);
-  conn
-    .execute(
-      "UPDATE game_covers SET local_path = NULL WHERE title_key = ?1",
-      params![title_key],
-    )
-    .map_err(|e| format!("could_not_clear_cover_local_path: {e}"))?;
+  let local_path: Option<String> = lookup_cover_row_for_title(&conn, &title).and_then(|(_, local)| local);
+  // Clear local_path on the storage key and any related noisy keys that share the same path.
+  let keys = title::cover_title_key_candidates(&title);
+  for key in keys {
+    conn
+      .execute(
+        "UPDATE game_covers SET local_path = NULL WHERE title_key = ?1",
+        params![key],
+      )
+      .map_err(|e| format!("could_not_clear_cover_local_path: {e}"))?;
+  }
   if let Some(path) = local_path {
     remove_cover_file(&path);
   }
@@ -486,14 +593,7 @@ pub async fn save_game_cover(app: AppHandle, title: String, cover_url: String) -
   let covers_dir = covers_dir_for_app(&app)?;
   let needs_download = {
     let conn = open_database_connection(&app)?;
-    let title_key = title::normalize_title_key(&title);
-    let local_path: Option<String> = conn
-      .query_row(
-        "SELECT local_path FROM game_covers WHERE title_key = ?1",
-        params![title_key],
-        |row| row.get(0),
-      )
-      .unwrap_or(None);
+    let local_path = lookup_cover_row_for_title(&conn, &title).and_then(|(_, local)| local);
     !local_path
       .as_deref()
       .is_some_and(|path| is_usable_cover_file(Path::new(path), &covers_dir))
@@ -517,7 +617,10 @@ pub async fn resolve_game_cover_url(app: AppHandle, title: String) -> Result<Opt
 
 #[cfg(test)]
 mod cover_cache_tests {
-  use crate::covers::{cover_download_urls, is_valid_cover_bytes, upsert_game_cover};
+  use crate::covers::{
+    cover_download_urls, is_valid_cover_bytes, lookup_cover_row_for_title, upsert_game_cover,
+    upsert_game_cover_if_absent,
+  };
   use crate::title;
   use rusqlite::{params, Connection};
 
@@ -540,7 +643,7 @@ mod cover_cache_tests {
   fn upsert_invalidates_local_path_when_cover_url_changes() {
     let conn = test_conn();
     let title = "Example Game Collection";
-    let key = title::normalize_title_key(title);
+    let key = title::cover_storage_key(title);
 
     conn.execute(
       "INSERT INTO game_covers (title_key, cover_url, local_path) VALUES (?1, ?2, ?3)",
@@ -566,7 +669,7 @@ mod cover_cache_tests {
   fn upsert_keeps_local_path_when_cover_url_unchanged() {
     let conn = test_conn();
     let title = "Sample Harvest Game";
-    let key = title::normalize_title_key(title);
+    let key = title::cover_storage_key(title);
     let url = "https://cdn.example.com/sample.jpg";
 
     conn.execute(
@@ -586,6 +689,28 @@ mod cover_cache_tests {
       )
       .unwrap();
     assert_eq!(local.as_deref(), Some("C:\\covers\\sample.jpg"));
+  }
+
+  #[test]
+  fn lookup_finds_cover_under_repack_title_key() {
+    let conn = test_conn();
+    let noisy_key = title::normalize_title_key("Elden Ring - v1.2 - FitGirl Repack");
+    let url = "https://cdn.hydralinks.cloud/covers/elden.jpg";
+    conn.execute(
+      "INSERT INTO game_covers (title_key, cover_url, local_path) VALUES (?1, ?2, ?3)",
+      params![noisy_key, url, "C:\\covers\\elden.jpg"],
+    )
+    .unwrap();
+
+    let found = lookup_cover_row_for_title(&conn, "Elden Ring").expect("should find related cover");
+    assert_eq!(found.0, url);
+
+    let absent = upsert_game_cover_if_absent(&conn, "Elden Ring", "https://steamcdn.example/library_600x900.jpg")
+      .unwrap();
+    assert!(absent.is_none());
+
+    let still = lookup_cover_row_for_title(&conn, "Elden Ring").unwrap();
+    assert_eq!(still.0, url);
   }
 
   #[test]

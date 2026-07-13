@@ -1,6 +1,9 @@
 use crate::config::{self, ARIA2_BINARY};
 use crate::db::open_database_connection;
 use crate::dto::{JobProgressEvent, QUEUE_EVENT_JOB_PROGRESS, SidecarJobForLaunch, SidecarJobProgressRow};
+use crate::queue::persist::{
+  mark_active_persisted_jobs_paused, update_persisted_queue_progress,
+};
 use crate::state::SidecarState;
 use rusqlite::params;
 use std::collections::{HashMap, HashSet};
@@ -54,7 +57,8 @@ pub async fn pause_all_active_sidecar_jobs(app: AppHandle) -> Result<(), String>
       continue;
     };
 
-    if status != "downloading" && status != "pending" && status != "seeding" {
+    if status != "downloading" && status != "pending" && status != "seeding" && status != "retrying"
+    {
       continue;
     }
 
@@ -93,6 +97,9 @@ pub fn graceful_app_quit(app: AppHandle) {
   tauri::async_runtime::spawn(async move {
     if let Err(error) = pause_all_active_sidecar_jobs(app.clone()).await {
       log::warn!("could_not_pause_jobs_on_quit: {error}");
+    }
+    if let Ok(conn) = open_database_connection(&app) {
+      let _ = mark_active_persisted_jobs_paused(&conn);
     }
     app.exit(0);
   });
@@ -322,7 +329,7 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
       let active_ids: HashSet<String> = rows.iter().map(|row| row.id.clone()).collect();
       last_snapshot.retain(|id, _| active_ids.contains(id));
 
-      let mut batch_updates: Vec<(String, i64, i64, i64, Option<String>, i64)> = Vec::new();
+      let mut batch_updates: Vec<(String, i64, i64, i64, Option<String>, String)> = Vec::new();
 
       for row in rows {
         let changed = last_snapshot.get(&row.id).map_or(true, |prev| {
@@ -377,7 +384,7 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
           row.bytes_downloaded,
           row.total_bytes,
           row.error_msg.clone(),
-          row.id.parse::<i64>().unwrap_or(0),
+          row.id.clone(),
         ));
       }
 
@@ -394,7 +401,16 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
           "UPDATE download_jobs SET status = ?1, progress = ?2, bytes_downloaded = ?3, \
            total_bytes = ?4, error_msg = COALESCE(?5, error_msg), \
            updated_at = CURRENT_TIMESTAMP WHERE id = ?6",
-          params![status, progress, bytes, total, error_msg, id],
+          params![status, progress, bytes, total, error_msg, id.parse::<i64>().unwrap_or(0)],
+        );
+        let _ = update_persisted_queue_progress(
+          &conn,
+          &id,
+          &status,
+          progress,
+          bytes,
+          total,
+          error_msg.as_deref(),
         );
       }
       let _ = conn.execute("COMMIT", []);

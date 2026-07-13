@@ -2,7 +2,6 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { CatalogCover } from '../../shared/components/CatalogCover'
 import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
-import { Button } from '../../shared/components/ui/Button'
 import { formatDownloadError } from '../../shared/utils/downloadErrors'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import type { DownloadJob } from '../../shared/types/contracts'
@@ -42,6 +41,7 @@ function queuePrimaryAction(
       label: busyId === job.id ? t('downloads.playStarting') : t('common.play'),
       onClick: () => onPlayJob(job.id),
       disabled: busyId === job.id,
+      primary: true,
     }
   }
 
@@ -49,6 +49,7 @@ function queuePrimaryAction(
     return {
       label: t('common.resume'),
       onClick: () => void onResumeJob(job.id),
+      primary: false,
     }
   }
 
@@ -56,6 +57,7 @@ function queuePrimaryAction(
     return {
       label: t('common.pause'),
       onClick: () => void onPauseJob(job.id),
+      primary: false,
     }
   }
 
@@ -106,10 +108,21 @@ export function DownloadsPage({
   const downloadNow = useDownloadClock(jobs)
   const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
   const sections = buildJobSections(activeJobs, t)
+  const inProgressCount = activeJobs.filter((job) => !FINISHED_STATUSES.has(job.status)).length
+  const finishedCount = activeJobs.filter((job) => FINISHED_STATUSES.has(job.status)).length
   const canPauseAll = activeJobs.some((job) =>
     ['downloading', 'pending', 'retrying', 'seeding'].includes(job.status),
   )
-  const canClearCompleted = activeJobs.some((job) => FINISHED_STATUSES.has(job.status))
+  const canClearCompleted = finishedCount > 0
+
+  const summary =
+    activeJobs.length === 0
+      ? t('downloads.summaryEmpty')
+      : inProgressCount > 0 && finishedCount > 0
+        ? t('downloads.summaryMixed', { active: inProgressCount, done: finishedCount })
+        : inProgressCount > 0
+          ? t('downloads.summaryActive', { count: inProgressCount })
+          : t('downloads.summaryDone', { count: finishedCount })
 
   const progressWidth = (job: DownloadJob) => {
     const value = resolveJobProgressPercent(job)
@@ -134,8 +147,8 @@ export function DownloadsPage({
     const verificationStatus = resolveJobVerificationStatus(job)
 
     return (
-      <li key={job.id} className="download-row">
-        <div className="download-row__thumb">
+      <li key={job.id} className="dl-row">
+        <div className="dl-row__thumb">
           <CatalogCover
             title={job.title}
             coverUrl={cover.coverUrl}
@@ -147,60 +160,64 @@ export function DownloadsPage({
           />
         </div>
 
-        <div className="download-row__main">
-          <div className="download-row__top">
-            <strong className="download-row__title" title={job.title}>
+        <div className="dl-row__main">
+          <div className="dl-row__top">
+            <strong className="dl-row__title" title={job.title}>
               {cleanTitleForDisplay(job.title)}
             </strong>
-            <div className="download-row__top-meta">
+            <div className="dl-row__top-meta">
               {verificationStatus ? (
                 <span
-                  className={`download-row__verify-badge download-row__verify-badge--${verificationStatus}`}
+                  className={`dl-row__verify dl-row__verify--${verificationStatus}`}
                   title={
                     verificationStatus === 'verified'
                       ? t('downloads.verifiedTitle')
                       : t('downloads.verifyFailedTitle')
                   }
                 >
-                  {verificationStatus === 'verified' ? t('downloads.verified') : t('downloads.verifyFailed')}
+                  {verificationStatus === 'verified'
+                    ? t('downloads.verified')
+                    : t('downloads.verifyFailed')}
                 </span>
               ) : null}
-              <span className="download-row__percent">{formatProgressPercent(job)}</span>
+              <span className="dl-row__percent">{formatProgressPercent(job)}</span>
             </div>
           </div>
 
           <div
-            className={`progress-bar progress-bar--compact${metadataPhase ? ' progress-bar--pulse' : ''}`}
+            className={`dl-progress${metadataPhase ? ' dl-progress--pulse' : ''}`}
+            role="progressbar"
+            aria-valuenow={metadataPhase ? undefined : progressWidth(job)}
+            aria-valuemin={0}
+            aria-valuemax={100}
           >
             <div
-              className={`progress-fill${metadataPhase ? ' progress-fill--indeterminate' : ''}`}
+              className={`dl-progress__fill${metadataPhase ? ' dl-progress__fill--indeterminate' : ''}`}
               style={metadataPhase ? undefined : { width: `${progressWidth(job)}%` }}
             />
           </div>
 
-          <p className="download-row__meta">{downloadRowDetail(job, downloadNow)}</p>
+          <p className="dl-row__meta">{downloadRowDetail(job, downloadNow)}</p>
           {job.errorMsg ? (
-            <p className="download-row__error">{formatDownloadError(job.errorMsg)}</p>
+            <p className="dl-row__error">{formatDownloadError(job.errorMsg)}</p>
           ) : null}
         </div>
 
-        <div className="download-row__actions">
+        <div className="dl-row__actions">
           {primary ? (
-            <Button
-              variant={job.status === 'extracted' ? 'primary' : 'outline'}
-              size="compact"
-              className="download-row__btn"
+            <button
               type="button"
+              className={`set-btn set-btn--compact${primary.primary ? ' set-btn--primary' : ' set-btn--secondary'}`}
               disabled={primary.disabled}
               onClick={primary.onClick}
             >
               {primary.label}
-            </Button>
+            </button>
           ) : null}
           {showFolder ? (
             <button
               type="button"
-              className="btn btn-outline btn--compact download-row__btn"
+              className="set-btn set-btn--compact set-btn--secondary"
               disabled={actionBusyId === job.id}
               onClick={() => onOpenJobFolder(job.id)}
             >
@@ -210,7 +227,7 @@ export function DownloadsPage({
           {canCancel ? (
             <button
               type="button"
-              className="btn btn-outline btn--compact download-row__btn download-row__btn--danger"
+              className="set-btn set-btn--compact set-btn--danger"
               onClick={() => void onCancelJob(job.id)}
             >
               {t('common.cancel')}
@@ -222,38 +239,47 @@ export function DownloadsPage({
   }
 
   return (
-    <section className="downloads-page">
-      {canPauseAll || canClearCompleted ? (
-        <div className="downloads-page__actions">
-          {canPauseAll ? (
-            <button
-              className="btn btn-outline btn--compact downloads-toolbar__btn"
-              type="button"
-              onClick={() => void onPauseAll()}
-            >
-              {t('downloads.pauseAll')}
-            </button>
-          ) : null}
-          {canClearCompleted ? (
-            <button
-              className="btn btn-outline btn--compact downloads-toolbar__btn"
-              type="button"
-              onClick={() => void onClearCompleted()}
-            >
-              {t('downloads.clearCompleted')}
-            </button>
-          ) : null}
+    <section className="dl-page">
+      <header className="dl-page__head">
+        <div className="dl-page__titles">
+          <p className="dl-page__label">{t('nav.downloads')}</p>
+          <p className="dl-page__desc">{summary}</p>
         </div>
-      ) : null}
+        {canPauseAll || canClearCompleted ? (
+          <div className="dl-page__actions">
+            {canPauseAll ? (
+              <button
+                type="button"
+                className="set-btn set-btn--secondary"
+                disabled={actionBusyId === '__all__'}
+                onClick={() => void onPauseAll()}
+              >
+                {t('downloads.pauseAll')}
+              </button>
+            ) : null}
+            {canClearCompleted ? (
+              <button
+                type="button"
+                className="set-btn set-btn--secondary"
+                onClick={() => void onClearCompleted()}
+              >
+                {t('downloads.clearCompleted')}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </header>
 
       {sections.length > 0 ? (
-        <div className="downloads-page__sections">
+        <div className="dl-page__sections">
           {sections.map((section) => (
-            <section key={section.key} className="downloads-section">
+            <section key={section.key} className="dl-section">
               {section.title ? (
-                <h2 className="downloads-section__title">{section.title}</h2>
+                <h2 className="dl-section__title">{section.title}</h2>
               ) : null}
-              <ul className="download-list download-list--compact">{section.jobs.map(renderJobRow)}</ul>
+              <ul className="dl-list" role="list">
+                {section.jobs.map(renderJobRow)}
+              </ul>
             </section>
           ))}
         </div>

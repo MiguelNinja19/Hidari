@@ -15,6 +15,7 @@ import {
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { SettingsPage } from './SettingsPage'
 import { SETTING_KEY, speedKeyToBps } from '../../shared/config/appSettings'
+import { HYDRALINKS_SITE_URL } from '../../shared/config/hydraLinks'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { useToast } from '../../shared/components/ToastProvider'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
@@ -194,6 +195,14 @@ export function SettingsTab() {
     }
   }
 
+  const handleOpenHydraLinksSite = async () => {
+    try {
+      await sourcesApi.openExternalUrl(HYDRALINKS_SITE_URL)
+    } catch (error) {
+      showError(formatUserError(error, t('settings.toastOpenHydraLinksError')))
+    }
+  }
+
   const handleSaveInstallSettings = async () => {
     const path = defaultDownloadPath.trim()
     if (!path) {
@@ -290,15 +299,16 @@ export function SettingsTab() {
         addingSource={addingSource}
         sourceUrlInput={sourceUrlInput}
         setSourceUrlInput={setSourceUrlInput}
-        onAddSourceByUrl={handleAddSourceByUrl}
         isSourceEnabled={isSourceEnabled}
         setDefaultDownloadPath={setDefaultDownloadPath}
         setInstallOrganization={setInstallOrganization}
         setAfterInstallAction={setAfterInstallAction}
         handleSelectDefaultPath={handleSelectDefaultPath}
         handleSaveInstallSettings={handleSaveInstallSettings}
-        onImportSource={handleImportSource}
         onOpenCatalogsFolder={handleOpenCatalogsFolder}
+        onAddSourceByUrl={handleAddSourceByUrl}
+        onImportSource={handleImportSource}
+        onOpenHydraLinksSite={handleOpenHydraLinksSite}
         onDeleteSource={handleDeleteSource}
         onSyncSource={handleSyncSource}
         onSyncAllSources={handleSyncAllSources}

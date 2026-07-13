@@ -19,12 +19,13 @@ export function AppShell({ activeTab, activeDownloadsCount, onTabChange, childre
         <section className="main-panel">
           <section
             className={`main-content${
-              activeTab === 'discover' ||
-              activeTab === 'library' ||
-              activeTab === 'downloads' ||
-              activeTab === 'settings'
-                ? ' main-content--wide'
-                : ''
+              activeTab === 'settings' || activeTab === 'downloads'
+                ? ' main-content--full'
+                : activeTab === 'library'
+                  ? ' main-content--library'
+                  : activeTab === 'discover'
+                    ? ' main-content--discover'
+                    : ''
             }`}
           >
             {children}

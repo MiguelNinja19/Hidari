@@ -384,30 +384,60 @@ pub fn score_steam_title_match(steam_title: &str, reference_norm: &str) -> u32 {
     .count() as u32
 }
 
-/// Funde local + API. Se o cache já enche a janela, reserva ~1/3 para títulos só da rede
-/// (evita esconder resultados frescos da API).
+/// Funde local + API. Local tem prioridade; reserva espaço para títulos novos da API.
 fn merge_local_and_api_catalog(
   local: Vec<CatalogGameDto>,
   api: Vec<CatalogGameDto>,
   need: usize,
 ) -> Vec<CatalogGameDto> {
+  fn dedupe_key(game: &CatalogGameDto) -> String {
+    if let Some(group_key) = game
+      .group_key
+      .as_ref()
+      .map(|value| value.trim())
+      .filter(|value| !value.is_empty())
+    {
+      return title::canonical_catalog_group_key(group_key);
+    }
+    title::catalog_game_group_key(&game.title)
+  }
+
   let mut seen: HashSet<String> = HashSet::new();
   let mut local_unique = Vec::new();
   for game in local {
-    if seen.insert(game.title.to_lowercase()) {
-      local_unique.push(game);
+    let key = dedupe_key(&game);
+    if key.is_empty() || !seen.insert(key) {
+      continue;
     }
+    local_unique.push(game);
   }
 
   let mut api_unique = Vec::new();
-  for game in api {
-    if seen.insert(game.title.to_lowercase()) {
-      api_unique.push(game);
+  for mut game in api {
+    if game
+      .group_key
+      .as_ref()
+      .map(|value| value.trim().is_empty())
+      .unwrap_or(true)
+    {
+      let key = title::catalog_game_group_key(&game.title);
+      if !key.is_empty() {
+        game.group_key = Some(key);
+      }
     }
+    let key = dedupe_key(&game);
+    if key.is_empty() || !seen.insert(key) {
+      continue;
+    }
+    api_unique.push(game);
   }
 
+  // Local encheu a página, mas a API trouxe títulos novos → mostrar ambos.
   if local_unique.len() >= need && !api_unique.is_empty() {
-    let reserve = (need / 3).max(3).min(api_unique.len()).min(need);
+    let reserve = ((need + 2) / 3)
+      .max(4)
+      .min(api_unique.len())
+      .min(need.saturating_sub(1).max(1));
     let keep_local = need.saturating_sub(reserve);
     let mut out: Vec<CatalogGameDto> = local_unique.into_iter().take(keep_local).collect();
     out.extend(api_unique.into_iter().take(reserve));
@@ -421,7 +451,7 @@ fn merge_local_and_api_catalog(
 }
 
 /// Tempo máximo a esperar pela API Hydra na pesquisa do Discover.
-/// Local corre em paralelo e a UI pode pintar cache primeiro (`local_only`).
+/// Local primeiro (UI rápida); API completa e grava no cache local.
 const CATALOG_API_CATALOGUE_MS: u64 = 8_000;
 
 pub async fn search_catalog_from_sources(
@@ -445,22 +475,21 @@ pub async fn search_catalog_from_sources(
     return Ok(Vec::new());
   }
 
-  // Janela [0, offset+limit) para fundir local+API sem perder títulos só da rede.
+  // Janela [0, offset+limit): local primeiro; API acrescenta títulos novos e faz cache.
   let need = offset.saturating_add(limit).max(limit);
   let app_bg = app.clone();
   let query_bg = query.to_string();
 
-  let local_fut = tokio::task::spawn_blocking({
+  let local = tokio::task::spawn_blocking({
     let app = app_bg;
     let query = query_bg.clone();
     move || search_catalog_from_sources_sync(&app, &query, 0, need, false)
-  });
+  })
+  .await
+  .map_err(|error| format!("search_catalog_task: {error}"))??;
 
   if local_only {
-    let mut merged = local_fut
-      .await
-      .map_err(|error| format!("search_catalog_task: {error}"))??;
-    let mut page: Vec<CatalogGameDto> = merged.drain(..).skip(offset).take(limit).collect();
+    let mut page: Vec<CatalogGameDto> = local.into_iter().skip(offset).take(limit).collect();
     if attach_covers {
       crate::covers::attach_cover_urls_to_games(app, &mut page);
     }
@@ -478,14 +507,35 @@ pub async fn search_catalog_from_sources(
     .cloned()
     .collect();
 
-  let api_fut = async move {
-    if api_sources.is_empty() {
-      return Vec::new();
-    }
-    let api_future =
-      crate::sources::search_catalog_games_via_api(&api_sources, &query_bg, 0, need);
-    match tokio::time::timeout(Duration::from_millis(CATALOG_API_CATALOGUE_MS), api_future).await
-    {
+  let exclude_keys: HashSet<String> = local
+    .iter()
+    .filter_map(|game| {
+      game
+        .group_key
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(title::canonical_catalog_group_key)
+        .or_else(|| {
+          let key = title::catalog_game_group_key(&game.title);
+          (!key.is_empty()).then_some(key)
+        })
+    })
+    .collect();
+
+  // Sempre consultar a API por títulos NOVOS (já no local ficam em exclude → menos chamadas).
+  let api_games = if api_sources.is_empty() {
+    Vec::new()
+  } else {
+    let api_future = crate::sources::search_catalog_games_via_api(
+      app,
+      &api_sources,
+      &query_bg,
+      0,
+      need.max(12),
+      &exclude_keys,
+    );
+    match tokio::time::timeout(Duration::from_millis(CATALOG_API_CATALOGUE_MS), api_future).await {
       Ok(games) => games,
       Err(_) => {
         eprintln!("hydra_catalogue_search_timeout: query={query_bg}");
@@ -494,13 +544,7 @@ pub async fn search_catalog_from_sources(
     }
   };
 
-  let api_handle = tokio::spawn(api_fut);
-  let local = local_fut
-    .await
-    .map_err(|error| format!("search_catalog_task: {error}"))??;
-  let api_games = api_handle.await.unwrap_or_else(|_| Vec::new());
   let merged = merge_local_and_api_catalog(local, api_games, need);
-
   let mut page: Vec<CatalogGameDto> = merged.into_iter().skip(offset).take(limit).collect();
   if attach_covers {
     crate::covers::attach_cover_urls_to_games(app, &mut page);
@@ -549,7 +593,7 @@ pub async fn resolve_game_genres_batch(
     for title in batch {
       let app = app.clone();
       handles.push(tokio::spawn(async move {
-        let genre = match steam_details::resolve_steam_details_for_app(&app, &title).await {
+        let genre = match steam_details::resolve_steam_details_for_app(&app, &title, None).await {
           Some(details) if !details.genres.is_empty() => details.genres.join(", "),
           _ => String::new(),
         };

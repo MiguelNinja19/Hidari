@@ -5,24 +5,10 @@ type DiscoverGameCardProps = {
   titleAttr?: string
   genre: string
   cover: ReactNode
+  /** Só mostrar o título quando a capa não está disponível. */
+  showTitle?: boolean
   actionLabel: string
   onOpen: () => void
-}
-
-function CtaArrow() {
-  return (
-    <span className="discover-card__cta-arrow" aria-hidden="true">
-      <svg viewBox="0 0 16 16" width="14" height="14" fill="none">
-        <path
-          d="M6 4.5 9.5 8 6 11.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  )
 }
 
 export function DiscoverGameCard({
@@ -30,19 +16,18 @@ export function DiscoverGameCard({
   titleAttr,
   genre: _genre,
   cover,
+  showTitle = false,
   actionLabel,
   onOpen,
 }: DiscoverGameCardProps) {
   const label = titleAttr ?? title
 
   return (
-    <article className="discover-card discover-card--explore" aria-label={label}>
-      <button type="button" className="discover-card__title-btn" onClick={onOpen}>
-        <h3 className="discover-card__title" title={label}>
-          {title}
-        </h3>
-      </button>
-
+    <article
+      className="discover-card discover-card--explore library-card--actionable"
+      aria-label={label}
+      title={label}
+    >
       <div className="discover-card__panel">
         <button
           type="button"
@@ -52,15 +37,13 @@ export function DiscoverGameCard({
         >
           <div className="discover-card__cover">
             <div className="game-card discover-card__game-card">{cover}</div>
+            {showTitle ? (
+              <h3 className="discover-card__title discover-card__title--fallback" title={label}>
+                {title}
+              </h3>
+            ) : null}
           </div>
         </button>
-
-        <div className="discover-card__body">
-          <button type="button" className="discover-card__cta" onClick={onOpen}>
-            <span>{actionLabel}</span>
-            <CtaArrow />
-          </button>
-        </div>
       </div>
     </article>
   )

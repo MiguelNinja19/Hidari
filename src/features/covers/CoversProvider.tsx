@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
 import type { CatalogGame, DownloadJob } from '../../shared/types/contracts'
 import { useGameCovers } from './useGameCovers'
 
@@ -24,16 +24,23 @@ export function CoversProvider({
   children,
 }: CoversProviderProps) {
   const covers = useGameCovers(catalogGames, { eager })
+  const syncJobCoversRef = useRef(covers.syncJobCovers)
+  const resolveCoversBatchRef = useRef(covers.resolveCoversBatch)
+  syncJobCoversRef.current = covers.syncJobCovers
+  resolveCoversBatchRef.current = covers.resolveCoversBatch
+
+  const jobsKey = jobs.map((job) => job.id).join('|')
+  const preloadKey = preloadTitles.join('\0')
 
   useEffect(() => {
     if (jobs.length === 0) return
-    covers.syncJobCovers(jobs)
-  }, [jobs, covers.syncJobCovers])
+    syncJobCoversRef.current(jobs)
+  }, [jobs, jobsKey])
 
   useEffect(() => {
     if (preloadTitles.length === 0) return
-    covers.resolveCoversBatch(preloadTitles)
-  }, [preloadTitles, covers.resolveCoversBatch])
+    resolveCoversBatchRef.current(preloadTitles)
+  }, [preloadKey, preloadTitles])
 
   return <CoversContext.Provider value={covers}>{children}</CoversContext.Provider>
 }

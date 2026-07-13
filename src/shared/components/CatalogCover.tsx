@@ -13,25 +13,22 @@ type CatalogCoverProps = {
   onLocalCoverError?: (title: string) => void
 }
 
-/// Prioriza a URL remota (CDN) para exibição instantânea, igual ao Hydra Launcher —
-/// o cache local só assume a frente quando já está confirmado em disco (`cached`),
-/// virando uma otimização em segundo plano em vez de bloquear a exibição da capa.
+/**
+ * Remoto primeiro (CDN) para paint estável.
+ * Local só como fallback — nunca promove local por cima de um remoto já ok
+ * (evita o “tikar” remoto→local).
+ */
 function buildSourceList(
   localSrc: string | null,
   localSkipped: boolean,
   remoteCandidates: string[],
-  cached: boolean,
 ): string[] {
   const sources: string[] = []
-  const hasUsableLocal = Boolean(localSrc) && !localSkipped
-  if (cached && hasUsableLocal) {
-    sources.push(localSrc as string)
-  }
   for (const url of remoteCandidates) {
     if (!sources.includes(url)) sources.push(url)
   }
-  if (hasUsableLocal && !sources.includes(localSrc as string)) {
-    sources.push(localSrc as string)
+  if (localSrc && !localSkipped && !sources.includes(localSrc)) {
+    sources.push(localSrc)
   }
   return sources
 }
@@ -41,7 +38,6 @@ function CatalogCoverInner({
   coverUrl,
   localPath,
   priority = false,
-  cached = false,
   status = 'idle',
   onLocalCoverError,
 }: CatalogCoverProps) {
@@ -57,68 +53,42 @@ function CatalogCoverInner({
   const [failed, setFailed] = useState(false)
   const committedSrcRef = useRef<string | null>(null)
   const titleKeyRef = useRef(title)
+  const coverUrlRef = useRef(coverUrl)
+  const reportedLocalErrorRef = useRef(false)
 
   const sources = useMemo(
-    () => buildSourceList(localSrc, localSkipped, remoteCandidates, cached),
-    [localSrc, localSkipped, remoteCandidates, cached],
+    () => buildSourceList(localSrc, localSkipped, remoteCandidates),
+    [localSrc, localSkipped, remoteCandidates],
   )
 
   const activeSrc = sources[sourceIndex] ?? null
-  const isCachedLocal = Boolean(cached && localSrc && activeSrc === localSrc)
   const isRemote = Boolean(activeSrc?.startsWith('http://') || activeSrc?.startsWith('https://'))
 
   useEffect(() => {
-    if (titleKeyRef.current === title) return
+    const titleChanged = titleKeyRef.current !== title
+    const urlChanged = coverUrlRef.current !== coverUrl
     titleKeyRef.current = title
+    coverUrlRef.current = coverUrl
+    if (!titleChanged && !urlChanged) return
+
     setLocalSkipped(false)
     setSourceIndex(0)
     setLoaded(false)
     setFailed(false)
     committedSrcRef.current = null
-  }, [title])
+    reportedLocalErrorRef.current = false
+  }, [title, coverUrl])
 
   useEffect(() => {
+    // Novo path local: só reativa fallback; não reinicia se remoto já está ok.
     setLocalSkipped(false)
-    setSourceIndex(0)
-  }, [localPath])
-
-  useEffect(() => {
-    if (!localSrc || localSkipped || !cached) return
-    if (sources[0] !== localSrc) return
-    if (sourceIndex === 0 && activeSrc === localSrc && (loaded || isCachedLocal)) return
-
-    if (cached || isCachedLocal) {
-      setSourceIndex(0)
-      setLoaded(true)
-      setFailed(false)
-      committedSrcRef.current = localSrc
+    reportedLocalErrorRef.current = false
+    if (committedSrcRef.current && !committedSrcRef.current.startsWith('asset:')) {
       return
     }
-
-    const probe = new Image()
-    probe.onload = () => {
-      setSourceIndex(0)
-      setLoaded(true)
-      setFailed(false)
-      committedSrcRef.current = localSrc
-    }
-    probe.onerror = () => {
-      setLocalSkipped(true)
-      onLocalCoverError?.(title)
-    }
-    probe.src = localSrc
-  }, [
-    activeSrc,
-    cached,
-    isCachedLocal,
-    loaded,
-    localSkipped,
-    localSrc,
-    onLocalCoverError,
-    sourceIndex,
-    sources,
-    title,
-  ])
+    if (!localSrc) return
+    // Se ainda não há remoto commitado e a lista começa no local, ok.
+  }, [localPath, localSrc])
 
   const handleLoad = useCallback(() => {
     if (activeSrc) committedSrcRef.current = activeSrc
@@ -129,31 +99,34 @@ function CatalogCoverInner({
   const handleError = useCallback(() => {
     if (localSrc && activeSrc === localSrc) {
       setLocalSkipped(true)
-      onLocalCoverError?.(title)
-      if (sourceIndex + 1 < sources.length) {
-        setSourceIndex((idx) => idx + 1)
-        setLoaded(Boolean(committedSrcRef.current))
-        return
+      if (!reportedLocalErrorRef.current) {
+        reportedLocalErrorRef.current = true
+        onLocalCoverError?.(title)
       }
     }
 
     if (sourceIndex + 1 < sources.length) {
       setSourceIndex((idx) => idx + 1)
+      // Mantém a imagem anterior visível enquanto tenta o próximo candidato.
       setLoaded(Boolean(committedSrcRef.current))
+      return
+    }
+
+    if (committedSrcRef.current) {
+      // Já mostrou algo antes — não apaga para “?”.
+      setFailed(false)
+      setLoaded(true)
       return
     }
 
     setFailed(true)
     setLoaded(false)
-    committedSrcRef.current = null
   }, [activeSrc, localSrc, onLocalCoverError, sourceIndex, sources.length, title])
 
   const showImage = Boolean(activeSrc) && !failed
   const showLoaded =
     showImage &&
-    (loaded ||
-      isCachedLocal ||
-      (committedSrcRef.current != null && activeSrc === committedSrcRef.current))
+    (loaded || (committedSrcRef.current != null && activeSrc === committedSrcRef.current))
   const showSkeleton = showImage && !showLoaded && !isRemote
 
   if (!showImage) {
@@ -174,7 +147,7 @@ function CatalogCoverInner({
     <div className="game-card__media">
       {!showSkeleton ? null : <div className="game-card__cover-empty" aria-hidden="true" />}
       <img
-        className={`game-card__cover${showLoaded ? ' game-card__cover--loaded' : ''}${isCachedLocal ? ' game-card__cover--cached' : ''}`}
+        className={`game-card__cover${showLoaded ? ' game-card__cover--loaded' : ''}`}
         src={activeSrc!}
         alt=""
         loading={priority ? 'eager' : 'lazy'}

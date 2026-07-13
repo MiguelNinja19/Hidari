@@ -47,6 +47,25 @@ Settings → Discover → Downloads → Library → Play
 
 ---
 
+## How to add sources
+
+Sources are Hydra-style `.json` catalogs (HydraLinks). Without at least one **active** source, Discover search stays empty.
+
+1. Open **Settings** → section **Catalog sources**.
+2. Click **Add source** to open the modal — then **Open sources** to browse [library.hydra.wiki/sources](https://library.hydra.wiki/sources/) and copy a source `.json` link.
+3. Add it in one of two ways:
+   - **URL** — paste the link and click **Add**.
+   - **File** — click **Import .json** and choose a local catalog (it is copied into the app cache; you can delete the original afterward).
+4. Leave the source **on** (switch). Only enabled sources are searched.
+5. If the game count looks empty, click **Sync** (or **Sync all**).
+
+Browse sources: [https://library.hydra.wiki/sources/](https://library.hydra.wiki/sources/).
+Public JSON catalogs are typically under `https://hydralinks.cloud/sources/…`.
+
+Migrating from Hydra Launcher: see [getting-started.md](./docs/getting-started.md) (`scripts/read-hydra-sources.mjs`).
+
+---
+
 ## Quick start
 
 **Prerequisites:** Node.js 18+, Rust 1.77+, Windows SDK — see [Tauri](https://v2.tauri.app/start/prerequisites/).

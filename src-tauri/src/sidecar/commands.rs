@@ -7,8 +7,13 @@ use crate::dto::{
 };
 use crate::launch;
 use crate::launch_errors;
+use crate::library::cleanup_torrent_sidecar_files;
 use crate::library::roots::{
   launch_extra_roots, open_path_in_shell, read_library_launch_exe, upsert_library_launch_exe,
+};
+use crate::queue::persist::{
+  delete_persisted_queue_job, update_persisted_queue_status, upsert_persisted_queue_job,
+  PersistedQueueJob,
 };
 use crate::sources::{enrich_magnet_url_with_title, validate_job_url};
 use crate::state::SidecarState;
@@ -84,6 +89,55 @@ pub async fn sidecar_enqueue_job(
     .await
     .map_err(|e| format!("sidecar_parse_failed: {e}"))?;
 
+  if let (Some(id), Some(title)) = (
+    job.get("id").and_then(|v| v.as_str()),
+    job.get("title").and_then(|v| v.as_str()).or(Some(payload.title.as_str())),
+  ) {
+    if let Ok(conn) = open_database_connection(&app) {
+      let persisted = PersistedQueueJob {
+        id: id.to_string(),
+        title: title.to_string(),
+        url: job
+          .get("url")
+          .and_then(|v| v.as_str())
+          .unwrap_or(job_url.as_str())
+          .to_string(),
+        dest_path: job
+          .get("destPath")
+          .or_else(|| job.get("dest_path"))
+          .and_then(|v| v.as_str())
+          .unwrap_or(dest_path.as_str())
+          .to_string(),
+        status: job
+          .get("status")
+          .and_then(|v| v.as_str())
+          .unwrap_or("pending")
+          .to_string(),
+        priority: job
+          .get("priority")
+          .and_then(|v| v.as_i64())
+          .unwrap_or(payload.priority.unwrap_or(0) as i64) as i32,
+        progress: job
+          .get("progress")
+          .and_then(|v| v.as_f64())
+          .map(|v| v.round() as i64)
+          .unwrap_or(0),
+        bytes_downloaded: job
+          .get("bytesDownloaded")
+          .or_else(|| job.get("bytes_downloaded"))
+          .and_then(|v| v.as_i64())
+          .unwrap_or(0),
+        total_bytes: job
+          .get("totalBytes")
+          .or_else(|| job.get("total_bytes"))
+          .and_then(|v| v.as_i64())
+          .unwrap_or(0),
+        error_msg: None,
+      };
+      let _ = upsert_persisted_queue_job(&conn, &persisted);
+    }
+  }
+
   if let Some(cover_url) = payload
     .cover_url
     .as_ref()
@@ -141,6 +195,9 @@ pub async fn sidecar_pause_job(app: AppHandle, id: String) -> Result<(), String>
     let body = response.text().await.unwrap_or_default();
     return Err(format!("sidecar_pause_failed: {status} {body}"));
   }
+  if let Ok(conn) = open_database_connection(&app) {
+    let _ = update_persisted_queue_status(&conn, &id, "paused", None);
+  }
   Ok(())
 }
 
@@ -159,11 +216,15 @@ pub async fn sidecar_resume_job(app: AppHandle, id: String) -> Result<(), String
     let body = response.text().await.unwrap_or_default();
     return Err(format!("sidecar_resume_failed: {status} {body}"));
   }
+  if let Ok(conn) = open_database_connection(&app) {
+    let _ = update_persisted_queue_status(&conn, &id, "pending", None);
+  }
   Ok(())
 }
 
 #[tauri::command]
 pub async fn sidecar_cancel_job(app: AppHandle, id: String) -> Result<(), String> {
+  let job_snapshot = fetch_sidecar_job(&app, &id).await.ok();
   let port = ensure_sidecar_running(app.clone()).await?;
   let client = reqwest::Client::new();
   let response = client
@@ -187,6 +248,11 @@ pub async fn sidecar_cancel_job(app: AppHandle, id: String) -> Result<(), String
       "UPDATE download_jobs SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
       params![id],
     );
+    let _ = delete_persisted_queue_job(&conn, &id);
+  }
+
+  if let Some(job) = job_snapshot {
+    cleanup_torrent_sidecar_files(&job.dest_path, &job.title);
   }
 
   Ok(())
@@ -194,6 +260,8 @@ pub async fn sidecar_cancel_job(app: AppHandle, id: String) -> Result<(), String
 
 #[tauri::command]
 pub async fn remove_job_from_library(app: AppHandle, id: String) -> Result<(), String> {
+  let job_snapshot = fetch_sidecar_job(&app, &id).await.ok();
+
   if let Ok(port) = ensure_sidecar_running(app.clone()).await {
     let client = reqwest::Client::new();
     let _ = client
@@ -210,6 +278,12 @@ pub async fn remove_job_from_library(app: AppHandle, id: String) -> Result<(), S
   conn
     .execute("DELETE FROM download_jobs WHERE id = ?1", params![id])
     .map_err(|error| format!("could_not_remove_job: {error}"))?;
+  let _ = delete_persisted_queue_job(&conn, &id);
+
+  if let Some(job) = job_snapshot {
+    cleanup_torrent_sidecar_files(&job.dest_path, &job.title);
+  }
+
   Ok(())
 }
 

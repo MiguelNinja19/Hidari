@@ -1,0 +1,353 @@
+/* ── Responsividade (carrega por último — sobrepõe layout/App) ─────────── */
+
+/* Sidebar em rail de ícones */
+@media (max-width: 1100px) {
+  .nova-shell {
+    grid-template-columns: 64px minmax(0, 1fr) !important;
+  }
+
+  .app-frame .sidebar {
+    min-height: 100% !important;
+    align-self: stretch;
+    padding: 12px 8px;
+    gap: 8px;
+  }
+
+  .sidebar__nav {
+    gap: 4px;
+  }
+
+  .sidebar-link {
+    position: relative;
+    justify-content: center;
+    padding: 10px 8px;
+    gap: 0;
+  }
+
+  .sidebar-link__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .sidebar-link__badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 1rem;
+    height: 1rem;
+    font-size: 0.5rem;
+  }
+
+  .main-panel {
+    padding: 12px 14px 16px;
+  }
+
+  .discover-detail {
+    max-width: 100%;
+  }
+
+  .discover-detail__carousel-frame,
+  .discover-detail__carousel-thumbs {
+    max-width: 100%;
+  }
+}
+
+/* Shell em coluna: nav no topo */
+@media (max-width: 780px) {
+  .nova-shell {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .app-frame .sidebar {
+    min-height: auto !important;
+    align-self: stretch;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    padding: 8px 10px;
+    gap: 0;
+    border-right: none;
+    border-bottom: var(--border-thin, 1px) solid var(--sidebar-edge);
+    position: static;
+  }
+
+  .sidebar__nav {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 100%;
+    justify-content: space-around;
+    gap: 4px;
+  }
+
+  .sidebar-link {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding: 10px 6px;
+  }
+
+  .sidebar-link__badge {
+    top: 2px;
+    right: 6px;
+  }
+
+  .main-panel {
+    padding: 10px 12px 14px;
+  }
+
+  .titlebar__btn {
+    width: 40px;
+  }
+
+  .page-toolbar--discover,
+  .page-toolbar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .browse-search--soft {
+    width: 100%;
+  }
+
+  .browse-search__submit {
+    flex-shrink: 0;
+  }
+
+  .discover-detail__hero {
+    gap: 0;
+  }
+
+  .discover-detail__title {
+    font-size: 1.25rem;
+  }
+
+  .discover-detail__synopsis {
+    font-size: 0.875rem;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+  }
+
+  .discover-detail__main {
+    grid-template-columns: 1fr;
+    max-width: none;
+    gap: 14px;
+  }
+
+  .discover-detail__media {
+    max-width: none;
+  }
+
+  .discover-detail__about {
+    max-width: none;
+  }
+
+  .discover-detail__shot {
+    max-height: min(34vh, 280px);
+  }
+
+  .discover-detail__option {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .discover-detail__option-action {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .discover-detail__lightbox {
+    padding: 12px 10px 16px;
+  }
+
+  .discover-detail__lightbox-img {
+    max-height: min(68vh, 640px);
+  }
+
+  .discover-detail__lightbox-nav {
+    width: 34px;
+    height: 34px;
+  }
+
+  .discover-detail__lightbox-nav--prev {
+    left: 6px;
+  }
+
+  .discover-detail__lightbox-nav--next {
+    right: 6px;
+  }
+
+  .discover-detail__lightbox-thumb {
+    width: 48px;
+  }
+
+  .discover-grid,
+  .library-grid {
+    grid-template-columns: repeat(auto-fill, 140px);
+    gap: 12px 10px;
+    justify-content: start;
+  }
+
+  .discover-grid__item,
+  .library-grid__item,
+  .discover-card,
+  .library-card {
+    max-width: none;
+  }
+
+  .library-toolbar,
+  .downloads-page__header,
+  .downloads-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-stack,
+  .settings-stack__row,
+  .settings-field-grid,
+  .settings-sources,
+  .settings-sources--cards {
+    grid-template-columns: 1fr;
+  }
+
+  .download-row {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .download-row__actions {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+  }
+}
+
+/* Janela muito estreita */
+@media (max-width: 560px) {
+  .titlebar {
+    --titlebar-height: 36px;
+  }
+
+  .titlebar__title {
+    font-size: 1rem;
+  }
+
+  .titlebar__btn {
+    width: 36px;
+  }
+
+  .main-panel {
+    padding: 8px 10px 12px;
+  }
+
+  .discover-detail__hero {
+    gap: 12px;
+  }
+
+  .discover-detail__title {
+    font-size: 1.125rem;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .discover-detail__carousel-thumb {
+    width: 56px;
+  }
+
+  .discover-detail__carousel-nav {
+    width: 30px;
+    height: 30px;
+  }
+
+  .discover-detail__lightbox-footer {
+    max-width: 100%;
+  }
+
+  .browse-search__submit {
+    padding-inline: 10px;
+    font-size: 0.75rem;
+  }
+
+  .discover-grid,
+  .library-grid {
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    gap: 10px 8px;
+  }
+
+  .settings-nav {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-height: 640px) {
+  .discover-detail__lightbox-img {
+    max-height: min(62vh, 480px);
+  }
+
+  .discover-detail__shot {
+    max-height: min(30vh, 240px);
+  }
+}
+
+/* Conteúdo: Explorar/Biblioteca/Config/Downloads em largura total */
+.main-content,
+.main-content--wide {
+  width: 100%;
+  max-width: 1320px;
+  margin-inline: auto;
+}
+
+.main-content--discover,
+.main-content--library {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+.discover-detail {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+.discover-grid,
+.library-grid {
+  justify-content: start;
+}
+
+.main-content--full {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content--full > div {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.set-page,
+.dl-page {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  flex: 1;
+  min-height: 0;
+}

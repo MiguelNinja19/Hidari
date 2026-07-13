@@ -20,6 +20,11 @@ export function CoverWarmGridItem({
   const ref = useRef<HTMLLIElement>(null)
   const warmedRef = useRef(false)
   const lookupRef = useRef(false)
+  const warmCoverRef = useRef(warmCover)
+  const onNeedsCoverRef = useRef(onNeedsCover)
+
+  warmCoverRef.current = warmCover
+  onNeedsCoverRef.current = onNeedsCover
 
   useEffect(() => {
     warmedRef.current = false
@@ -37,21 +42,21 @@ export function CoverWarmGridItem({
 
         if (url && !warmedRef.current) {
           warmedRef.current = true
-          warmCover(title, url)
+          warmCoverRef.current(title, url)
           return
         }
 
-        if (!url && onNeedsCover && !lookupRef.current) {
+        if (!url && onNeedsCoverRef.current && !lookupRef.current) {
           lookupRef.current = true
-          onNeedsCover(title)
+          onNeedsCoverRef.current(title)
         }
       },
-      { rootMargin: '600px', threshold: 0.01 },
+      { rootMargin: '200px', threshold: 0.01 },
     )
 
     observer.observe(element)
     return () => observer.disconnect()
-  }, [title, coverUrl, warmCover, onNeedsCover])
+  }, [title, coverUrl])
 
   return (
     <li ref={ref} className={className}>

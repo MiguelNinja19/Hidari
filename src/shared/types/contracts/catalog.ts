@@ -36,6 +36,8 @@ export type GetGameDetailInput = {
   title?: string
   /** When false/omitted, skip Steam synopsis (faster picker). */
   includeSteam?: boolean
+  /** UI language (`en` / `es` / `ru` / `pt-BR`) for Steam synopsis. */
+  language?: string
 }
 
 export type GameDetail = {
