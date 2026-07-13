@@ -193,10 +193,10 @@ export function libraryStatusMeta(
 
   if (!resolved) {
     if (item.kind === 'folder') {
-      return { labelKey: 'library.status.verifying', tone: 'idle' }
+      return { labelKey: 'library.status.verifying', tone: 'verifying' }
     }
     if (item.kind === 'job' && item.job && isJobFinished(item.job)) {
-      return { labelKey: 'library.status.verifying', tone: 'idle' }
+      return { labelKey: 'library.status.verifying', tone: 'verifying' }
     }
   }
 
@@ -204,7 +204,7 @@ export function libraryStatusMeta(
     return { labelKey: 'library.status.install', tone: 'waiting' }
   }
   if (state?.needsExtraction) {
-    return { labelKey: 'library.status.preparing', tone: 'idle' }
+    return { labelKey: 'library.status.preparing', tone: 'verifying' }
   }
   if (state?.hasGame || state?.playable || isPlayableLibraryItem(item, jobs, pathStateByKey)) {
     return { labelKey: 'library.status.play', tone: 'ready' }

@@ -9,6 +9,7 @@ import {
   pickOptionVariantLabel,
 } from '../../shared/utils/pickDownloadOptions'
 import type { CatalogGame, DownloadOption } from '../../shared/types/contracts'
+import { coverUrlFromScreenshots } from '../../shared/utils/coverCandidates'
 
 const MAX_SHOTS = 8
 const MAX_GENRES = 8
@@ -55,6 +56,10 @@ export function DiscoverGameDetailPage({
   const shots = useMemo(
     () => screenshots.filter((url) => url.trim().length > 0).slice(0, MAX_SHOTS),
     [screenshots],
+  )
+  const downloadCoverUrl = useMemo(
+    () => coverUrlFromScreenshots(game.coverUrl, shots),
+    [game.coverUrl, shots],
   )
   const hasSynopsis = Boolean(synopsis?.trim())
   const hasMedia = shots.length > 0
@@ -148,7 +153,7 @@ export function DiscoverGameDetailPage({
           <span className="discover-detail__back-arrow" aria-hidden="true">
             ←
           </span>
-          {t('discover.backToResults')}
+          {t('common.back')}
         </button>
       </header>
 
@@ -305,7 +310,7 @@ export function DiscoverGameDetailPage({
                           type="button"
                           className="discover-detail__option-action"
                           disabled={busy}
-                          onClick={() => void onDownload(opt.title, opt.url, game.coverUrl)}
+                          onClick={() => void onDownload(opt.title, opt.url, downloadCoverUrl)}
                         >
                           {busy ? '…' : t('common.download')}
                         </button>

@@ -39,7 +39,6 @@ export function SettingsTab() {
     setDownloadSpeedLimit,
     disabledSourceIds,
     setDisabledSourceIds,
-    disabledSourcesReady,
   } = useAppSettings()
   const sources = useAppSelector((state) => state.sources.items)
   const sourcesLoading = useAppSelector((state) => state.sources.loading)
@@ -55,8 +54,6 @@ export function SettingsTab() {
   const { showError, showSuccess } = useToast()
 
   useErrorToast(sourcesError, t('settings.toastSourcesLoadError'))
-
-  const isSourceEnabled = (sourceId: string) => !disabledSourceIds.includes(sourceId)
 
   useEffect(() => {
     let cancelled = false
@@ -258,22 +255,6 @@ export function SettingsTab() {
     }
   }
 
-  const handleToggleSource = async (sourceId: string) => {
-    if (!disabledSourcesReady) return
-    const previous = disabledSourceIds
-    const isDisabled = previous.includes(sourceId)
-    const next = isDisabled
-      ? previous.filter((x) => x !== sourceId)
-      : [...previous, sourceId]
-    setDisabledSourceIds(next)
-    try {
-      await sourcesApi.setAppSetting(SETTING_KEY.disabledHydraSourceIds, JSON.stringify(next))
-    } catch (error) {
-      setDisabledSourceIds(previous)
-      showError(formatUserError(error, t('settings.toastSourcesSaveError')))
-    }
-  }
-
   const handleToggleSeed = async (enabled: boolean) => {
     setSeedTorrentsEnabled(enabled)
     try {
@@ -299,7 +280,6 @@ export function SettingsTab() {
         addingSource={addingSource}
         sourceUrlInput={sourceUrlInput}
         setSourceUrlInput={setSourceUrlInput}
-        isSourceEnabled={isSourceEnabled}
         setDefaultDownloadPath={setDefaultDownloadPath}
         setInstallOrganization={setInstallOrganization}
         setAfterInstallAction={setAfterInstallAction}
@@ -315,11 +295,9 @@ export function SettingsTab() {
         deletingSourceId={deletingSourceId}
         syncingSourceId={syncingSourceId}
         syncingAllSources={syncingAllSources}
-        handleToggleSource={handleToggleSource}
         handleToggleRemoveTemp={handleToggleRemoveTemp}
         handleToggleSeed={handleToggleSeed}
         handleSpeedLimitChange={handleSpeedLimitChange}
-        disabledSourcesReady={disabledSourcesReady}
       />
       <ConfirmDialog
         open={pendingDelete !== null}

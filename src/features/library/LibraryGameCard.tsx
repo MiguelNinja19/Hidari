@@ -13,6 +13,8 @@ type LibraryGameCardProps = {
   title: string
   titleAttr?: string
   metaLine?: string | null
+  /** Barra indeterminada (verificar / instalar) para não parecer que a app travou. */
+  pendingActivity?: boolean
   cover: ReactNode
   /** Só mostrar o título quando a capa não está disponível. */
   showTitle?: boolean
@@ -26,6 +28,7 @@ export function LibraryGameCard({
   title,
   titleAttr,
   metaLine,
+  pendingActivity = false,
   cover,
   showTitle = false,
   primaryAction = null,
@@ -98,11 +101,13 @@ export function LibraryGameCard({
         'library-card',
         primaryAction ? 'library-card--actionable' : '',
         menuOpen ? 'library-card--menu-open' : '',
+        pendingActivity ? 'library-card--pending' : '',
       ]
         .filter(Boolean)
         .join(' ')}
       aria-label={label}
       title={label}
+      aria-busy={pendingActivity || undefined}
       onContextMenu={openContextMenu}
     >
       <div className="discover-card__panel">
@@ -122,6 +127,11 @@ export function LibraryGameCard({
                 <h3 className="discover-card__title discover-card__title--fallback">{title}</h3>
               ) : null}
               {metaLine ? <span className="discover-card__badge">{metaLine}</span> : null}
+              {pendingActivity ? (
+                <div className="library-card__progress" aria-hidden>
+                  <span className="library-card__progress-fill" />
+                </div>
+              ) : null}
             </div>
           </button>
         ) : (
@@ -131,6 +141,11 @@ export function LibraryGameCard({
               <h3 className="discover-card__title discover-card__title--fallback">{title}</h3>
             ) : null}
             {metaLine ? <span className="discover-card__badge">{metaLine}</span> : null}
+            {pendingActivity ? (
+              <div className="library-card__progress" aria-hidden>
+                <span className="library-card__progress-fill" />
+              </div>
+            ) : null}
           </div>
         )}
       </div>
@@ -151,29 +166,33 @@ export function LibraryGameCard({
                 action.variant === 'danger')
 
             return (
-              <button
-                key={action.id}
-                type="button"
-                role="menuitem"
-                className={[
-                  'library-card__menu-item',
-                  showDivider ? 'library-card__menu-item--divided' : '',
-                  action.variant === 'danger' ? 'library-card__menu-item--danger' : '',
-                  action.variant === 'primary' ? 'library-card__menu-item--primary' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                title={action.title ?? action.label}
-                disabled={action.disabled}
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  setMenuOpen(false)
-                  action.onClick()
-                }}
-              >
-                {action.label}
-              </button>
+              <div key={action.id} className="library-card__menu-block">
+                {showDivider ? (
+                  <div className="library-card__menu-sep" role="separator" />
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={[
+                    'library-card__menu-item',
+                    action.variant === 'danger' ? 'library-card__menu-item--danger' : '',
+                    action.variant === 'primary' ? 'library-card__menu-item--primary' : '',
+                    action.variant === 'outline' ? 'library-card__menu-item--quiet' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  title={action.title ?? action.label}
+                  disabled={action.disabled}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setMenuOpen(false)
+                    action.onClick()
+                  }}
+                >
+                  <span className="library-card__menu-item-label">{action.label}</span>
+                </button>
+              </div>
             )
           })}
         </div>

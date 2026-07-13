@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   APP_LANGUAGES,
@@ -25,7 +25,6 @@ type SettingsPageProps = {
   addingSource: boolean
   sourceUrlInput: string
   setSourceUrlInput: (value: string) => void
-  isSourceEnabled: (sourceId: string) => boolean
   setDefaultDownloadPath: (value: string) => void
   setInstallOrganization: (value: string) => void
   setAfterInstallAction: (value: string) => void
@@ -41,11 +40,48 @@ type SettingsPageProps = {
   deletingSourceId: string | null
   syncingSourceId: string | null
   syncingAllSources: boolean
-  handleToggleSource: (sourceId: string) => void | Promise<void>
   handleToggleRemoveTemp: (next: boolean) => Promise<void>
   handleToggleSeed: (enabled: boolean) => Promise<void>
   handleSpeedLimitChange: (value: string) => Promise<void>
-  disabledSourcesReady?: boolean
+}
+
+function stopSummaryToggle(event: ReactMouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function SettingsSection({
+  id,
+  title,
+  description,
+  actions,
+  children,
+  defaultOpen = true,
+}: {
+  id: string
+  title: string
+  description: string
+  actions?: ReactNode
+  children: ReactNode
+  defaultOpen?: boolean
+}) {
+  return (
+    <details id={id} className="set-card" defaultOpen={defaultOpen}>
+      <summary className="set-card__summary">
+        <div className="set-card__titles">
+          <p className="set-card__label">{title}</p>
+          <p className="set-card__desc">{description}</p>
+        </div>
+        {actions ? (
+          <div className="set-card__actions" onClick={stopSummaryToggle}>
+            {actions}
+          </div>
+        ) : null}
+        <span className="set-card__chevron" aria-hidden />
+      </summary>
+      <div className="set-card__body">{children}</div>
+    </details>
+  )
 }
 
 export function SettingsPage({
@@ -61,7 +97,6 @@ export function SettingsPage({
   addingSource,
   sourceUrlInput,
   setSourceUrlInput,
-  isSourceEnabled,
   handleSelectDefaultPath,
   handleSaveInstallSettings,
   onOpenCatalogsFolder,
@@ -74,14 +109,12 @@ export function SettingsPage({
   deletingSourceId,
   syncingSourceId,
   syncingAllSources,
-  handleToggleSource,
   handleToggleRemoveTemp,
   handleToggleSeed,
   handleSpeedLimitChange,
   setDefaultDownloadPath,
   setInstallOrganization,
   setAfterInstallAction,
-  disabledSourcesReady = true,
 }: SettingsPageProps) {
   const { t, i18n } = useTranslation()
   const [addMethod, setAddMethod] = useState<AddMethod>('url')
@@ -100,91 +133,82 @@ export function SettingsPage({
   return (
     <section className="set-page">
       <div className="set-grid">
-        <article id="settings-language" className="set-card">
-          <header className="set-card__head">
-            <div className="set-card__titles">
-              <p className="set-card__label">{t('settings.languageTitle')}</p>
-              <p className="set-card__desc">{t('settings.languageDesc')}</p>
+        <SettingsSection
+          id="settings-language"
+          title={t('settings.languageTitle')}
+          description={t('settings.languageDesc')}
+        >
+          <label className="set-field">
+            <span className="set-field__label">{t('settings.languageLabel')}</span>
+            <select
+              className="set-input set-input--select"
+              value={currentLanguage}
+              aria-label={t('settings.languageTitle')}
+              onChange={(event) => {
+                const next = event.target.value
+                if (isAppLanguage(next)) void setAppLanguage(next)
+              }}
+            >
+              {APP_LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.nativeLabel}
+                </option>
+              ))}
+            </select>
+          </label>
+        </SettingsSection>
+
+        <SettingsSection
+          id="settings-downloads"
+          title={t('settings.downloadsTitle')}
+          description={t('settings.downloadsDesc')}
+        >
+          <label className="set-field set-field--row">
+            <span className="set-field__label">{t('settings.speedLimit')}</span>
+            <select
+              className="set-input set-input--select set-input--narrow"
+              value={downloadSpeedLimit}
+              onChange={(event) => void handleSpeedLimitChange(event.target.value)}
+            >
+              <option value="ilimitado">{t('settings.speedUnlimited')}</option>
+              <option value="50mb">50 MB/s</option>
+              <option value="20mb">20 MB/s</option>
+              <option value="10mb">10 MB/s</option>
+            </select>
+          </label>
+
+          <div className="set-switch">
+            <div className="set-switch__copy">
+              <span className="set-switch__label">{t('settings.removeTemp')}</span>
+              <span className="set-switch__hint">{t('settings.removeTempHint')}</span>
             </div>
-          </header>
-          <div className="set-card__body">
-            <label className="set-field">
-              <span className="set-field__label">{t('settings.languageLabel')}</span>
-              <select
-                className="set-input set-input--select"
-                value={currentLanguage}
-                aria-label={t('settings.languageTitle')}
-                onChange={(event) => {
-                  const next = event.target.value
-                  if (isAppLanguage(next)) void setAppLanguage(next)
-                }}
-              >
-                {APP_LANGUAGES.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {lang.nativeLabel}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <button
+              type="button"
+              className={removeTemporaryFiles ? 'switch-btn switch-btn--on' : 'switch-btn'}
+              aria-label={t('settings.removeTempAria')}
+              onClick={() => void handleToggleRemoveTemp(!removeTemporaryFiles)}
+            />
           </div>
-        </article>
 
-        <article id="settings-downloads" className="set-card">
-          <header className="set-card__head">
-            <div className="set-card__titles">
-              <p className="set-card__label">{t('settings.downloadsTitle')}</p>
-              <p className="set-card__desc">{t('settings.downloadsDesc')}</p>
+          <div className="set-switch">
+            <div className="set-switch__copy">
+              <span className="set-switch__label">{t('settings.seedAfter')}</span>
+              <span className="set-switch__hint">{t('settings.seedHint')}</span>
             </div>
-          </header>
-          <div className="set-card__body">
-            <label className="set-field set-field--row">
-              <span className="set-field__label">{t('settings.speedLimit')}</span>
-              <select
-                className="set-input set-input--select set-input--narrow"
-                value={downloadSpeedLimit}
-                onChange={(event) => void handleSpeedLimitChange(event.target.value)}
-              >
-                <option value="ilimitado">{t('settings.speedUnlimited')}</option>
-                <option value="50mb">50 MB/s</option>
-                <option value="20mb">20 MB/s</option>
-                <option value="10mb">10 MB/s</option>
-              </select>
-            </label>
-
-            <div className="set-switch">
-              <div className="set-switch__copy">
-                <span className="set-switch__label">{t('settings.removeTemp')}</span>
-                <span className="set-switch__hint">{t('settings.removeTempHint')}</span>
-              </div>
-              <button
-                type="button"
-                className={removeTemporaryFiles ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                aria-label={t('settings.removeTempAria')}
-                onClick={() => void handleToggleRemoveTemp(!removeTemporaryFiles)}
-              />
-            </div>
-
-            <div className="set-switch">
-              <div className="set-switch__copy">
-                <span className="set-switch__label">{t('settings.seedAfter')}</span>
-                <span className="set-switch__hint">{t('settings.seedHint')}</span>
-              </div>
-              <button
-                type="button"
-                className={seedTorrentsEnabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                aria-label={t('settings.seedAria')}
-                onClick={() => void handleToggleSeed(!seedTorrentsEnabled)}
-              />
-            </div>
+            <button
+              type="button"
+              className={seedTorrentsEnabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
+              aria-label={t('settings.seedAria')}
+              onClick={() => void handleToggleSeed(!seedTorrentsEnabled)}
+            />
           </div>
-        </article>
+        </SettingsSection>
 
-        <article id="settings-folder" className="set-card set-card--wide">
-          <header className="set-card__head">
-            <div className="set-card__titles">
-              <p className="set-card__label">{t('settings.installTitle')}</p>
-              <p className="set-card__desc">{t('settings.installDesc')}</p>
-            </div>
+        <SettingsSection
+          id="settings-folder"
+          title={t('settings.installTitle')}
+          description={t('settings.installDesc')}
+          actions={
             <button
               className="set-btn set-btn--primary set-card__action"
               type="button"
@@ -192,8 +216,9 @@ export function SettingsPage({
             >
               {t('common.save')}
             </button>
-          </header>
-          <div className="set-card__body set-card__body--grid">
+          }
+        >
+          <div className="set-card__body--grid">
             <div className="set-field set-field--span">
               <span className="set-field__label">{t('settings.destinationFolder')}</span>
               {freeSpaceLabel ? <span className="set-field__hint">{freeSpaceLabel}</span> : null}
@@ -239,15 +264,14 @@ export function SettingsPage({
               </select>
             </label>
           </div>
-        </article>
+        </SettingsSection>
 
-        <article id="settings-catalog" className="set-card set-card--wide">
-          <header className="set-card__head">
-            <div className="set-card__titles">
-              <p className="set-card__label">{t('settings.catalogTitle')}</p>
-              <p className="set-card__desc">{catalogMeta}</p>
-            </div>
-            <div className="set-card__actions">
+        <SettingsSection
+          id="settings-catalog"
+          title={t('settings.catalogTitle')}
+          description={catalogMeta}
+          actions={
+            <>
               <button
                 type="button"
                 className="set-btn set-btn--secondary"
@@ -274,109 +298,108 @@ export function SettingsPage({
                   )}
                 </button>
               ) : null}
-            </div>
-          </header>
-
-          <div className="set-card__body">
-            <div className="set-add">
-              <div className="set-add__toolbar">
-                <div
-                  className="set-add__tabs"
-                  role="tablist"
-                  aria-label={t('settings.addSourceChooseLabel')}
+            </>
+          }
+        >
+          <div className="set-add">
+            <div className="set-add__toolbar">
+              <div
+                className="set-add__tabs"
+                role="tablist"
+                aria-label={t('settings.addSourceChooseLabel')}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={addMethod === 'url'}
+                  className={`set-add__tab${addMethod === 'url' ? ' is-active' : ''}`}
+                  disabled={addingSource}
+                  onClick={() => setAddMethod('url')}
                 >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={addMethod === 'url'}
-                    className={`set-add__tab${addMethod === 'url' ? ' is-active' : ''}`}
-                    disabled={addingSource}
-                    onClick={() => setAddMethod('url')}
-                  >
-                    {t('settings.addSourceByUrlTitle')}
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={addMethod === 'json'}
-                    className={`set-add__tab${addMethod === 'json' ? ' is-active' : ''}`}
-                    disabled={addingSource}
-                    onClick={() => setAddMethod('json')}
-                  >
-                    {t('settings.addSourceByFileTitle')}
-                  </button>
-                </div>
-
-                {addMethod === 'json' ? (
-                  <button
-                    type="button"
-                    className="set-btn set-btn--primary set-add__submit"
-                    disabled={addingSource}
-                    onClick={() => void onImportSource()}
-                  >
-                    {addingSource ? t('settings.importing') : t('settings.importJsonFile')}
-                  </button>
-                ) : null}
+                  {t('settings.addSourceByUrlTitle')}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={addMethod === 'json'}
+                  className={`set-add__tab${addMethod === 'json' ? ' is-active' : ''}`}
+                  disabled={addingSource}
+                  onClick={() => setAddMethod('json')}
+                >
+                  {t('settings.addSourceByFileTitle')}
+                </button>
               </div>
 
-              <div className="set-add__body">
-                {addMethod === 'url' ? (
-                  <div className="set-add__panel">
-                    <div className="set-add__row set-add__row--inline">
-                      <input
-                        className="set-input set-input--grow"
-                        type="url"
-                        placeholder={EXAMPLE_SOURCE_URL}
-                        value={sourceUrlInput}
-                        disabled={addingSource}
-                        aria-label={t('settings.catalogUrl')}
-                        onChange={(event) => setSourceUrlInput(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' && canAddUrl) {
-                            event.preventDefault()
-                            void onAddSourceByUrl()
-                          }
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="set-btn set-btn--primary set-add__submit"
-                        disabled={addingSource || !canAddUrl}
-                        onClick={() => void onAddSourceByUrl()}
-                      >
-                        {addingSource ? t('settings.adding') : t('settings.addSourceConfirm')}
-                      </button>
-                    </div>
-                    <div className="set-add__example">
-                      <span className="set-add__example-label">
-                        {t('settings.addSourceExampleLabel')}
-                      </span>
-                      <button
-                        type="button"
-                        className="set-add__example-url"
-                        disabled={addingSource}
-                        title={t('settings.addSourceUseExample')}
-                        onClick={() => setSourceUrlInput(EXAMPLE_SOURCE_URL)}
-                      >
-                        {EXAMPLE_SOURCE_URL}
-                      </button>
-                      <button
-                        type="button"
-                        className="set-add__link"
-                        disabled={addingSource}
-                        onClick={() => void onOpenHydraLinksSite()}
-                      >
-                        {t('settings.openHydraLinks')}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
+              {addMethod === 'json' ? (
+                <button
+                  type="button"
+                  className="set-btn set-btn--primary set-add__submit"
+                  disabled={addingSource}
+                  onClick={() => void onImportSource()}
+                >
+                  {addingSource ? t('settings.importing') : t('settings.importJsonFile')}
+                </button>
+              ) : null}
+            </div>
 
-                {addMethod === 'json' ? (
-                  <div className="set-add__format">
-                    <p className="set-add__hint">{t('settings.addSourceJsonFormatHint')}</p>
-                    <pre className="set-add__code" tabIndex={0}>
-                      {`{
+            <div className="set-add__body">
+              {addMethod === 'url' ? (
+                <div className="set-add__panel">
+                  <div className="set-add__row set-add__row--inline">
+                    <input
+                      className="set-input set-input--grow"
+                      type="url"
+                      placeholder={EXAMPLE_SOURCE_URL}
+                      value={sourceUrlInput}
+                      disabled={addingSource}
+                      aria-label={t('settings.catalogUrl')}
+                      onChange={(event) => setSourceUrlInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && canAddUrl) {
+                          event.preventDefault()
+                          void onAddSourceByUrl()
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="set-btn set-btn--primary set-add__submit"
+                      disabled={addingSource || !canAddUrl}
+                      onClick={() => void onAddSourceByUrl()}
+                    >
+                      {addingSource ? t('settings.adding') : t('settings.addSourceConfirm')}
+                    </button>
+                  </div>
+                  <div className="set-add__example">
+                    <span className="set-add__example-label">
+                      {t('settings.addSourceExampleLabel')}
+                    </span>
+                    <button
+                      type="button"
+                      className="set-add__example-url"
+                      disabled={addingSource}
+                      title={t('settings.addSourceUseExample')}
+                      onClick={() => setSourceUrlInput(EXAMPLE_SOURCE_URL)}
+                    >
+                      {EXAMPLE_SOURCE_URL}
+                    </button>
+                    <button
+                      type="button"
+                      className="set-add__link"
+                      disabled={addingSource}
+                      onClick={() => void onOpenHydraLinksSite()}
+                    >
+                      {t('settings.openHydraLinks')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {addMethod === 'json' ? (
+                <div className="set-add__format">
+                  <p className="set-add__hint">{t('settings.addSourceJsonFormatHint')}</p>
+                  <pre className="set-add__code" tabIndex={0}>
+                    {`{
   "name": "Minha fonte",
   "downloads": [
     {
@@ -386,90 +409,73 @@ export function SettingsPage({
     }
   ]
 }`}
-                    </pre>
-                  </div>
-                ) : null}
-              </div>
+                  </pre>
+                </div>
+              ) : null}
             </div>
+          </div>
 
-            {sources.length === 0 && !sourcesLoading ? (
-              <div className="set-empty">
-                <p className="set-empty__title">{t('settings.noSourcesHint')}</p>
-                <p className="set-empty__text">{t('settings.catalogEmptyHint')}</p>
-              </div>
-            ) : null}
+          {sources.length === 0 && !sourcesLoading ? (
+            <div className="set-empty">
+              <p className="set-empty__title">{t('settings.noSourcesHint')}</p>
+              <p className="set-empty__text">{t('settings.catalogEmptyHint')}</p>
+            </div>
+          ) : null}
 
-            {sources.length > 0 ? (
-              <ul className="set-sources" role="list">
-                {sources.map((source) => {
-                  const enabled = isSourceEnabled(source.id)
-                  const isSourceSyncing = syncingSourceId === source.id
-                  const isSourceDeleting = deletingSourceId === source.id
-                  return (
-                    <li
-                      key={source.id}
-                      className={`set-source${enabled ? '' : ' set-source--off'}`}
+          {sources.length > 0 ? (
+            <ul className="set-sources" role="list">
+              {sources.map((source) => {
+                const isSourceSyncing = syncingSourceId === source.id
+                const isSourceDeleting = deletingSourceId === source.id
+                return (
+                  <li key={source.id} className="set-source">
+                    <div className="set-source__main">
+                      <strong className="set-source__name">{source.name}</strong>
+                      <span className="set-source__meta">
+                        {source.downloadCount > 0
+                          ? t('settings.gamesCount', {
+                              count: source.downloadCount.toLocaleString(i18n.language),
+                            })
+                          : t('settings.gamesCountEmpty')}
+                      </span>
+                    </div>
+                    <div
+                      className="set-source__actions"
+                      role="group"
+                      aria-label={t('settings.sourceActions', { name: source.name })}
                     >
-                      <div className="set-source__main">
-                        <strong className="set-source__name">{source.name}</strong>
-                        <span className="set-source__meta">
-                          {source.downloadCount > 0
-                            ? t('settings.gamesCount', {
-                                count: source.downloadCount.toLocaleString(i18n.language),
-                              })
-                            : t('settings.gamesCountEmpty')}
-                        </span>
-                      </div>
                       <button
                         type="button"
-                        className={enabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                        disabled={!disabledSourcesReady || isSourceSyncing || isSourceDeleting}
-                        aria-pressed={enabled}
-                        aria-label={
-                          enabled
-                            ? t('settings.disableSource', { name: source.name })
-                            : t('settings.enableSource', { name: source.name })
-                        }
-                        onClick={() => void handleToggleSource(source.id)}
-                      />
-                      <div
-                        className="set-source__actions"
-                        role="group"
-                        aria-label={t('settings.sourceActions', { name: source.name })}
+                        className={`set-btn set-btn--sync set-btn--compact${isSourceSyncing ? ' is-busy' : ''}`}
+                        disabled={isSourceSyncing || isSourceDeleting}
+                        aria-busy={isSourceSyncing}
+                        onClick={() => void onSyncSource(source.id, source.name)}
                       >
-                        <button
-                          type="button"
-                          className={`set-btn set-btn--sync set-btn--compact${isSourceSyncing ? ' is-busy' : ''}`}
-                          disabled={isSourceSyncing || isSourceDeleting}
-                          aria-busy={isSourceSyncing}
-                          onClick={() => void onSyncSource(source.id, source.name)}
-                        >
-                          {isSourceSyncing ? (
-                            <>
-                              <span className="set-btn__spinner" aria-hidden />
-                              {t('settings.syncing')}
-                            </>
-                          ) : (
-                            t('common.sync')
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          className="set-btn set-btn--danger set-btn--compact"
-                          disabled={isSourceSyncing || isSourceDeleting}
-                          aria-label={t('common.delete')}
-                          onClick={() => void onDeleteSource(source.id, source.name)}
-                        >
-                          {isSourceDeleting ? t('settings.deleting') : t('common.delete')}
-                        </button>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : null}
-          </div>
-        </article>
+                        {isSourceSyncing ? (
+                          <>
+                            <span className="set-btn__spinner" aria-hidden />
+                            {t('settings.syncing')}
+                          </>
+                        ) : (
+                          t('common.sync')
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="set-btn set-btn--danger set-btn--compact"
+                        disabled={isSourceSyncing || isSourceDeleting}
+                        aria-label={t('common.delete')}
+                        onClick={() => void onDeleteSource(source.id, source.name)}
+                      >
+                        {isSourceDeleting ? t('settings.deleting') : t('common.delete')}
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : null}
+        </SettingsSection>
       </div>
     </section>
   )

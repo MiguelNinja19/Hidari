@@ -587,6 +587,8 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
 }
 
 .browse-page--loading .library-grid {

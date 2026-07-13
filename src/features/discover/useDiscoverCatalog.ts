@@ -7,6 +7,7 @@ import {
   catalogGameGroupKey,
   cleanTitleForCover,
 } from "../../shared/utils/normalizeTitleKey";
+import { coverUrlFromScreenshots } from "../../shared/utils/coverCandidates";
 import { formatUserError } from "../../shared/utils/formatUserError";
 import { useToast } from "../../shared/components/ToastProvider";
 import type {
@@ -81,7 +82,8 @@ async function fetchDownloadOptionsForGame(
       enrichedGame = {
         title: detail.game.title || undefined,
         genre: detail.game.genre || undefined,
-        coverUrl: detail.game.coverUrl ?? undefined,
+        coverUrl:
+          coverUrlFromScreenshots(detail.game.coverUrl, screenshots) ?? undefined,
         groupKey: detail.game.groupKey ?? undefined,
       };
       const fromDetail = detail.downloads.filter(isDownloadableOption);
@@ -185,6 +187,7 @@ export function useDiscoverCatalog({
   const [discoverPickError, setDiscoverPickError] = useState<string | null>(
     null,
   );
+  const pickRequestIdRef = useRef(0);
 
   const displayCatalogSource = useMemo(() => {
     const q = discoverSearch.trim();
@@ -342,6 +345,7 @@ export function useDiscoverCatalog({
   ]);
 
   const closeDiscoverPicker = useCallback(() => {
+    pickRequestIdRef.current += 1;
     setDiscoverPickGame(null);
     setDiscoverPickOptions([]);
     setDiscoverPickSynopsis(null);
@@ -360,6 +364,7 @@ export function useDiscoverCatalog({
 
   const openDiscoverPicker = useCallback(
     (game: CatalogGame) => {
+      const requestId = ++pickRequestIdRef.current;
       setDiscoverPickGame(game);
       setDiscoverPickOptions([]);
       setDiscoverPickSynopsis(null);
@@ -368,7 +373,10 @@ export function useDiscoverCatalog({
       setDiscoverPickLoading(true);
 
       void (async () => {
+        const isCurrent = () => pickRequestIdRef.current === requestId;
+
         if (enabledSourcesCount === 0) {
+          if (!isCurrent()) return;
           reportPickError(t("discover.noActiveSourcesPick"));
           setDiscoverPickLoading(false);
           return;
@@ -377,6 +385,7 @@ export function useDiscoverCatalog({
         const hasPath =
           defaultDownloadPath.trim().length > 0 ||
           (await sourcesApi.getDefaultDownloadPath());
+        if (!isCurrent()) return;
         if (!hasPath) {
           reportPickError(t("discover.noDownloadPath"));
           setDiscoverPickLoading(false);
@@ -386,42 +395,49 @@ export function useDiscoverCatalog({
         try {
           const { downloadable, synopsis, screenshots, enrichedGame } =
             await fetchDownloadOptionsForGame(game, i18n.language);
+          if (!isCurrent()) return;
+
           setDiscoverPickOptions(downloadable);
           setDiscoverPickSynopsis(synopsis);
           setDiscoverPickScreenshots(screenshots);
           if (enrichedGame) {
+            const nextCover =
+              coverUrlFromScreenshots(
+                enrichedGame.coverUrl ?? game.coverUrl,
+                screenshots,
+              ) ?? null;
             setDiscoverPickGame((prev) =>
               prev
                 ? {
                     ...prev,
                     title: enrichedGame.title?.trim() || prev.title,
                     genre: enrichedGame.genre?.trim() || prev.genre,
-                    coverUrl: enrichedGame.coverUrl ?? prev.coverUrl,
+                    coverUrl: nextCover ?? prev.coverUrl,
                     groupKey: enrichedGame.groupKey ?? prev.groupKey,
                   }
                 : prev,
             );
-          }
-          if (downloadable.length === 0) {
-            // Não mostrar "No downloads found" — remover da lista e voltar.
-            const removeKey = catalogDedupeKey(game);
-            setCatalogGames((prev) =>
-              prev.filter((row) => catalogDedupeKey(row) !== removeKey),
-            );
-            setDiscoverPickGame(null);
-            setDiscoverPickOptions([]);
-            setDiscoverPickSynopsis(null);
-            setDiscoverPickScreenshots([]);
-            setDiscoverPickError(null);
-            return;
+            if (nextCover && !game.coverUrl?.trim()) {
+              const coverKey = catalogDedupeKey(game);
+              setCatalogGames((prev) =>
+                prev.map((row) =>
+                  catalogDedupeKey(row) === coverKey
+                    ? { ...row, coverUrl: row.coverUrl?.trim() || nextCover }
+                    : row,
+                ),
+              );
+            }
           }
         } catch {
+          if (!isCurrent()) return;
           setDiscoverPickOptions([]);
           setDiscoverPickSynopsis(null);
           setDiscoverPickScreenshots([]);
           reportPickError(t("discover.pickFetchError"));
         } finally {
-          setDiscoverPickLoading(false);
+          if (isCurrent()) {
+            setDiscoverPickLoading(false);
+          }
         }
       })();
     },

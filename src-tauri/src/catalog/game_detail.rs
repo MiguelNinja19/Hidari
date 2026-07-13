@@ -248,6 +248,36 @@ pub async fn get_game_detail(
 
   crate::covers::attach_cover_urls_to_games(&app, std::slice::from_mut(&mut game_with_cover));
 
+  let needs_cover = game_with_cover
+    .cover_url
+    .as_ref()
+    .map(|url| url.trim().is_empty())
+    .unwrap_or(true);
+  if needs_cover {
+    if let Some(details) = steam.as_ref() {
+      let fallback = details
+        .header_image
+        .as_ref()
+        .map(|url| url.trim())
+        .filter(|url| !url.is_empty())
+        .map(|url| url.to_string())
+        .or_else(|| {
+          details
+            .screenshots
+            .iter()
+            .map(|url| url.trim())
+            .find(|url| !url.is_empty())
+            .map(|url| url.to_string())
+        });
+      if let Some(url) = fallback {
+        game_with_cover.cover_url = Some(url.clone());
+        if let Ok(conn) = open_database_connection(&app) {
+          let _ = crate::covers::upsert_game_cover_if_absent(&conn, &game_with_cover.title, &url);
+        }
+      }
+    }
+  }
+
   Ok(GameDetailDto {
     game: game_with_cover,
     synopsis,

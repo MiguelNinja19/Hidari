@@ -190,16 +190,18 @@
     width: 48px;
   }
 
-  .discover-grid,
+  .discover-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px 10px;
+  }
+
   .library-grid {
     grid-template-columns: repeat(auto-fill, 140px);
     gap: 12px 10px;
     justify-content: start;
   }
 
-  .discover-grid__item,
   .library-grid__item,
-  .discover-card,
   .library-card {
     max-width: none;
   }
@@ -320,7 +322,11 @@
   margin-inline: 0;
 }
 
-.discover-grid,
+.discover-grid {
+  justify-content: stretch;
+  width: 100%;
+}
+
 .library-grid {
   justify-content: start;
 }
@@ -346,8 +352,15 @@
 .set-page,
 .dl-page {
   width: 100%;
-  max-width: none;
-  margin-inline: 0;
-  flex: 1;
   min-height: 0;
+  flex: 1;
+  margin-inline: 0;
+}
+
+.set-page {
+  max-width: min(1320px, 100%);
+}
+
+.dl-page {
+  max-width: none;
 }

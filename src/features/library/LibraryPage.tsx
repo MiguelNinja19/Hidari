@@ -32,11 +32,25 @@ function libraryStatusLine(
   language: AppLanguage,
 ): string | null {
   if (meta.tone === 'ready' || meta.tone === 'waiting') return null
-  if (primary?.id === 'play' || primary?.id === 'install') return null
+  if (
+    (primary?.id === 'play' || primary?.id === 'install') &&
+    meta.tone !== 'installing' &&
+    meta.tone !== 'verifying'
+  ) {
+    return null
+  }
   if (meta.pct != null) {
     return t(meta.labelKey, { pct: formatStatusPct(meta.pct, language) })
   }
   return t(meta.labelKey)
+}
+
+function libraryPendingActivity(meta: LibraryStatusMeta): boolean {
+  return (
+    meta.tone === 'verifying' ||
+    meta.tone === 'installing' ||
+    (meta.tone === 'downloading' && meta.pct == null)
+  )
 }
 
 function busyKey(item: LibraryEntry) {
@@ -111,7 +125,7 @@ function buildLibraryActions(
       id: 'install-menu',
       label: isInstallBusy ? t('library.installing') : t('common.install'),
       title: isInstallBusy ? t('library.installingTitle') : t('library.installTitle'),
-      variant: 'primary',
+      variant: 'outline',
       disabled: isInstallBusy,
       onClick: () => ctx.requestInstallConfirm(item),
     })
@@ -324,6 +338,7 @@ export function LibraryPage() {
             })
 
             const statusLine = libraryStatusLine(statusMeta, primary, t, currentLanguage)
+            const pendingActivity = libraryPendingActivity(statusMeta)
             const hasCover =
               cover.status !== 'error' &&
               Boolean(cover.localPath?.trim() || cover.coverUrl?.trim())
@@ -343,6 +358,7 @@ export function LibraryPage() {
                     .join(' · ')}
                   showTitle={!hasCover}
                   metaLine={statusLine}
+                  pendingActivity={pendingActivity}
                   cover={
                     <CatalogCover
                       title={item.title}

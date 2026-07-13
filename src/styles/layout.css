@@ -213,7 +213,9 @@
 
 .main-panel {
   padding: var(--space-3) var(--space-4) var(--space-4);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   background-color: var(--bg-main);
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
