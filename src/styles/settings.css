@@ -272,6 +272,13 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.set-switch__controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .set-switch:last-child {
   border-bottom: none;
   padding-bottom: 0;

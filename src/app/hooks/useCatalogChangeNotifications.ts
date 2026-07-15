@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { useAppSettings } from '../context/AppSettingsContext'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
+import { notificationSoundOptions } from '../../shared/utils/notificationSound'
 
 async function ensureNotificationPermission(): Promise<boolean> {
   try {
@@ -44,7 +45,7 @@ export function useCatalogChangeNotifications(enabled: boolean) {
               count: change.newCount,
             }),
             extra: { hidariNav: 'discover' },
-            ...(notifySound ? {} : { silent: true }),
+            ...notificationSoundOptions(notifySound),
           })
         }
       } catch {

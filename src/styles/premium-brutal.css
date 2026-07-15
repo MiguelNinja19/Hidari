@@ -992,8 +992,8 @@ select:focus {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, 156px);
-  justify-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  justify-content: stretch;
   gap: 16px 14px;
   align-items: stretch;
 }
@@ -1002,10 +1002,10 @@ select:focus {
   list-style: none;
   display: flex;
   min-width: 0;
-  max-width: 156px;
+  max-width: none;
   width: 100%;
   height: 100%;
-  justify-self: start;
+  justify-self: stretch;
 }
 
 .library-card__cta--install {
@@ -2819,16 +2819,17 @@ select.settings-input:focus,
 }
 
 .discover-grid {
-  grid-template-columns: repeat(auto-fill, 156px);
-  justify-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  justify-content: stretch;
   gap: 14px 12px;
   width: 100%;
 }
 
 .library-grid {
-  grid-template-columns: repeat(auto-fill, 156px);
-  justify-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  justify-content: stretch;
   gap: 14px 12px;
+  width: 100%;
 }
 
 .discover-grid__item,
@@ -2838,12 +2839,8 @@ select.settings-input:focus,
   min-width: 0;
   height: 100%;
   width: 100%;
-}
-
-.discover-grid__item,
-.library-grid__item {
-  max-width: 156px;
-  justify-self: start;
+  max-width: none;
+  justify-self: stretch;
 }
 
 .discover-card,
@@ -3443,30 +3440,16 @@ select.settings-input:focus,
 @media (max-width: 1024px) {
   .discover-grid,
   .library-grid {
-    grid-template-columns: repeat(auto-fill, 148px);
+    grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
     gap: 14px 12px;
-    justify-content: start;
-  }
-
-  .discover-grid__item,
-  .library-grid__item {
-    max-width: 148px;
-    justify-self: start;
   }
 }
 
 @media (max-width: 720px) {
   .discover-grid,
   .library-grid {
-    grid-template-columns: repeat(auto-fill, 136px);
+    grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
     gap: 12px 10px;
-    justify-content: start;
-  }
-
-  .discover-grid__item,
-  .library-grid__item {
-    max-width: 136px;
-    justify-self: start;
   }
 
   .discover-card__cta {

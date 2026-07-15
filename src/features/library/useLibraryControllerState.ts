@@ -52,7 +52,6 @@ import type {
   DownloadJob,
   DownloadOption,
   LocalLibraryItem,
-  LibraryPlayStat,
 } from "../../shared/types/contracts";
 import type { NavTab } from "../../layout/types";
 import type { LibraryControllerValue } from "./LibraryController";
@@ -133,9 +132,6 @@ export function useLibraryControllerState({
   const [deletingLibraryKey, setDeletingLibraryKey] = useState<string | null>(
     null,
   );
-  const [playStatsByKey, setPlayStatsByKey] = useState<
-    Record<string, LibraryPlayStat>
-  >({});
   const [libraryDetail, setLibraryDetail] = useState<LibraryDetailState | null>(
     null,
   );
@@ -170,24 +166,6 @@ export function useLibraryControllerState({
   useEffect(() => {
     defaultDownloadPathRef.current = defaultDownloadPath;
   }, [defaultDownloadPath]);
-
-  const refreshPlayStats = useCallback(async () => {
-    try {
-      const stats = await sourcesApi.listLibraryPlayStats();
-      const next: Record<string, LibraryPlayStat> = {};
-      for (const stat of stats) {
-        next[stat.pathKey] = stat;
-      }
-      setPlayStatsByKey(next);
-    } catch {
-      // Tauri indisponível
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activeTab !== "library") return;
-    void refreshPlayStats();
-  }, [activeTab, refreshPlayStats]);
 
   const runBatchPathInspection = useCallback(
     async (
@@ -351,7 +329,6 @@ export function useLibraryControllerState({
           await runBatchPathInspection(items, jobsRef.current, {
             onlyUnresolved: true,
           });
-          await refreshPlayStats();
         })
         .catch((error) => {
           showError(formatUserError(error, t("library.readPathError")));
@@ -360,7 +337,7 @@ export function useLibraryControllerState({
           setLibraryScanSettled(true);
         });
     },
-    [refreshPlayStats, runBatchPathInspection, showError, t],
+    [runBatchPathInspection, showError, t],
   );
 
   useEffect(() => {
@@ -494,8 +471,8 @@ export function useLibraryControllerState({
   ]);
 
   const filteredEntries = useMemo(
-    () => sortLibraryEntries(baseLibraryEntries, librarySort, playStatsByKey),
-    [baseLibraryEntries, librarySort, playStatsByKey],
+    () => sortLibraryEntries(baseLibraryEntries, librarySort),
+    [baseLibraryEntries, librarySort],
   );
 
   const libraryItems = filteredEntries;
@@ -757,14 +734,13 @@ export function useLibraryControllerState({
       const jobId = item.kind === "job" ? item.id : undefined;
       // Lançar direto pela pasta (com exe em cache) — sem esperar o sidecar.
       await sourcesApi.launchGame(item.title, item.destPath, jobId);
-      void refreshPlayStats();
     } catch (launchError) {
       const message = formatLaunchError(launchError)
       if (message.trim()) showError(message)
     } finally {
       setPlayBusyId(null);
     }
-  }, [refreshPlayStats, showError]);
+  }, [showError]);
 
   const handleExtractItem = useCallback(
     async (item: LibraryEntry) => {

@@ -207,26 +207,24 @@
   }
 
   .discover-grid {
-    grid-template-columns: repeat(auto-fill, 132px);
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
     gap: 12px 10px;
-    justify-content: start;
   }
 
   .discover-grid__item,
   .discover-card {
-    max-width: 132px;
+    max-width: none;
     width: 100%;
   }
 
   .library-grid {
-    grid-template-columns: repeat(auto-fill, 132px);
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
     gap: 12px 10px;
-    justify-content: start;
   }
 
   .library-grid__item,
   .library-card {
-    max-width: 132px;
+    max-width: none;
     width: 100%;
   }
 
@@ -380,16 +378,22 @@
     font-size: 0.75rem;
   }
 
-  .discover-grid,
-  .library-grid {
-    grid-template-columns: repeat(auto-fill, 112px);
+  .discover-grid {
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
     gap: 10px 8px;
-    justify-content: start;
   }
 
-  .discover-grid__item,
+  .discover-grid__item {
+    max-width: none;
+  }
+
+  .library-grid {
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 10px 8px;
+  }
+
   .library-grid__item {
-    max-width: 112px;
+    max-width: none;
   }
 
   .settings-nav {
@@ -445,12 +449,11 @@
 }
 
 .discover-grid {
-  justify-content: start;
   width: 100%;
 }
 
 .library-grid {
-  justify-content: start;
+  width: 100%;
 }
 
 .main-content--full {

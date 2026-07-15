@@ -18,10 +18,10 @@ export function parseSettingFlag(value: string | null | undefined, defaultOn = t
   return value === '1' || value === 'true'
 }
 
-export type LibrarySort = 'title-asc' | 'title-desc' | 'recent'
+export type LibrarySort = 'title-asc' | 'title-desc'
 
 export function parseLibrarySort(value: string | null | undefined): LibrarySort {
-  if (value === 'title-desc' || value === 'recent') return value
+  if (value === 'title-desc') return value
   return 'title-asc'
 }
 

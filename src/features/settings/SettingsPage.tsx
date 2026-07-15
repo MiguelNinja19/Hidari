@@ -56,6 +56,8 @@ type SettingsPageProps = {
   handleToggleNotifyReadyToPlay: (enabled: boolean) => Promise<void>
   handleToggleNotifyCatalogChanges: (enabled: boolean) => Promise<void>
   handleToggleNotifySound: (enabled: boolean) => Promise<void>
+  handleTestNotification: () => Promise<void>
+  notifyTestBusy?: boolean
   coverPrecacheStatus: {
     running: boolean
     total: number
@@ -157,6 +159,8 @@ export function SettingsPage({
   handleToggleNotifyReadyToPlay,
   handleToggleNotifyCatalogChanges,
   handleToggleNotifySound,
+  handleTestNotification,
+  notifyTestBusy,
   coverPrecacheStatus,
   coverPrecacheBusy,
   onStartCoverPrecache,
@@ -378,12 +382,22 @@ export function SettingsPage({
               <span className="set-switch__label">{t('settings.notifySound')}</span>
               <span className="set-switch__hint">{t('settings.notifySoundHint')}</span>
             </div>
-            <button
-              type="button"
-              className={notifySound ? 'switch-btn switch-btn--on' : 'switch-btn'}
-              aria-label={t('settings.notifySound')}
-              onClick={() => void handleToggleNotifySound(!notifySound)}
-            />
+            <div className="set-switch__controls">
+              <button
+                type="button"
+                className="set-btn set-btn--secondary set-btn--compact"
+                disabled={notifyTestBusy}
+                onClick={() => void handleTestNotification()}
+              >
+                {notifyTestBusy ? t('settings.notifyTestBusy') : t('settings.notifyTest')}
+              </button>
+              <button
+                type="button"
+                className={notifySound ? 'switch-btn switch-btn--on' : 'switch-btn'}
+                aria-label={t('settings.notifySound')}
+                onClick={() => void handleToggleNotifySound(!notifySound)}
+              />
+            </div>
           </div>
         </SettingsSection>
 

@@ -1,6 +1,5 @@
 import type { LibrarySort } from '../../shared/config/appSettings'
-import { libraryPlayPathKey } from '../../shared/types/contracts'
-import type { DownloadJob, LibraryPlayStat } from '../../shared/types/contracts'
+import type { DownloadJob } from '../../shared/types/contracts'
 import {
   itemAwaitingInstall,
   isPathStateResolved,
@@ -56,27 +55,12 @@ export const scoreLibraryEntry = (
 export const sortLibraryEntries = (
   items: LibraryEntry[],
   sort: LibrarySort,
-  playStatsByKey: Record<string, LibraryPlayStat> = {},
 ): LibraryEntry[] => {
   const sorted = [...items]
   if (sort === 'title-desc') {
     sorted.sort((a, b) =>
       b.title.localeCompare(a.title, 'pt', { sensitivity: 'base' }),
     )
-  } else if (sort === 'recent') {
-    sorted.sort((a, b) => {
-      const aKey = libraryPlayPathKey(a.destPath, a.title)
-      const bKey = libraryPlayPathKey(b.destPath, b.title)
-      const aStat = playStatsByKey[aKey]
-      const bStat = playStatsByKey[bKey]
-      const aTime = aStat?.lastPlayedAt ? Date.parse(aStat.lastPlayedAt) : 0
-      const bTime = bStat?.lastPlayedAt ? Date.parse(bStat.lastPlayedAt) : 0
-      if (bTime !== aTime) return bTime - aTime
-      const aCount = aStat?.playCount ?? 0
-      const bCount = bStat?.playCount ?? 0
-      if (bCount !== aCount) return bCount - aCount
-      return a.title.localeCompare(b.title, 'pt', { sensitivity: 'base' })
-    })
   } else {
     sorted.sort((a, b) =>
       a.title.localeCompare(b.title, 'pt', { sensitivity: 'base' }),

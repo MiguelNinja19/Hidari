@@ -5,7 +5,7 @@ type DiscoverGameCardProps = {
   titleAttr?: string
   genre: string
   cover: ReactNode
-  /** Overlay só quando a capa ainda não existe. */
+  /** Overlay só quando a capa não carrega (igual à Biblioteca). */
   showTitle?: boolean
   actionLabel: string
   onOpen: () => void
@@ -45,19 +45,6 @@ export function DiscoverGameCard({
           </div>
         </button>
       </div>
-      {/* Título sob o poster — melhora a leitura na grelha de pesquisa. */}
-      {!showTitle ? (
-        <button
-          type="button"
-          className="discover-card__title-btn"
-          onClick={onOpen}
-          title={label}
-        >
-          <h3 className="discover-card__title discover-card__title--under" title={label}>
-            {title}
-          </h3>
-        </button>
-      ) : null}
     </article>
   )
 }

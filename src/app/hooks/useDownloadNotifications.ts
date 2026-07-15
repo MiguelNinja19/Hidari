@@ -7,6 +7,7 @@ import {
 } from "@tauri-apps/plugin-notification";
 import { useAppSettings } from "../context/AppSettingsContext";
 import { cleanTitleForDisplay } from "../../shared/utils/normalizeTitleKey";
+import { notificationSoundOptions } from "../../shared/utils/notificationSound";
 import type { DownloadJob } from "../../shared/types/contracts";
 import {
   resolveDownloadNotifyKind,
@@ -100,7 +101,7 @@ export function useDownloadNotifications(
             extra: {
               hidariNav: item.kind === "install" ? "downloads" : "library",
             },
-            ...(notifySound ? {} : { silent: true }),
+            ...notificationSoundOptions(notifySound),
           });
         } catch {
           // ignorar falha de notificação OS
