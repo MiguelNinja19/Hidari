@@ -47,8 +47,8 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
       extracted.as_deref(),
       Some("extracted") | Some("skipped") | Some("verified")
     );
-    // Job a 100% ainda em downloading: também limpar.
-    if !should_remove && matches!(job.status.as_str(), "downloading" | "pending") {
+    // Job a 100% ainda em downloading/paused: também limpar.
+    if !should_remove && matches!(job.status.as_str(), "downloading" | "pending" | "paused") {
       let reported = job.total_bytes.max(job.bytes_downloaded);
       if reported >= 5 * 1024 * 1024
         && job.total_bytes > 0

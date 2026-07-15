@@ -46,7 +46,7 @@ function isUiFinishedJob(job: DownloadJob): boolean {
   if (['completed', 'extracted', 'skipped', 'seeding'].includes(job.status)) return true
   if (
     isDownloadFullyTransferred(job) &&
-    ['downloading', 'pending', 'retrying'].includes(job.status)
+    ['downloading', 'pending', 'retrying', 'paused'].includes(job.status)
   ) {
     return true
   }

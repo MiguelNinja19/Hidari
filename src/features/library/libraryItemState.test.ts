@@ -149,6 +149,25 @@ describe('libraryItemState', () => {
     expect(jobBelongsInLibrary({ status: 'cancelled', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob)).toBe(false)
   })
 
+  it('jobBelongsInLibrary aceita paused com transferência 100%', async () => {
+    const { jobBelongsInLibrary } = await import('./libraryItemState')
+    const pausedDone = {
+      status: 'paused',
+      url: 'magnet:?xt=urn:btih:abc',
+      totalBytes: 618_035_125,
+      bytesDownloaded: 618_035_125,
+      progress: 100,
+      errorMsg: null,
+    } as DownloadJob
+    expect(jobBelongsInLibrary(pausedDone)).toBe(true)
+    expect(
+      jobBelongsInLibrary({
+        ...pausedDone,
+        bytesDownloaded: 100_000_000,
+      } as DownloadJob),
+    ).toBe(false)
+  })
+
   it('jobBelongsInLibrary aceita 100% ainda em downloading (aria2 a semear)', async () => {
     const { jobBelongsInLibrary } = await import('./libraryItemState')
     const stuck = {

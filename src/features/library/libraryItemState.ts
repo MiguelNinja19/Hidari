@@ -90,23 +90,33 @@ export function jobBelongsInLibrary(job: DownloadJob): boolean {
   }
 
   if (LIBRARY_JOB_STATUSES.has(job.status)) return true
-  // Safety: 100% em "downloading" (aria2 ainda active a semear) também conta.
+  // 100% real: downloading (seed) OU paused após fecho/manual — senão some da Biblioteca.
   if (
     isDownloadFullyTransferred(job) &&
-    ['downloading', 'pending', 'retrying'].includes(job.status)
+    ['downloading', 'pending', 'retrying', 'paused'].includes(job.status)
   ) {
     return true
   }
   return false
 }
 
-export const isJobFinished = (job: DownloadJob) =>
-  job.status === 'extracted' ||
-  job.status === 'completed' ||
-  job.status === 'seeding' ||
-  job.status === 'skipped' ||
-  (job.progress >= 99 &&
-    !['downloading', 'pending', 'retrying', 'cancelled', 'extracting'].includes(job.status))
+export const isJobFinished = (job: DownloadJob) => {
+  if (['cancelled', 'failed'].includes(job.status)) return false
+  if (
+    job.status === 'extracted' ||
+    job.status === 'completed' ||
+    job.status === 'seeding' ||
+    job.status === 'skipped'
+  ) {
+    return true
+  }
+  // Paused (ou similar) com bytes a 100% — download concluído, não “em curso”.
+  if (isDownloadFullyTransferred(job)) return true
+  return (
+    job.progress >= 99 &&
+    !['downloading', 'pending', 'retrying', 'cancelled', 'extracting'].includes(job.status)
+  )
+}
 
 export const isPlayableLibraryItem = (
   item: LibraryEntry,
@@ -146,10 +156,15 @@ export const itemAwaitingInstall = (
 
   if (item.kind === 'job') {
     if (
-      ['downloading', 'pending', 'retrying', 'extracting', 'paused', 'cancelled'].includes(
+      ['downloading', 'pending', 'retrying', 'extracting', 'cancelled'].includes(
         item.status,
-      )
+      ) &&
+      !(item.job && isJobFinished(item.job))
     ) {
+      return false
+    }
+    // Pausado a meio = ainda não instalar; pausado a 100% = download feito.
+    if (item.status === 'paused' && !(item.job && isJobFinished(item.job))) {
       return false
     }
     if (
@@ -157,6 +172,7 @@ export const itemAwaitingInstall = (
       item.status === 'completed' ||
       item.status === 'seeding' ||
       item.status === 'skipped' ||
+      item.status === 'paused' ||
       (item.job && isJobFinished(item.job))
     ) {
       return !itemHasGame(item.destPath, pathStateByKey, itemPathCtx(item))

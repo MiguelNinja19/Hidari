@@ -413,16 +413,30 @@ export function useLibraryControllerState({
           const done = Number(job.bytesDownloaded) || 0
           return total >= 5 * 1024 * 1024 && done < total * 0.995
         }
-        const hasIncompleteJob = jobs.some(
-          (job) =>
-            libraryTitlesMatch(job.title, item.name) &&
-            job.status !== "cancelled" &&
-            job.status !== "verify_failed" &&
-            job.status !== "failed" &&
-            (transferIncomplete(job) ||
-              (!jobBelongsInLibrary(job) &&
-                !TERMINAL_LIBRARY_STATUSES.has(job.status))),
-        );
+        const hasIncompleteJob = jobs.some((job) => {
+          if (!libraryTitlesMatch(job.title, item.name)) return false;
+          if (
+            job.status === "cancelled" ||
+            job.status === "verify_failed" ||
+            job.status === "failed"
+          ) {
+            return false;
+          }
+          // Download a 100% (mesmo paused) não esconde a pasta / jogo.
+          if (
+            !transferIncomplete(job) &&
+            (jobBelongsInLibrary(job) ||
+              TERMINAL_LIBRARY_STATUSES.has(job.status) ||
+              isJobFinished(job))
+          ) {
+            return false;
+          }
+          return (
+            transferIncomplete(job) ||
+            (!jobBelongsInLibrary(job) &&
+              !TERMINAL_LIBRARY_STATUSES.has(job.status))
+          );
+        });
         if (hasIncompleteJob) return false;
 
         const blockedByActiveJob = jobs.some(
