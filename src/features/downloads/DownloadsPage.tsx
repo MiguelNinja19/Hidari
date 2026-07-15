@@ -4,9 +4,15 @@ import { CatalogCover } from '../../shared/components/CatalogCover'
 import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
 import { formatDownloadError } from '../../shared/utils/downloadErrors'
 import { jobCanExtract } from '../../shared/utils/jobExtraction'
+import {
+  isInsufficientGameDownload,
+  isAwaitingTorrentContent,
+  isDownloadFullyTransferred,
+} from '../../shared/utils/jobProgress'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { ResolvedCover } from '../covers/useGameCovers'
+import { jobBelongsInLibrary } from '../library/libraryItemState'
 import { useDownloadClock } from './useDownloadClock'
 import { resolveJobVerificationStatus } from '../../shared/utils/jobVerification'
 
@@ -25,12 +31,27 @@ type DownloadsPageProps = {
   onPauseAll: () => Promise<void>
   onResumeAll: () => Promise<void>
   onOpenJobFolder: (jobId: string) => void
-  onPlayJob: (jobId: string) => void
+  onGoLibrary: () => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
   invalidateLocalCover: (title: string, coverUrl?: string | null) => void
 }
 
-const FINISHED_STATUSES = new Set(['completed', 'extracted', 'skipped'])
+/** Concluído na UI: inclui seeding e 100% ainda marcado como downloading. */
+function isUiFinishedJob(job: DownloadJob): boolean {
+  if (isInsufficientGameDownload(job)) return false
+  const total = Number(job.totalBytes) || 0
+  const done = Number(job.bytesDownloaded) || 0
+  // Ainda a meio dos bytes → continua "em andamento", mesmo com status completed/skipped.
+  if (total >= 5 * 1024 * 1024 && done < total * 0.995) return false
+  if (['completed', 'extracted', 'skipped', 'seeding'].includes(job.status)) return true
+  if (
+    isDownloadFullyTransferred(job) &&
+    ['downloading', 'pending', 'retrying'].includes(job.status)
+  ) {
+    return true
+  }
+  return false
+}
 
 function queuePrimaryAction(
   job: DownloadJob,
@@ -38,12 +59,13 @@ function queuePrimaryAction(
   t: TFunction,
   onPauseJob: (jobId: string) => Promise<void>,
   onResumeJob: (jobId: string) => Promise<void>,
-  onPlayJob: (jobId: string) => void,
+  onGoLibrary: () => void,
 ) {
-  if (job.status === 'extracted') {
+  // Só quando o jogo já entra na Biblioteca — Instalar = atalho para lá.
+  if (jobBelongsInLibrary(job) || isUiFinishedJob(job)) {
     return {
-      label: busyId === job.id ? t('downloads.playStarting') : t('common.play'),
-      onClick: () => onPlayJob(job.id),
+      label: t('common.install'),
+      onClick: () => onGoLibrary(),
       disabled: busyId === job.id,
       primary: true,
     }
@@ -57,7 +79,10 @@ function queuePrimaryAction(
     }
   }
 
-  if (['downloading', 'pending', 'retrying', 'seeding'].includes(job.status)) {
+  if (
+    ['downloading', 'pending', 'retrying'].includes(job.status) ||
+    (isInsufficientGameDownload(job) && !['paused', 'failed', 'cancelled'].includes(job.status))
+  ) {
     return {
       label: t('common.pause'),
       onClick: () => void onPauseJob(job.id),
@@ -69,8 +94,8 @@ function queuePrimaryAction(
 }
 
 function buildJobSections(jobs: DownloadJob[], t: TFunction) {
-  const inProgress = jobs.filter((job) => !FINISHED_STATUSES.has(job.status))
-  const finished = jobs.filter((job) => FINISHED_STATUSES.has(job.status))
+  const inProgress = jobs.filter((job) => !isUiFinishedJob(job))
+  const finished = jobs.filter((job) => isUiFinishedJob(job))
   const sections: { key: string; title: string | null; jobs: DownloadJob[] }[] = []
 
   if (inProgress.length > 0) {
@@ -107,7 +132,7 @@ export function DownloadsPage({
   onPauseAll,
   onResumeAll,
   onOpenJobFolder,
-  onPlayJob,
+  onGoLibrary,
   resolveCover,
   invalidateLocalCover,
 }: DownloadsPageProps) {
@@ -115,10 +140,11 @@ export function DownloadsPage({
   const downloadNow = useDownloadClock(jobs)
   const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
   const sections = buildJobSections(activeJobs, t)
-  const inProgressCount = activeJobs.filter((job) => !FINISHED_STATUSES.has(job.status)).length
-  const finishedCount = activeJobs.filter((job) => FINISHED_STATUSES.has(job.status)).length
-  const canPauseAll = activeJobs.some((job) =>
-    ['downloading', 'pending', 'retrying', 'seeding'].includes(job.status),
+  const inProgressCount = activeJobs.filter((job) => !isUiFinishedJob(job)).length
+  const finishedCount = activeJobs.filter((job) => isUiFinishedJob(job)).length
+  const canPauseAll = activeJobs.some(
+    (job) =>
+      ['downloading', 'pending', 'retrying'].includes(job.status) && !isUiFinishedJob(job),
   )
   const canResumeAll = activeJobs.some((job) => job.status === 'paused' || job.status === 'failed')
   const canClearCompleted = finishedCount > 0
@@ -141,6 +167,8 @@ export function DownloadsPage({
 
   const renderJobRow = (job: DownloadJob) => {
     const metadataPhase = isTorrentMetadataPhase(job)
+    const percentLabel = formatProgressPercent(job)
+    const hidePercent = !percentLabel
     const cover = resolveCover(job.title)
     const primary = queuePrimaryAction(
       job,
@@ -148,12 +176,13 @@ export function DownloadsPage({
       t,
       onPauseJob,
       onResumeJob,
-      onPlayJob,
+      onGoLibrary,
     )
     const canCancel =
       job.status !== 'cancelled' &&
       job.status !== 'failed' &&
-      !['completed', 'extracted'].includes(job.status)
+      !isUiFinishedJob(job) &&
+      !['extracted'].includes(job.status)
     const canRemove = job.status === 'failed'
     const canExtract = jobCanExtract(job)
     const extracting =
@@ -196,31 +225,40 @@ export function DownloadsPage({
                     : t('downloads.verifyFailed')}
                 </span>
               ) : null}
-              <span className="dl-row__percent">{formatProgressPercent(job)}</span>
+              {!hidePercent ? <span className="dl-row__percent">{percentLabel}</span> : null}
             </div>
           </div>
 
           <div
-            className={`dl-progress${metadataPhase || extracting ? ' dl-progress--pulse' : ''}`}
+            className={`dl-progress${metadataPhase || extracting || hidePercent ? ' dl-progress--pulse' : ''}`}
             role="progressbar"
-            aria-valuenow={metadataPhase || extracting ? undefined : progressWidth(job)}
+            aria-valuenow={metadataPhase || extracting || hidePercent ? undefined : progressWidth(job)}
             aria-valuemin={0}
             aria-valuemax={100}
           >
             <div
               className={`dl-progress__fill${
-                metadataPhase || extracting ? ' dl-progress__fill--indeterminate' : ''
+                metadataPhase || extracting || hidePercent ? ' dl-progress__fill--indeterminate' : ''
               }`}
-              style={metadataPhase || extracting ? undefined : { width: `${progressWidth(job)}%` }}
+              style={
+                metadataPhase || extracting || hidePercent
+                  ? undefined
+                  : { width: `${progressWidth(job)}%` }
+              }
             />
           </div>
 
           <p className="dl-row__meta">{downloadRowDetail(job, downloadNow)}</p>
-          {job.errorMsg
-          && !job.errorMsg.includes('download_stalled_recovering')
-          && !job.errorMsg.includes('download_failover') ? (
-            <p className="dl-row__error">{formatDownloadError(job.errorMsg)}</p>
-          ) : null}
+          {(() => {
+            if (!job.errorMsg) return null
+            if (job.errorMsg.includes('download_stalled_recovering')) return null
+            if (job.errorMsg.includes('download_failover')) return null
+            // Soft “a obter conteúdo” já vai no meta — não duplicar como erro vermelho.
+            if (isAwaitingTorrentContent(job) || isInsufficientGameDownload(job)) return null
+            const formatted = formatDownloadError(job.errorMsg)
+            if (!formatted.trim()) return null
+            return <p className="dl-row__error">{formatted}</p>
+          })()}
         </div>
 
         <div className="dl-row__actions">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobNeedsExtraction } from './jobExtraction'
+import { jobCanExtract, jobNeedsExtraction } from './jobExtraction'
 import type { DownloadJob } from '../types/contracts'
 
 const baseJob: DownloadJob = {
@@ -18,54 +18,19 @@ const baseJob: DownloadJob = {
 }
 
 describe('jobNeedsExtraction', () => {
-  it('returns true for completed without post-download log', () => {
-    expect(jobNeedsExtraction({ ...baseJob, status: 'completed' })).toBe(true)
-    expect(jobNeedsExtraction({ ...baseJob, status: 'seeding' })).toBe(true)
-  })
-
-  it('returns false after post-download skipped or verified', () => {
-    expect(
-      jobNeedsExtraction({ ...baseJob, status: 'completed', extractionStatus: 'skipped' }),
-    ).toBe(false)
-    expect(
-      jobNeedsExtraction({ ...baseJob, status: 'completed', extractionStatus: 'verified' }),
-    ).toBe(false)
-  })
-
-  it('returns false for extracted or extracting', () => {
-    expect(jobNeedsExtraction({ ...baseJob, status: 'extracted' })).toBe(false)
-    expect(jobNeedsExtraction({ ...baseJob, status: 'extracting' })).toBe(false)
-  })
-
-  it('returns true when progress reached 100 while seeding', () => {
-    expect(jobNeedsExtraction({ ...baseJob, status: 'seeding', progress: 100 })).toBe(true)
+  it('nunca pede extração — o download já é o instalável', () => {
+    expect(jobNeedsExtraction({ ...baseJob, status: 'completed' })).toBe(false)
+    expect(jobNeedsExtraction({ ...baseJob, status: 'seeding', progress: 100 })).toBe(false)
   })
 })
 
 describe('jobCanExtract', () => {
-  it('mostra extrair em completed pendente', async () => {
-    const { jobCanExtract } = await import('./jobExtraction')
-    expect(jobCanExtract({ ...baseJob, status: 'completed' })).toBe(true)
-  })
-
-  it('mostra retry após falha de extração', async () => {
-    const { jobCanExtract } = await import('./jobExtraction')
+  it('nunca mostra botão Extrair', () => {
+    expect(jobCanExtract({ ...baseJob, status: 'completed' })).toBe(false)
     expect(
       jobCanExtract({ ...baseJob, status: 'completed', extractionStatus: 'failed' }),
-    ).toBe(true)
-  })
-
-  it('mostra durante extracting', async () => {
-    const { jobCanExtract } = await import('./jobExtraction')
-    expect(jobCanExtract({ ...baseJob, status: 'extracting' })).toBe(true)
-  })
-
-  it('não mostra após extracted ou cancelled', async () => {
-    const { jobCanExtract } = await import('./jobExtraction')
-    expect(
-      jobCanExtract({ ...baseJob, status: 'completed', extractionStatus: 'extracted' }),
     ).toBe(false)
-    expect(jobCanExtract({ ...baseJob, status: 'cancelled' })).toBe(false)
+    expect(jobCanExtract({ ...baseJob, status: 'extracting' })).toBe(false)
   })
 })
 
@@ -74,12 +39,8 @@ describe('activeJobBlocksLibraryFolder', () => {
 
   it('não bloqueia pastas irmãs quando o job usa a pasta raiz de downloads', async () => {
     const { activeJobBlocksLibraryFolder } = await import('./jobExtraction')
-    expect(
-      activeJobBlocksLibraryFolder(`${root}\\Cuphead`, root, root),
-    ).toBe(false)
-    expect(
-      activeJobBlocksLibraryFolder(`${root}\\Other Game`, root, root),
-    ).toBe(false)
+    expect(activeJobBlocksLibraryFolder(`${root}\\Cuphead`, root, root)).toBe(false)
+    expect(activeJobBlocksLibraryFolder(`${root}\\Other Game`, root, root)).toBe(false)
   })
 
   it('bloqueia pasta com o mesmo destino específico do job', async () => {

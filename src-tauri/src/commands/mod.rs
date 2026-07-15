@@ -14,11 +14,15 @@ pub use crate::covers::{
   start_cover_precache, stop_cover_precache, retry_unresolved_covers,
   get_steam_app_index_status, refresh_steam_app_index,
 };
+pub use crate::favorites::{
+  is_favorite_catalog_entry, list_favorite_catalog_entries, list_library_play_stats,
+  toggle_favorite_catalog_entry,
+};
 pub use crate::library::{
-  delete_local_library_item, extract_library_folder, inspect_library_path,
+  delete_local_library_item, extract_library_folder, get_library_note, inspect_library_path,
   inspect_library_paths, is_executable_running_at_path, launch_game_from_path,
-  launch_setup_from_path, scan_default_download_path,
-  set_library_game_root,
+  launch_setup_from_path, scan_default_download_path, set_library_game_root,
+  set_library_launch_exe, set_library_note,
 };
 pub use crate::queue::clear_completed_jobs;
 pub use crate::sidecar::{

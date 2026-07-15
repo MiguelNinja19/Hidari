@@ -51,7 +51,7 @@ launcher-app/
 │   │   ├── settings/
 │   │   ├── sources/
 │   │   ├── covers/          # CoversProvider
-│   │   └── favorites/       # FavoritesProvider (toggle in Discover; no tab)
+│   │   └── genres/          # parseGenreList (Discover)
 │   ├── layout/              # AppShell, Sidebar (4 tabs)
 │   ├── shared/
 │   │   ├── api/tauri/

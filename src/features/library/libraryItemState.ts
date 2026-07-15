@@ -1,8 +1,12 @@
 import { resolveDeletePath } from '../../shared/utils/archive'
 import { activeJobBlocksLibraryFolder } from '../../shared/utils/jobExtraction'
 import {
+  isInsufficientGameDownload,
+  isAwaitingTorrentContent,
   isTorrentMetadataPhase,
+  isDownloadFullyTransferred,
   resolveJobProgressPercent,
+  MIN_READY_DOWNLOAD_BYTES,
 } from '../../shared/utils/jobProgress'
 import type { DownloadJob, LibraryPathState } from '../../shared/types/contracts'
 import type { LibraryEntry } from './types'
@@ -17,7 +21,7 @@ export const pathStateKey = (
   return base
 }
 
-const getPathState = (
+export const getPathState = (
   path: string,
   pathStateByKey: Record<string, LibraryPathState>,
   ctx?: { jobId?: string; title?: string },
@@ -69,9 +73,31 @@ export function isActiveQueueJob(job: DownloadJob): boolean {
   return ACTIVE_QUEUE_STATUSES.has(job.status)
 }
 
-/** Só entra na biblioteca quando o download terminou (pronto para instalar/jogar). */
+/** Transferência do jogo efectivamente concluída (≥5 MiB e ~100% dos bytes). */
+export { isDownloadFullyTransferred } from '../../shared/utils/jobProgress'
+
+/** Só entra na biblioteca quando o download do JOGO terminou (não metadados ~KB). */
 export function jobBelongsInLibrary(job: DownloadJob): boolean {
-  return LIBRARY_JOB_STATUSES.has(job.status)
+  if (isInsufficientGameDownload(job)) return false
+  if (isAwaitingTorrentContent(job)) return false
+  if (isTorrentMetadataPhase(job)) return false
+
+  const total = Number(job.totalBytes) || 0
+  const done = Number(job.bytesDownloaded) || 0
+  // Ainda a meio (ex.: 1 GB / 2 GB) → NUNCA na Biblioteca, mesmo com status completed/skipped.
+  if (total >= MIN_READY_DOWNLOAD_BYTES && done < total * 0.995) {
+    return false
+  }
+
+  if (LIBRARY_JOB_STATUSES.has(job.status)) return true
+  // Safety: 100% em "downloading" (aria2 ainda active a semear) também conta.
+  if (
+    isDownloadFullyTransferred(job) &&
+    ['downloading', 'pending', 'retrying'].includes(job.status)
+  ) {
+    return true
+  }
+  return false
 }
 
 export const isJobFinished = (job: DownloadJob) =>

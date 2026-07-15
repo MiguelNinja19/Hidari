@@ -70,7 +70,13 @@ export function formatExtractionError(message: string): string | null {
   if (msg.includes('download_stalled')) {
     return 'Download parado (sem peers/velocidade). Tente outra fonte no catálogo.'
   }
-  if (msg.includes('verify_failed') || msg.includes('verify_no_file') || msg.includes('verify_too_small')) {
+  if (msg.includes('already registered') || /infohash\s+[a-f0-9]+\s+is already registered/i.test(msg)) {
+    return 'Este torrent já está na fila ou a ser transferido. Abra Downloads ou cancele o job anterior e tente de novo.'
+  }
+  if (msg.includes('download_payload_too_small') || msg.includes('verify_too_small')) {
+    return 'Ainda só há metadados do torrent — a iniciar o download do jogo…'
+  }
+  if (msg.includes('verify_failed') || msg.includes('verify_no_file')) {
     return 'O download parece incompleto ou corrompido. Retome ou baixe de novo.'
   }
 
@@ -92,6 +98,15 @@ export function formatDownloadError(error: unknown): string {
 
   const cleaned = stripAria2ProgressNoise(msg)
 
+  // Mensagens soft de progresso torrent — não são erros.
+  if (
+    /obter o conteúdo|aguardar conteúdo|metadados ok|obter metadados|baixar o conteúdo|conectando peers|baixando torrent/i.test(
+      cleaned,
+    )
+  ) {
+    return ''
+  }
+
   const extraction = formatExtractionError(cleaned)
   if (extraction) return extraction
 
@@ -101,7 +116,8 @@ export function formatDownloadError(error: unknown): string {
     if (Number.isFinite(code) && ARIA2_EXIT_MESSAGES[code]) {
       return ARIA2_EXIT_MESSAGES[code]!
     }
-    return `Falha no motor de torrent (aria2, código ${code}). Abra a pasta do download, remova arquivos parciais se existirem e tente novamente.`
+    // Códigos sem mensagem útil (ex.: Exit 1) — não mostrar ruído técnico.
+    return ''
   }
 
   if (FILE_EXISTS_HINT.test(cleaned)) {
@@ -112,6 +128,10 @@ export function formatDownloadError(error: unknown): string {
     .replace(/^torrent_client_exit_code:\s*/i, '')
     .replace(/^\|\s*aria2:\s*/i, '')
     .trim()
+
+  if (/^(exit(?:\s*code)?)\s*:?\s*-?\d+\.?$/i.test(withoutPrefix)) {
+    return ''
+  }
 
   return withoutPrefix || 'Falha no download.'
 }

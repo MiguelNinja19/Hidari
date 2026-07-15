@@ -146,6 +146,22 @@ pub fn is_likely_game_exe(file_name: &str) -> bool {
   !blocked_contains.iter().any(|token| lower.contains(token))
 }
 
+fn path_matches_title_tokens(path: &Path, title_tokens: &[String]) -> bool {
+  if title_tokens.is_empty() {
+    return true;
+  }
+  let file_name = path
+    .file_name()
+    .and_then(|value| value.to_str())
+    .unwrap_or_default()
+    .to_lowercase();
+  if title_tokens.iter().any(|token| file_name.contains(token)) {
+    return true;
+  }
+  let path_lower = path.to_string_lossy().to_lowercase();
+  title_tokens.iter().any(|token| path_lower.contains(token))
+}
+
 fn score_executable_candidate(path: &Path, depth: usize, title_tokens: &[String]) -> i64 {
   let file_name = path
     .file_name()
@@ -355,6 +371,10 @@ pub fn folder_has_playable_game_exe(title: &str, folder: &Path) -> bool {
       continue;
     }
     if !is_likely_game_exe(file_name) {
+      continue;
+    }
+    // Exige match ao título quando há tokens — senão qualquer .exe "grande" noutro jogo conta.
+    if !path_matches_title_tokens(&path, &title_tokens) {
       continue;
     }
     if score_executable_candidate(&path, depth, &title_tokens) > 0 {
@@ -654,19 +674,13 @@ fn resolve_launch_candidates_in_roots(
   if !title_tokens.is_empty() {
     let title_matched: Vec<(i64, PathBuf)> = scored
       .iter()
-      .filter(|(_, path)| {
-        let file_name = path
-          .file_name()
-          .and_then(|value| value.to_str())
-          .unwrap_or_default()
-          .to_lowercase();
-        title_tokens.iter().any(|token| file_name.contains(token))
-      })
+      .filter(|(_, path)| path_matches_title_tokens(path, &title_tokens))
       .cloned()
       .collect();
-    if !title_matched.is_empty() {
-      scored = title_matched;
+    if title_matched.is_empty() {
+      return Err("no_executable_found_in_job_folder".to_string());
     }
+    scored = title_matched;
   }
 
   scored.sort_by(|(score_a, path_a), (score_b, path_b)| {
@@ -973,8 +987,10 @@ pub fn resolve_and_launch_game_with_extra_roots(
   extra_roots: &[PathBuf],
   preferred_exe: Option<&Path>,
 ) -> Result<PathBuf, String> {
+  let title_tokens = title::tokenize_title(title);
   if let Some(preferred) = preferred_exe {
-    if try_launch_executable(preferred).is_ok() {
+    if path_matches_title_tokens(preferred, &title_tokens) && try_launch_executable(preferred).is_ok()
+    {
       return Ok(preferred.to_path_buf());
     }
   }
@@ -1015,48 +1031,74 @@ pub fn find_setup_executable(title: &str, dest_path: &str) -> Option<PathBuf> {
   find_setup_executable_with_extra_roots(title, dest_path, &[])
 }
 
+fn pick_shallowest_setup(matches: &mut Vec<(usize, PathBuf)>) -> Option<PathBuf> {
+  if matches.is_empty() {
+    return None;
+  }
+  matches.sort_by(|(depth_a, path_a), (depth_b, path_b)| {
+    depth_a
+      .cmp(depth_b)
+      .then_with(|| path_a.as_os_str().cmp(path_b.as_os_str()))
+  });
+  matches.first().map(|(_, path)| path.clone())
+}
+
 pub fn find_setup_executable_with_extra_roots(
   title: &str,
   dest_path: &str,
   extra_roots: &[PathBuf],
 ) -> Option<PathBuf> {
   let roots = merge_launch_roots(title, dest_path, extra_roots);
-  let mut matches: Vec<(usize, PathBuf)> = Vec::new();
 
-  for root in roots {
+  // Caminho rápido: quase todos os repacks têm setup.exe na raiz.
+  let mut root_matches: Vec<(usize, PathBuf)> = Vec::new();
+  for root in &roots {
     if !root.exists() {
       continue;
     }
-
     let direct = root.join("setup.exe");
     if is_usable_setup_file(&direct) {
-      matches.push((0, direct));
+      root_matches.push((0, direct));
     }
+  }
+  if let Some(setup) = pick_shallowest_setup(&mut root_matches) {
+    return Some(setup);
+  }
 
-    let mut local: Vec<(usize, PathBuf)> = Vec::new();
-    collect_executable_candidates(&root, 0, SCAN_DEPTH_FULL, &mut local);
-    for (depth, path) in local {
-      let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_lowercase())
-        .unwrap_or_default();
-      if file_name != "setup.exe" {
+  // Só varre pastas se a raiz não tiver setup.exe.
+  for max_depth in [SCAN_DEPTH_FAST, SCAN_DEPTH_FULL] {
+    let mut matches: Vec<(usize, PathBuf)> = Vec::new();
+    for root in &roots {
+      if !root.exists() {
         continue;
       }
-      if !is_usable_setup_file(&path) {
-        continue;
+      let mut local: Vec<(usize, PathBuf)> = Vec::new();
+      collect_executable_candidates(root, 0, max_depth, &mut local);
+      for (depth, path) in local {
+        let file_name = path
+          .file_name()
+          .and_then(|value| value.to_str())
+          .map(|value| value.to_lowercase())
+          .unwrap_or_default();
+        if file_name != "setup.exe" {
+          continue;
+        }
+        if !is_usable_setup_file(&path) {
+          continue;
+        }
+        matches.push((depth, path));
       }
-      matches.push((depth, path));
+    }
+    if let Some(setup) = pick_shallowest_setup(&mut matches) {
+      return Some(setup);
     }
   }
 
-  matches.sort_by(|(depth_a, path_a), (depth_b, path_b)| {
-    depth_a
-      .cmp(depth_b)
-      .then_with(|| path_a.as_os_str().cmp(path_b.as_os_str()))
-  });
-  matches.into_iter().map(|(_, path)| path).next()
+  None
+}
+
+pub fn is_usable_setup_path(path: &Path) -> bool {
+  is_usable_setup_file(path)
 }
 
 fn is_usable_setup_file(path: &Path) -> bool {
@@ -1247,6 +1289,29 @@ mod tests {
     assert_eq!(candidates[0], dir.join("Crystal Quest Legacy.exe"));
 
     let _ = fs::remove_dir_all(&dir);
+  }
+
+  #[test]
+  fn does_not_pick_unrelated_game_exe_when_title_not_installed() {
+    let parent = std::env::temp_dir().join(format!(
+      "launcher_wrong_game_test_{}",
+      std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&parent);
+    let terraria = parent.join("Terraria (v1.4.4.1 - Labor of Love Update + Bonus OST, MULTi9)");
+    let nfs = parent.join("Need for Speed Heat");
+    fs::create_dir_all(&terraria).unwrap();
+    fs::create_dir_all(&nfs).unwrap();
+
+    fs::write(terraria.join("setup.exe"), vec![0u8; 60_000]).unwrap();
+    fs::write(nfs.join("NeedForSpeedHeat.exe"), pe_stub()).unwrap();
+
+    let title = "Terraria (v1.4.4.1 - Labor of Love Update + Bonus OST, MULTi9)";
+    assert!(resolve_launch_candidates(title, &terraria.to_string_lossy()).is_err());
+    assert!(resolve_launch_candidates(title, &parent.to_string_lossy()).is_err());
+    assert!(!folder_has_playable_game_exe(title, &parent));
+
+    let _ = fs::remove_dir_all(&parent);
   }
 
   #[test]

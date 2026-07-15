@@ -6,11 +6,15 @@ type LibrarySortToggleProps = {
   onChange: (value: LibrarySort) => void
 }
 
-const OPTIONS: LibrarySort[] = ['title-asc', 'title-desc']
+const OPTIONS: LibrarySort[] = ['title-asc', 'title-desc', 'recent']
 
-const LABEL_KEY: Record<LibrarySort, 'library.sortTitleAsc' | 'library.sortTitleDesc'> = {
+const LABEL_KEY: Record<
+  LibrarySort,
+  'library.sortTitleAsc' | 'library.sortTitleDesc' | 'library.sortRecent'
+> = {
   'title-asc': 'library.sortTitleAsc',
   'title-desc': 'library.sortTitleDesc',
+  recent: 'library.sortRecent',
 }
 
 export function LibrarySortToggle({ value, onChange }: LibrarySortToggleProps) {

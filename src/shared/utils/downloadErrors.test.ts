@@ -48,9 +48,23 @@ describe('formatDownloadError', () => {
     )
   })
 
-  it('remove bloco Download Progress Summary', () => {
+  it('traduz InfoHash already registered', () => {
     expect(
-      stripAria2ProgressNoise('erro real *** Download Progress Summary as of hoje *** lixo'),
-    ).toBe('erro real')
+      formatDownloadError(
+        'aria2 rpc error: {"code":1,"message":"InfoHash e0110d3fc68ad66cfa4851b86a6f05ac274e3ddd is already registered."}',
+      ),
+    ).toContain('já está na fila')
+  })
+
+  it('traduz payload demasiado pequeno (metadados/.torrent)', () => {
+    expect(formatDownloadError('download_payload_too_small: 299700 bytes')).toContain(
+      'metadados',
+    )
+    expect(formatDownloadError('verify_too_small: 299700')).toContain('metadados')
+  })
+
+  it('omite exit codes sem mensagem útil', () => {
+    expect(formatDownloadError('torrent_client_exit_code: exit code: 1')).toBe('')
+    expect(formatDownloadError('Exit 1')).toBe('')
   })
 })

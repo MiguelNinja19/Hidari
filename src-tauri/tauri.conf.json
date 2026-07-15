@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Hidari",
   "version": "0.1.0",
-  "identifier": "com.mylauncher.app",
+  "identifier": "com.hidari.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Hidari",
-        "width": 1094,
+        "width": 1280,
         "height": 816,
-        "minWidth": 640,
-        "minHeight": 480,
+        "minWidth": 1280,
+        "minHeight": 816,
         "decorations": false,
         "resizable": true,
         "maximizable": true,
@@ -25,24 +25,28 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' customprotocol: asset:; connect-src ipc: http://ipc.localhost https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://shared.akamai.steamstatic.com https://steamcdn-a.akamaihd.net https://store.steampowered.com https://hydra-api-us-east-1.losbroxas.org https://hydralinks.cloud https://raw.githubusercontent.com; font-src 'self' data:; img-src 'self' asset: http://asset.localhost https://asset.localhost blob: data: https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://shared.akamai.steamstatic.com https://steamcdn-a.akamaihd.net; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["hidari", "mylauncher"]
+        "schemes": ["hidari"]
       }
     },
     "updater": {
-      "active": false,
-      "endpoints": [],
-      "dialog": true
+      "active": true,
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1ODhFMjU2Q0QxRDM2NUEKUldSYU5oM05WdUtJdFV4SnZzR053TzlaQmtPQXlvVkR3dzFxRG5zS01RT1NCUk91ZHFXbkdOTFoK",
+      "endpoints": [
+        "https://github.com/melx-999/Hydrax/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "resources": [
       "binaries/README.txt",
       "binaries/aria2c.exe",

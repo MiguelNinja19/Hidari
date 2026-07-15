@@ -116,9 +116,26 @@ export const sourcesApi = {
     tauriClient.invoke<LibraryPathState>('set_library_game_root', {
       payload: { title, destPath, gameRoot, jobId: jobId ?? null },
     }),
-  launchSetup: (title: string, path: string, jobId?: string) =>
+  setLibraryLaunchExe: (title: string, destPath: string, exePath: string) =>
+    tauriClient.invoke<void>('set_library_launch_exe', {
+      payload: { title, destPath, exePath },
+    }),
+  getLibraryNote: (path: string, title: string) =>
+    tauriClient.invoke<string>('get_library_note', {
+      payload: { path, title, note: null },
+    }),
+  setLibraryNote: (path: string, title: string, note: string) =>
+    tauriClient.invoke<void>('set_library_note', {
+      payload: { path, title, note },
+    }),
+  launchSetup: (title: string, path: string, jobId?: string, preferredSetup?: string | null) =>
     tauriClient.invoke<string>('launch_setup_from_path', {
-      payload: { title, path, jobId: jobId ?? null },
+      payload: {
+        title,
+        path,
+        jobId: jobId ?? null,
+        preferredSetup: preferredSetup?.trim() || null,
+      },
     }),
   isExecutableRunning: (path: string) =>
     tauriClient.invoke<boolean>('is_executable_running_at_path', { path }),
@@ -126,4 +143,18 @@ export const sourcesApi = {
     tauriClient.invoke<void>('extract_library_folder', {
       payload: { title, path, jobId: null },
     }),
+  listFavoriteCatalogEntries: () =>
+    tauriClient.invoke<import('../../types/contracts').FavoriteCatalogEntry[]>(
+      'list_favorite_catalog_entries',
+    ),
+  toggleFavoriteCatalogEntry: (title: string, catalogKey?: string) =>
+    tauriClient.invoke<boolean>('toggle_favorite_catalog_entry', {
+      payload: { title, catalogKey: catalogKey ?? null },
+    }),
+  isFavoriteCatalogEntry: (catalogKey: string) =>
+    tauriClient.invoke<boolean>('is_favorite_catalog_entry', { catalogKey }),
+  listLibraryPlayStats: () =>
+    tauriClient.invoke<import('../../types/contracts').LibraryPlayStat[]>(
+      'list_library_play_stats',
+    ),
 }

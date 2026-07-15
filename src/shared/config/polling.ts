@@ -1,17 +1,20 @@
-/** Intervalo com downloads ativos fora da aba Downloads (ms). */
+/** Intervalo com downloads ativos (ms). */
 export const POLL_ACTIVE_JOBS_MS = 4000
+
+/** Poll mais lento quando a aba Downloads não está visível (ms). */
+export const POLL_ACTIVE_JOBS_BACKGROUND_MS = 10000
 
 /** Mínimo de caracteres para pesquisar nas fontes. */
 export const CATALOG_SEARCH_MIN_CHARS = 2
 
 /** Debounce de capas em falta na biblioteca (ms). */
-export const LIBRARY_COVER_LOOKUP_DEBOUNCE_MS = 0
+export const LIBRARY_COVER_LOOKUP_DEBOUNCE_MS = 250
 
 /** Atraso antes de carregar a fila no arranque (deixa a UI respirar). */
 export const STARTUP_JOBS_DEFER_MS = 0
 
 /** Pausa entre lotes de inspeção de pastas da biblioteca (ms). */
-export const LIBRARY_INSPECT_BATCH_PAUSE_MS = 0
+export const LIBRARY_INSPECT_BATCH_PAUSE_MS = 16
 
 /** Tamanho do lote de inspeção de pastas (maior = menos round-trips IPC). */
 export const LIBRARY_INSPECT_BATCH_SIZE = 16

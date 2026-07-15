@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useToast } from '../components/ToastProvider'
-import { formatUserError } from '../utils/formatUserError'
+import { formatUserError, isTransientQueueError } from '../utils/formatUserError'
 
 /** Mostra toast quando `error` muda para um valor não vazio. */
 export function useErrorToast(error: string | null | undefined, fallback?: string) {
@@ -13,8 +13,14 @@ export function useErrorToast(error: string | null | undefined, fallback?: strin
       lastShownRef.current = null
       return
     }
+    if (isTransientQueueError(trimmed)) return
     if (trimmed === lastShownRef.current) return
+    const message = formatUserError(
+      trimmed,
+      fallback ?? 'Ocorreu um erro inesperado. Tente novamente.',
+    )
+    if (!message.trim()) return
     lastShownRef.current = trimmed
-    showError(formatUserError(trimmed, fallback ?? 'Ocorreu um erro inesperado. Tente novamente.'))
+    showError(message)
   }, [error, fallback, showError])
 }

@@ -25,15 +25,32 @@ Typical output: `src-tauri/target/release/bundle/`.
 
 File: `src-tauri/tauri.conf.json`
 
-| Field | Current value |
-|-------|---------------|
-| `productName` | Hidari |
-| `identifier` | com.mylauncher.app |
-| `devUrl` | http://localhost:5173 |
-| Window | 1094×816, resizable, title **Hidari** |
-| Deep links | `hidari://`, `mylauncher://` |
+| Field         | Current value                         |
+| ------------- | ------------------------------------- |
+| `productName` | Hidari                                |
+| `identifier`  | com.hidari.app                        |
+| `devUrl`      | http://localhost:5173                 |
+| Window        | 1280×816, resizable, title **Hidari** |
+| Deep links    | `hidari://`                           |
+| CSP           | Restrictive (self + Steam CDNs)       |
+| Updater       | Active (GitHub Releases `latest.json`)|
 
 App icons: `src-tauri/icons/` (from the Hidari brand). Docs logo: `docs/assets/`.
+
+### AppData migration
+
+Changing the identifier from `com.mylauncher.app` to `com.hidari.app` creates a new AppData folder. On startup Hidari copies `launcher.db` (and WAL/covers when present) from the legacy folder if the new database does not yet exist.
+
+### Updater signing
+
+1. Generate keys: `npx tauri signer generate -w ./.tauri/hidari.key`
+2. Put the **public** key in `plugins.updater.pubkey` (`tauri.conf.json`).
+3. Store private key + password as GitHub secrets:
+   - `TAURI_SIGNING_PRIVATE_KEY`
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+4. Release tags `v*` build signed updater artifacts via `.github/workflows/release.yml`.
+
+Never commit `.tauri/*.key`.
 
 ## Required binaries
 

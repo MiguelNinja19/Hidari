@@ -302,7 +302,15 @@ pub fn normalize_title_key(title: &str) -> String {
 }
 
 pub fn tokenize_title(title: &str) -> Vec<String> {
-  clean_title_for_matching(title)
+  // Preferir o nome-base do catálogo: títulos de repack ("Labor of Love", "Bonus OST")
+  // geravam tokens genéricos que faziam match com pastas/exes de outros jogos.
+  let base = extract_catalog_base_title(title);
+  let source = if base.chars().filter(|c| c.is_alphanumeric()).count() >= 3 {
+    base
+  } else {
+    clean_title_for_matching(title)
+  };
+  source
     .split(|ch: char| !ch.is_alphanumeric())
     .filter(|token| token.len() >= 3)
     .map(|token| token.to_lowercase())

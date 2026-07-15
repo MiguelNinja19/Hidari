@@ -59,5 +59,9 @@ export function formatLaunchError(error: unknown): string {
   ) {
     return LAUNCH_ERROR_MESSAGES.file_corrupt!
   }
+  // Exit codes crus (PowerShell/processo) — não servem como feedback ao utilizador.
+  if (/\bexit(?:\s*code)?\s*:?\s*-?\d+\b/i.test(msg)) {
+    return ''
+  }
   return msg.replace(/^could_not_launch_game:\s*/i, '') || 'Não foi possível iniciar o jogo.'
 }

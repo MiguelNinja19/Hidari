@@ -1,30 +1,55 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window'
+
+/** Tamanho único da janela restaurada — evita layouts quebrados ao redimensionar. */
+const WINDOW_WIDTH = 1280
+const WINDOW_HEIGHT = 816
 
 const isTauriRuntime = () =>
   typeof window !== 'undefined' &&
   typeof (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
-  'undefined'
+    'undefined'
+
+async function lockRestoredSize() {
+  const appWindow = getCurrentWindow()
+  const size = new LogicalSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+  await appWindow.setMinSize(size)
+  await appWindow.setMaxSize(size)
+}
+
+async function unlockForMaximize() {
+  const appWindow = getCurrentWindow()
+  await appWindow.setMaxSize(null)
+}
 
 export function TitleBar() {
   const { t } = useTranslation()
   const [maximized, setMaximized] = useState(false)
+  const togglingRef = useRef(false)
 
   useEffect(() => {
     if (!isTauriRuntime()) return
 
-    const window = getCurrentWindow()
+    const appWindow = getCurrentWindow()
     let disposed = false
 
     const syncMaximized = async () => {
-      const next = await window.isMaximized()
+      if (togglingRef.current) return
+      const next = await appWindow.isMaximized()
       if (!disposed) setMaximized(next)
     }
 
-    void syncMaximized()
+    void (async () => {
+      const isMax = await appWindow.isMaximized()
+      if (disposed) return
+      if (!isMax) {
+        await lockRestoredSize()
+      }
+      setMaximized(isMax)
+    })()
 
-    const unlistenPromise = window.onResized(() => {
+    const unlistenPromise = appWindow.onResized(() => {
       void syncMaximized()
     })
 
@@ -36,7 +61,26 @@ export function TitleBar() {
 
   if (!isTauriRuntime()) return null
 
-  const window = getCurrentWindow()
+  const appWindow = getCurrentWindow()
+
+  const toggleMaximize = async () => {
+    togglingRef.current = true
+    try {
+      if (await appWindow.isMaximized()) {
+        await appWindow.unmaximize()
+        await lockRestoredSize()
+        await appWindow.setSize(new LogicalSize(WINDOW_WIDTH, WINDOW_HEIGHT))
+        setMaximized(false)
+        return
+      }
+
+      await unlockForMaximize()
+      await appWindow.maximize()
+      setMaximized(true)
+    } finally {
+      togglingRef.current = false
+    }
+  }
 
   return (
     <header className="titlebar">
@@ -49,7 +93,7 @@ export function TitleBar() {
           className="titlebar__btn"
           aria-label={t('titlebar.minimize')}
           onClick={() => {
-            void window.minimize()
+            void appWindow.minimize()
           }}
         >
           <svg viewBox="0 0 12 12" aria-hidden="true">
@@ -61,7 +105,7 @@ export function TitleBar() {
           className="titlebar__btn"
           aria-label={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
           onClick={() => {
-            void window.toggleMaximize()
+            void toggleMaximize()
           }}
         >
           {maximized ? (
@@ -79,7 +123,7 @@ export function TitleBar() {
           className="titlebar__btn titlebar__btn--close"
           aria-label={t('titlebar.close')}
           onClick={() => {
-            void window.close()
+            void appWindow.close()
           }}
         >
           <svg viewBox="0 0 12 12" aria-hidden="true">

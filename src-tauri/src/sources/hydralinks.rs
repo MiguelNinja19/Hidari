@@ -1,4 +1,4 @@
-use crate::catalog::{normalize_match_text, title_word_matches_query_word};
+use crate::catalog::{normalize_match_text, title_norm_matches_query_norm};
 use crate::config;
 use crate::db::open_database_connection;
 use crate::dto::{DownloadOptionDto, HydraSourceDto};
@@ -134,25 +134,6 @@ fn catalog_from_cached(cached: &CachedCatalog) -> HydraLinksCatalog {
   }
 }
 
-fn title_norm_matches_query_norm(title_norm: &str, query_norm: &str) -> bool {
-  let title_words: Vec<&str> = title_norm.split_whitespace().collect();
-  let query_words: Vec<&str> = query_norm
-    .split_whitespace()
-    .filter(|word| !word.is_empty())
-    .collect();
-  if query_words.is_empty() {
-    return true;
-  }
-  query_words.iter().all(|query_word| {
-    if query_word.len() <= 2 {
-      return title_words.iter().any(|title_word| title_word == query_word);
-    }
-    title_words
-      .iter()
-      .any(|title_word| title_word_matches_query_word(title_word, query_word))
-  })
-}
-
 fn remember_cached(source_id: &str, catalog: CachedCatalog) {
   if let Ok(mut cache) = memory_cache().lock() {
     cache.insert(
@@ -199,6 +180,8 @@ fn read_memory_cache_if_fresh(
 }
 
 /// Padrões LIKE amigáveis ao índice: primeira palavra como prefixo, restantes como contém.
+/// Padrões LIKE para `title_norm` (usado em testes e disponível para pesquisas SQL).
+#[allow(dead_code)]
 pub fn build_catalog_title_norm_patterns(query_norm: &str) -> Vec<String> {
   let words: Vec<&str> = query_norm
     .split_whitespace()

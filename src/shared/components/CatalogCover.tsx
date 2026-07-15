@@ -62,7 +62,6 @@ function CatalogCoverInner({
   )
 
   const activeSrc = sources[sourceIndex] ?? null
-  const isRemote = Boolean(activeSrc?.startsWith('http://') || activeSrc?.startsWith('https://'))
 
   useEffect(() => {
     const titleChanged = titleKeyRef.current !== title
@@ -96,6 +95,17 @@ function CatalogCoverInner({
     setFailed(false)
   }, [activeSrc])
 
+  const imgRef = useRef<HTMLImageElement | null>(null)
+
+  // Cache do browser: onLoad pode não disparar → capa ficava opacity:0 (parece sumida).
+  useEffect(() => {
+    const img = imgRef.current
+    if (!img || !activeSrc) return
+    if (img.complete && img.naturalWidth > 0) {
+      handleLoad()
+    }
+  }, [activeSrc, sourceIndex, handleLoad])
+
   const handleError = useCallback(() => {
     if (localSrc && activeSrc === localSrc) {
       setLocalSkipped(true)
@@ -127,7 +137,8 @@ function CatalogCoverInner({
   const showLoaded =
     showImage &&
     (loaded || (committedSrcRef.current != null && activeSrc === committedSrcRef.current))
-  const showSkeleton = showImage && !showLoaded && !isRemote
+  // Skeleton também para remotos — senão a capa fica transparent até onLoad (parece “sem capa”).
+  const showSkeleton = showImage && !showLoaded
 
   if (!showImage) {
     const showError = status === 'error' || failed
@@ -147,6 +158,7 @@ function CatalogCoverInner({
     <div className="game-card__media">
       {!showSkeleton ? null : <div className="game-card__cover-empty" aria-hidden="true" />}
       <img
+        ref={imgRef}
         className={`game-card__cover${showLoaded ? ' game-card__cover--loaded' : ''}`}
         src={activeSrc!}
         alt=""

@@ -16,7 +16,7 @@ export type ResolvedCover = {
 const WARM_RETRY_MS = 30 * 60 * 1000
 const BATCH_LOOKUP_RETRY_MS = 15 * 60 * 1000
 const BATCH_DEBOUNCE_MS = 40
-const MAX_WARM_CONCURRENT = 4
+const MAX_WARM_CONCURRENT = 2
 const INVALIDATE_COOLDOWN_MS = 10 * 60 * 1000
 
 type WarmTask = { title: string; coverUrl: string; key: string }
@@ -25,6 +25,15 @@ function isSteamLibraryCoverUrl(url: string): boolean {
   return /steamstatic|steamcdn|cdn\.akamai\.steamstatic|steamcommunity|library_600x900/i.test(
     url,
   )
+}
+
+function coverPreferenceRank(url: string): number {
+  const trimmed = url.trim()
+  if (!trimmed) return 99
+  // Capas de catálogo (Hydra/CDN) > arte Steam explícita > library Steam genérica
+  if (!isSteamLibraryCoverUrl(trimmed)) return 0
+  if (/library_600x900/i.test(trimmed)) return 2
+  return 1
 }
 
 function findSavedCover(
@@ -40,24 +49,51 @@ function findSavedCover(
     matches.push(row)
   }
   if (matches.length === 0) return null
-  const catalog = matches.find((row) => !isSteamLibraryCoverUrl(row.coverUrl))
-  return catalog ?? matches[0] ?? null
+  matches.sort(
+    (a, b) => coverPreferenceRank(a.coverUrl) - coverPreferenceRank(b.coverUrl),
+  )
+  return matches[0] ?? null
 }
 
+/** Mantém a capa preferida (ex.: da pesquisa) — não deixa o resolve Steam sobrescrever. */
 function indexSavedCoverRows(
   map: Record<string, GameCover>,
   rows: GameCover[],
 ): Record<string, GameCover> {
   for (const row of rows) {
+    // Só aliases canónicos da chave de storage — coverTitleKeyCandidates(titleKey)
+    // gerava colisões entre jogos distintos (capas trocadas na grelha).
     for (const key of coverStorageKeyAliases(row.titleKey)) {
       const existing = map[key]
-      if (
-        existing &&
-        !isSteamLibraryCoverUrl(existing.coverUrl) &&
-        isSteamLibraryCoverUrl(row.coverUrl)
-      ) {
+      if (!existing) {
+        map[key] = row
         continue
       }
+
+      const existingUrl = existing.coverUrl.trim()
+      const nextUrl = row.coverUrl.trim()
+
+      // Mesma URL: só enriquece localPath se faltava.
+      if (existingUrl === nextUrl) {
+        if (!existing.localPath?.trim() && row.localPath?.trim()) {
+          map[key] = { ...existing, localPath: row.localPath }
+        }
+        continue
+      }
+
+      const existingRank = coverPreferenceRank(existingUrl)
+      const nextRank = coverPreferenceRank(nextUrl)
+
+      // Nunca degradar (catálogo → Steam, ou Steam art → library genérico).
+      if (nextRank > existingRank) {
+        continue
+      }
+
+      // Empate Steam/Steam com URLs diferentes: preservar a primeira (enqueue/pesquisa).
+      if (nextRank === existingRank && existingRank > 0) {
+        continue
+      }
+
       map[key] = row
     }
   }
@@ -204,14 +240,19 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
       const saved = findSavedCover(title, savedCovers)
       const catalog = findCatalogCover(title, coverByTitleKey)
       const explicitUrl = catalogCoverUrl?.trim() || null
+      // Preferir: URL explícita (pesquisa) → capa guardada no download → catálogo em memória → Steam
+      // Preferir: URL explícita (pesquisa) → capa guardada → catálogo em memória
       const coverUrl =
         explicitUrl || saved?.coverUrl || catalog?.coverUrl || null
+      // Local só quando a URL guardada é a que estamos a mostrar (evita capa de outro jogo).
+      const savedLocalOk =
+        Boolean(saved?.localPath?.trim()) &&
+        Boolean(coverUrl) &&
+        saved!.coverUrl.trim() === coverUrl
       const localPath =
         catalogLocalPath?.trim() ||
-        catalog?.localPath?.trim() ||
-        (saved && (explicitUrl == null || saved.coverUrl === explicitUrl)
-          ? saved.localPath ?? null
-          : null) ||
+        (savedLocalOk ? saved!.localPath ?? null : null) ||
+        (catalog?.coverUrl?.trim() === coverUrl ? catalog?.localPath?.trim() || null : null) ||
         null
 
       if (localPath) {
@@ -248,11 +289,30 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
 
     const key = coverTitleKey(title)
     const saved = findSavedCover(title, savedCoversRef.current)
-    if (saved?.localPath) return
+    if (saved) {
+      const sameUrl = saved.coverUrl.trim() === trimmed
+      // Já cacheado com a mesma URL — não reprocessar.
+      if (sameUrl && saved.localPath) return
+      // Não degradar (ex.: Hydra/pesquisa → Steam) só porque a biblioteca já tem ficheiro local.
+      if (coverPreferenceRank(trimmed) > coverPreferenceRank(saved.coverUrl)) return
+      // Mesma preferência, URL diferente e já há local: manter a capa atual.
+      if (
+        sameUrl === false &&
+        saved.localPath &&
+        coverPreferenceRank(trimmed) === coverPreferenceRank(saved.coverUrl) &&
+        coverPreferenceRank(trimmed) > 0
+      ) {
+        return
+      }
+    }
 
     const lastAttempt = warmAttemptAtRef.current.get(key) ?? 0
     if (Date.now() - lastAttempt < WARM_RETRY_MS && lastAttempt > 0) {
-      return
+      // Permitir upgrade (catálogo melhor) mesmo dentro do cooldown.
+      const canUpgrade =
+        saved != null &&
+        coverPreferenceRank(trimmed) < coverPreferenceRank(saved.coverUrl)
+      if (!canUpgrade) return
     }
 
     if (warmQueueRef.current.some((task) => task.key === key)) return

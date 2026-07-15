@@ -18,7 +18,6 @@ use crate::queue::persist::{
 use crate::sources::{enrich_magnet_url_with_title, validate_job_url};
 use crate::state::SidecarState;
 use rusqlite::params;
-use std::path::PathBuf;
 use std::process::Command as StdCommand;
 use tauri::{AppHandle, Emitter, Manager};
 use url::Url;
@@ -56,13 +55,14 @@ pub async fn sidecar_enqueue_job(
     .ok()
     .and_then(|s| s.parse::<u64>().ok())
     .filter(|&v| v > 0);
-  let dest_path = payload
+  let dest_path_raw = payload
     .dest_path
     .clone()
     .or(default_dest_path)
     .ok_or_else(|| "default_download_path_not_configured".to_string())?;
-  let job_url = enrich_magnet_url_with_title(&payload.url, Some(&payload.title));
   drop(conn);
+  let dest_path = crate::path_security::validate_enqueue_dest_path(&app, &dest_path_raw)?;
+  let job_url = enrich_magnet_url_with_title(&payload.url, Some(&payload.title));
 
   let body = {
     let mut b = serde_json::json!({
@@ -335,6 +335,19 @@ pub async fn sidecar_launch_job(app: AppHandle, id: String) -> Result<String, St
   )
   .map_err(|error| launch_errors::map_launch_user_error(&error, &job.dest_path))?;
   let _ = upsert_library_launch_exe(&conn, &job.dest_path, &job.title, &launched);
+  let path_key = format!(
+    "{}::{}",
+    job.dest_path.to_lowercase(),
+    job.title.to_lowercase()
+  );
+  let _ = conn.execute(
+    "INSERT INTO library_play_stats (path_key, last_played_at, play_count) \
+     VALUES (?1, CURRENT_TIMESTAMP, 1) \
+     ON CONFLICT(path_key) DO UPDATE SET \
+       last_played_at = CURRENT_TIMESTAMP, \
+       play_count = play_count + 1",
+    params![path_key],
+  );
   Ok(launched.to_string_lossy().to_string())
 }
 
@@ -354,8 +367,9 @@ pub fn open_deep_link(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn open_local_path(path: String) -> Result<(), String> {
-  open_path_in_shell(&PathBuf::from(path.trim()))
+pub fn open_local_path(app: AppHandle, path: String) -> Result<(), String> {
+  let validated = crate::path_security::validate_managed_path(&app, &path)?;
+  open_path_in_shell(&validated)
 }
 
 pub fn emit_deep_link_event(app: &AppHandle, url: &str) -> Result<(), String> {

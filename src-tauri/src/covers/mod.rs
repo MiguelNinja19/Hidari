@@ -179,6 +179,7 @@ pub fn cover_download_urls(cover_url: &str) -> Vec<String> {
   let mut urls = Vec::new();
   if let Some(rest) = trimmed.split("/steam/apps/").nth(1) {
     if let Some(app_id) = rest.split('/').next().filter(|id| !id.is_empty()) {
+      // Verticais primeiro — a grelha é 2:3; header/capsule ficam com zoom.
       urls.extend(config::steam_library_cover_urls(app_id));
     }
   }

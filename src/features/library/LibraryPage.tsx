@@ -1,8 +1,9 @@
 import type { TFunction } from 'i18next'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { localeForLanguage, isAppLanguage, type AppLanguage } from '../../shared/config/locale'
 import type { LibraryStatusMeta } from './libraryItemState'
+import { itemPathCtx, pathStateKey } from './libraryItemState'
 import { CatalogCover } from '../../shared/components/CatalogCover'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { LibraryGameCard } from './LibraryGameCard'
@@ -17,6 +18,8 @@ import {
   useOpenLocalPath,
 } from './LibraryController'
 import type { LibraryControllerValue } from './LibraryController'
+import { DiscoverGameDetailPage } from '../discover/DiscoverGameDetailPage'
+import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 
 import type { GameTileAction } from '../../shared/components/GameTileAction'
 
@@ -65,6 +68,7 @@ function buildLibraryActions(
     canPlay: boolean
     canInstall: boolean
     canLocate: boolean
+    canExtract: boolean
     pathStatePending: boolean
     canDelete: boolean
     playBusyId: string | null
@@ -72,32 +76,96 @@ function buildLibraryActions(
     installingKeys: ReadonlySet<string>
     handlePlayLibraryItem: (item: LibraryEntry) => Promise<void>
     requestInstallConfirm: (item: LibraryEntry) => void
+    handleExtractItem: (item: LibraryEntry) => Promise<void>
     handlePickGameInstallFolder: LibraryControllerValue['handlePickGameInstallFolder']
+    handlePickLaunchExe: (item: LibraryEntry) => Promise<void>
     handleDeleteLibraryItem: (item: LibraryEntry) => void
     onResumeItem: (id: string) => Promise<void>
     onOpenLocalPath: (path: string) => Promise<void>
     setActiveTabDownloads: () => void
+    openLibraryDetail: (item: LibraryEntry) => void
   },
 ): { primary: GameTileAction | null; secondary: GameTileAction[] } {
   const secondary: GameTileAction[] = []
+  const isInstallBusy =
+    ctx.installBusyId === ctx.key || ctx.installingKeys.has(ctx.key)
+  const isPlayBusy = ctx.playBusyId === ctx.key
+  const isDownloadingJob =
+    item.kind === 'job' &&
+    ['downloading', 'pending', 'retrying', 'extracting'].includes(item.status)
+  const isResumableJob =
+    item.kind === 'job' && (item.status === 'paused' || item.status === 'failed')
 
-  const addOpenFolder = () => {
+  // Submenu rico: ações úteis no contexto, além do clique principal.
+  secondary.push({
+    id: 'viewDetails',
+    label: t('library.viewDetails'),
+    title: t('library.viewDetailsTitle'),
+    variant: 'outline',
+    onClick: () => ctx.openLibraryDetail(item),
+  })
+  if (ctx.canPlay) {
     secondary.push({
-      id: 'open',
-      label: t('library.openFolder'),
-      title: t('library.openFolderTitle'),
-      variant: 'outline',
-      onClick: () => void ctx.onOpenLocalPath(item.destPath),
+      id: 'play-menu',
+      label: isPlayBusy ? t('library.playStarting') : t('common.play'),
+      title: t('library.playTitle'),
+      variant: 'primary',
+      disabled: isPlayBusy,
+      onClick: () => void ctx.handlePlayLibraryItem(item),
     })
   }
-
-  const addLocate = () => {
+  if (ctx.canInstall) {
+    secondary.push({
+      id: 'install-menu',
+      label: isInstallBusy ? t('library.installing') : t('common.install'),
+      title: isInstallBusy ? t('library.installingTitle') : t('library.installTitle'),
+      variant: 'outline',
+      disabled: isInstallBusy,
+      onClick: () => ctx.requestInstallConfirm(item),
+    })
+  }
+  if (ctx.canExtract) {
+    secondary.push({
+      id: 'extract-menu',
+      label: isInstallBusy ? t('library.extracting') : t('common.extract'),
+      title: t('library.extractTitle'),
+      variant: 'outline',
+      disabled: isInstallBusy,
+      onClick: () => void ctx.handleExtractItem(item),
+    })
+  }
+  if (isResumableJob) {
+    secondary.push({
+      id: 'resume-menu',
+      label: t('library.resumeDownload'),
+      title: t('library.resumeDownloadTitle'),
+      variant: 'outline',
+      onClick: () => void ctx.onResumeItem(item.id),
+    })
+  }
+  if (item.kind === 'job') {
+    secondary.push({
+      id: 'queue-menu',
+      label: t('library.viewDownload'),
+      title: t('library.viewDownloadTitle'),
+      variant: 'outline',
+      onClick: ctx.setActiveTabDownloads,
+    })
+  }
+  secondary.push({
+    id: 'open',
+    label: t('library.openExplorer'),
+    title: t('library.openExplorerTitle'),
+    variant: 'outline',
+    onClick: () => void ctx.onOpenLocalPath(item.destPath),
+  })
+  if (ctx.canLocate || ctx.canPlay || ctx.canInstall) {
     secondary.push({
       id: 'locate',
-      label: t('library.locate'),
-      title: t('library.locateTitle'),
+      label: t('library.locateFolder'),
+      title: t('library.locateFolderTitle'),
       variant: 'outline',
-      disabled: ctx.installBusyId === ctx.key,
+      disabled: isInstallBusy,
       onClick: () =>
         void ctx.handlePickGameInstallFolder(
           item.title,
@@ -107,8 +175,15 @@ function buildLibraryActions(
         ),
     })
   }
-
-  const addDelete = () => {
+  secondary.push({
+    id: 'pick-exe',
+    label: t('library.pickLaunchExe'),
+    title: t('library.pickLaunchExeTitle'),
+    variant: 'outline',
+    disabled: isInstallBusy,
+    onClick: () => void ctx.handlePickLaunchExe(item),
+  })
+  if (ctx.canDelete) {
     secondary.push({
       id: 'delete',
       label: t('common.delete'),
@@ -119,19 +194,6 @@ function buildLibraryActions(
   }
 
   if (ctx.canInstall) {
-    const isInstallBusy =
-      ctx.installBusyId === ctx.key || ctx.installingKeys.has(ctx.key)
-    secondary.push({
-      id: 'install-menu',
-      label: isInstallBusy ? t('library.installing') : t('common.install'),
-      title: isInstallBusy ? t('library.installingTitle') : t('library.installTitle'),
-      variant: 'outline',
-      disabled: isInstallBusy,
-      onClick: () => ctx.requestInstallConfirm(item),
-    })
-    addOpenFolder()
-    if (ctx.canLocate) addLocate()
-    if (ctx.canDelete) addDelete()
     return {
       primary: {
         id: 'install',
@@ -146,34 +208,20 @@ function buildLibraryActions(
   }
 
   if (ctx.canPlay) {
-    secondary.push({
-      id: 'play-menu',
-      label: ctx.playBusyId === ctx.key ? t('library.playStarting') : t('common.play'),
-      title: t('library.playTitle'),
-      variant: 'primary',
-      disabled: ctx.playBusyId === ctx.key,
-      onClick: () => void ctx.handlePlayLibraryItem(item),
-    })
-    addOpenFolder()
-    if (ctx.canDelete) addDelete()
     return {
       primary: {
         id: 'play',
-        label: ctx.playBusyId === ctx.key ? t('library.playStarting') : t('common.play'),
+        label: isPlayBusy ? t('library.playStarting') : t('common.play'),
         title: t('library.playTitle'),
         variant: 'primary',
-        disabled: ctx.playBusyId === ctx.key,
+        disabled: isPlayBusy,
         onClick: () => void ctx.handlePlayLibraryItem(item),
       },
       secondary,
     }
   }
 
-  if (
-    item.kind === 'job' &&
-    ['downloading', 'pending', 'retrying', 'extracting'].includes(item.status)
-  ) {
-    addOpenFolder()
+  if (isDownloadingJob) {
     return {
       primary: {
         id: 'queue',
@@ -186,8 +234,7 @@ function buildLibraryActions(
     }
   }
 
-  if (item.kind === 'job' && (item.status === 'paused' || item.status === 'failed')) {
-    addOpenFolder()
+  if (isResumableJob) {
     return {
       primary: {
         id: 'resume',
@@ -210,20 +257,18 @@ function buildLibraryActions(
         disabled: true,
         onClick: () => { },
       },
-      secondary: [],
+      secondary,
     }
   }
 
   if (ctx.canLocate) {
-    addOpenFolder()
-    if (ctx.canDelete) addDelete()
     return {
       primary: {
         id: 'locate-primary',
-        label: ctx.installBusyId === ctx.key ? t('library.installOpening') : t('library.locateFolder'),
+        label: isInstallBusy ? t('library.installOpening') : t('library.locateFolder'),
         title: t('library.locateFolderTitle'),
         variant: 'primary',
-        disabled: ctx.installBusyId === ctx.key,
+        disabled: isInstallBusy,
         onClick: () =>
           void ctx.handlePickGameInstallFolder(
             item.title,
@@ -236,8 +281,6 @@ function buildLibraryActions(
     }
   }
 
-  addOpenFolder()
-  if (ctx.canDelete) addDelete()
   return {
     primary: {
       id: 'open-primary',
@@ -267,8 +310,16 @@ export function LibraryPage() {
     invalidateLocalCover,
     handlePlayLibraryItem,
     handleInstallItem,
+    handleExtractItem,
     handlePickGameInstallFolder,
+    handlePickLaunchExe,
     handleDeleteLibraryItem,
+    pathStateByKey,
+    libraryDetail,
+    openLibraryDetail,
+    closeLibraryDetail,
+    setLibraryDetailNote,
+    saveLibraryDetailNote,
   } = useLibraryController()
   const {
     libraryStatusMeta,
@@ -281,6 +332,28 @@ export function LibraryPage() {
   const onResumeItem = useLibraryResumeItem()
   const onOpenLocalPath = useOpenLocalPath()
   const [pendingInstall, setPendingInstall] = useState<LibraryEntry | null>(null)
+  const [detailFavorite, setDetailFavorite] = useState(false)
+  const [detailFavoriteBusy, setDetailFavoriteBusy] = useState(false)
+
+  useEffect(() => {
+    if (!libraryDetail?.game) {
+      setDetailFavorite(false)
+      return
+    }
+    let cancelled = false
+    const key = libraryDetail.game.id || libraryDetail.game.title
+    void sourcesApi
+      .isFavoriteCatalogEntry(key)
+      .then((value) => {
+        if (!cancelled) setDetailFavorite(value)
+      })
+      .catch(() => {
+        if (!cancelled) setDetailFavorite(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [libraryDetail?.game])
 
   const requestInstallConfirm = useCallback((item: LibraryEntry) => {
     setPendingInstall(item)
@@ -290,6 +363,60 @@ export function LibraryPage() {
     pendingInstall != null &&
     (installBusyId === busyKey(pendingInstall) ||
       installingKeys.has(busyKey(pendingInstall)))
+
+  if (libraryDetail) {
+    const fallbackGame = {
+      id: libraryDetail.item.id,
+      title: libraryDetail.item.title,
+      genre: '',
+      source: 'library',
+    }
+    const game = libraryDetail.game ?? fallbackGame
+    return (
+      <DiscoverGameDetailPage
+        game={game}
+        loading={libraryDetail.loading}
+        error={libraryDetail.error}
+        options={[]}
+        synopsis={libraryDetail.synopsis}
+        screenshots={libraryDetail.screenshots}
+        busyUrl={null}
+        favorite={detailFavorite}
+        favoriteBusy={detailFavoriteBusy}
+        hideDownloads
+        onToggleFavorite={() => {
+          if (!libraryDetail.game || detailFavoriteBusy) return
+          setDetailFavoriteBusy(true)
+          void sourcesApi
+            .toggleFavoriteCatalogEntry(
+              libraryDetail.game.title,
+              libraryDetail.game.id || undefined,
+            )
+            .then(setDetailFavorite)
+            .catch(() => {})
+            .finally(() => setDetailFavoriteBusy(false))
+        }}
+        onBack={closeLibraryDetail}
+        footerSlot={
+          <label className="library-detail-note">
+            <span className="library-detail-note__label">{t('library.noteLabel')}</span>
+            <textarea
+              className="library-detail-note__input"
+              rows={3}
+              value={libraryDetail.note}
+              placeholder={t('library.notePlaceholder')}
+              onChange={(event) => setLibraryDetailNote(event.target.value)}
+              onBlur={() => void saveLibraryDetailNote()}
+            />
+            {libraryDetail.noteSaving ? (
+              <span className="library-detail-note__hint">{t('common.saving')}</span>
+            ) : null}
+          </label>
+        }
+      />
+    )
+  }
+
   return (
     <section className="library-page">
       <header className="library-toolbar">
@@ -317,12 +444,14 @@ export function LibraryPage() {
             const pathStatePending = !isPathStateResolved(item)
             const canDelete = true
             const manualRoot = hasManualInstallRoot(item)
+            const canExtract = false
 
             const { primary, secondary } = buildLibraryActions(item, t, {
               key,
               canPlay,
               canInstall,
               canLocate,
+              canExtract,
               pathStatePending,
               canDelete,
               playBusyId,
@@ -330,11 +459,14 @@ export function LibraryPage() {
               installingKeys,
               handlePlayLibraryItem,
               requestInstallConfirm,
+              handleExtractItem,
               handlePickGameInstallFolder,
+              handlePickLaunchExe,
               handleDeleteLibraryItem,
               onResumeItem,
               onOpenLocalPath,
               setActiveTabDownloads: onGoDownloads,
+              openLibraryDetail,
             })
 
             const statusLine = libraryStatusLine(statusMeta, primary, t, currentLanguage)
@@ -385,8 +517,8 @@ export function LibraryPage() {
         description={
           pendingInstall
             ? t('library.installConfirmBody', {
-                title: cleanTitleForDisplay(pendingInstall.title),
-              })
+              title: cleanTitleForDisplay(pendingInstall.title),
+            })
             : ''
         }
         confirmLabel={t('common.install')}

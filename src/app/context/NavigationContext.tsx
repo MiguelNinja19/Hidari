@@ -16,6 +16,7 @@ export type NavigationContextValue = {
   navigateDiscover: () => void
   navigateDownloads: () => void
   navigateLibrary: () => void
+  navigateFavorites: () => void
   navigateSettings: () => void
 }
 
@@ -27,6 +28,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const navigateDiscover = useCallback(() => setActiveTab('discover'), [])
   const navigateDownloads = useCallback(() => setActiveTab('downloads'), [])
   const navigateLibrary = useCallback(() => setActiveTab('library'), [])
+  const navigateFavorites = useCallback(() => setActiveTab('favorites'), [])
   const navigateSettings = useCallback(() => setActiveTab('settings'), [])
 
   const value = useMemo(
@@ -36,9 +38,17 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       navigateDiscover,
       navigateDownloads,
       navigateLibrary,
+      navigateFavorites,
       navigateSettings,
     }),
-    [activeTab, navigateDiscover, navigateDownloads, navigateLibrary, navigateSettings],
+    [
+      activeTab,
+      navigateDiscover,
+      navigateDownloads,
+      navigateLibrary,
+      navigateFavorites,
+      navigateSettings,
+    ],
   )
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>

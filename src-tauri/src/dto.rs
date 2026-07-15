@@ -340,6 +340,9 @@ pub struct LaunchGamePayload {
   pub title: String,
   pub path: String,
   pub job_id: Option<String>,
+  /// setup.exe já conhecido (ex.: inspect) — evita varrer a pasta do repack.
+  #[serde(default)]
+  pub preferred_setup: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -371,6 +374,22 @@ pub struct SetLibraryGameRootPayload {
   pub dest_path: String,
   pub game_root: String,
   pub job_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetLibraryLaunchExePayload {
+  pub title: String,
+  pub dest_path: String,
+  pub exe_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryNotePayload {
+  pub path: String,
+  pub title: String,
+  pub note: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -412,6 +431,29 @@ pub struct CoverPrecacheStatusDto {
   pub unresolved: usize,
   pub failed: usize,
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteCatalogEntryDto {
+  pub catalog_key: String,
+  pub title: String,
+  pub added_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToggleFavoritePayload {
+  pub title: String,
+  pub catalog_key: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryPlayStatDto {
+  pub path_key: String,
+  pub last_played_at: Option<String>,
+  pub play_count: i64,
+}
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractStatusEvent {
@@ -427,6 +469,10 @@ pub struct SidecarJobWatcher {
   #[serde(default, alias = "destPath")]
   pub dest_path: String,
   pub status: String,
+  #[serde(default, alias = "bytesDownloaded", alias = "downloadedBytes")]
+  pub bytes_downloaded: i64,
+  #[serde(default, alias = "totalBytes", alias = "totalSize")]
+  pub total_bytes: i64,
 }
 
 #[derive(Debug, Deserialize, Clone)]

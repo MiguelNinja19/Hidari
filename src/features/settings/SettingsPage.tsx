@@ -1,4 +1,4 @@
-import { useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useState, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   APP_LANGUAGES,
@@ -37,12 +37,38 @@ type SettingsPageProps = {
   onDeleteSource: (sourceId: string, sourceName: string) => void | Promise<void>
   onSyncSource: (sourceId: string, sourceName: string) => Promise<void>
   onSyncAllSources: () => Promise<void>
+  onToggleSourceEnabled: (sourceId: string, enable: boolean) => Promise<void>
+  disabledSourceIds: string[]
+  disabledSourcesReady: boolean
   deletingSourceId: string | null
   syncingSourceId: string | null
   syncingAllSources: boolean
   handleToggleRemoveTemp: (next: boolean) => Promise<void>
   handleToggleSeed: (enabled: boolean) => Promise<void>
   handleSpeedLimitChange: (value: string) => Promise<void>
+  minimizeToTray: boolean
+  handleToggleMinimizeToTray: (enabled: boolean) => Promise<void>
+  notifyReadyToInstall: boolean
+  notifyReadyToPlay: boolean
+  notifyCatalogChanges: boolean
+  notifySound: boolean
+  handleToggleNotifyReadyToInstall: (enabled: boolean) => Promise<void>
+  handleToggleNotifyReadyToPlay: (enabled: boolean) => Promise<void>
+  handleToggleNotifyCatalogChanges: (enabled: boolean) => Promise<void>
+  handleToggleNotifySound: (enabled: boolean) => Promise<void>
+  coverPrecacheStatus: {
+    running: boolean
+    total: number
+    processed: number
+    cached: number
+    downloaded: number
+    unresolved: number
+    failed: number
+  } | null
+  coverPrecacheBusy: boolean
+  onStartCoverPrecache: () => Promise<void>
+  onStopCoverPrecache: () => Promise<void>
+  onRetryUnresolvedCovers: () => Promise<void>
 }
 
 function stopSummaryToggle(event: ReactMouseEvent) {
@@ -66,8 +92,11 @@ function SettingsSection({
   defaultOpen?: boolean
 }) {
   return (
-    <details id={id} className="set-card" defaultOpen={defaultOpen}>
-      <summary className="set-card__summary">
+    <details
+      id={id}
+      className="set-card"
+      {...({ defaultOpen } as HTMLAttributes<HTMLDetailsElement>)}
+    >      <summary className="set-card__summary">
         <div className="set-card__titles">
           <p className="set-card__label">{title}</p>
           <p className="set-card__desc">{description}</p>
@@ -106,6 +135,9 @@ export function SettingsPage({
   onDeleteSource,
   onSyncSource,
   onSyncAllSources,
+  onToggleSourceEnabled,
+  disabledSourceIds,
+  disabledSourcesReady,
   deletingSourceId,
   syncingSourceId,
   syncingAllSources,
@@ -115,6 +147,21 @@ export function SettingsPage({
   setDefaultDownloadPath,
   setInstallOrganization,
   setAfterInstallAction,
+  minimizeToTray,
+  handleToggleMinimizeToTray,
+  notifyReadyToInstall,
+  notifyReadyToPlay,
+  notifyCatalogChanges,
+  notifySound,
+  handleToggleNotifyReadyToInstall,
+  handleToggleNotifyReadyToPlay,
+  handleToggleNotifyCatalogChanges,
+  handleToggleNotifySound,
+  coverPrecacheStatus,
+  coverPrecacheBusy,
+  onStartCoverPrecache,
+  onStopCoverPrecache,
+  onRetryUnresolvedCovers,
 }: SettingsPageProps) {
   const { t, i18n } = useTranslation()
   const [addMethod, setAddMethod] = useState<AddMethod>('url')
@@ -263,6 +310,131 @@ export function SettingsPage({
                 <option value="launch-game">{t('settings.afterLaunch')}</option>
               </select>
             </label>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="settings-tray"
+          title={t('settings.trayTitle')}
+          description={t('settings.trayDesc')}
+        >
+          <div className="set-switch">
+            <div className="set-switch__copy">
+              <span className="set-switch__label">{t('settings.minimizeToTray')}</span>
+              <span className="set-switch__hint">{t('settings.minimizeToTrayHint')}</span>
+            </div>
+            <button
+              type="button"
+              className={minimizeToTray ? 'switch-btn switch-btn--on' : 'switch-btn'}
+              aria-label={t('settings.minimizeToTrayAria')}
+              onClick={() => void handleToggleMinimizeToTray(!minimizeToTray)}
+            />
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="settings-notifications"
+          title={t('settings.notificationsTitle')}
+          description={t('settings.notificationsDesc')}
+        >
+          <div className="set-switch">
+            <div className="set-switch__copy">
+              <span className="set-switch__label">{t('settings.notifyReadyToInstall')}</span>
+              <span className="set-switch__hint">{t('settings.notifyReadyToInstallHint')}</span>
+            </div>
+            <button
+              type="button"
+              className={notifyReadyToInstall ? 'switch-btn switch-btn--on' : 'switch-btn'}
+              aria-label={t('settings.notifyReadyToInstall')}
+              onClick={() => void handleToggleNotifyReadyToInstall(!notifyReadyToInstall)}
+            />
+          </div>
+          <div className="set-switch">
+            <div className="set-switch__copy">
+              <span className="set-switch__label">{t('settings.notifyReadyToPlay')}</span>
+              <span className="set-switch__hint">{t('settings.notifyReadyToPlayHint')}</span>
+            </div>
+            <button
+              type="button"
+              className={notifyReadyToPlay ? 'switch-btn switch-btn--on' : 'switch-btn'}
+              aria-label={t('settings.notifyReadyToPlay')}
+              onClick={() => void handleToggleNotifyReadyToPlay(!notifyReadyToPlay)}
+            />
+          </div>
+          <div className="set-switch">
+            <div className="set-switch__copy">
+              <span className="set-switch__label">{t('settings.notifyCatalogChanges')}</span>
+              <span className="set-switch__hint">{t('settings.notifyCatalogChangesHint')}</span>
+            </div>
+            <button
+              type="button"
+              className={notifyCatalogChanges ? 'switch-btn switch-btn--on' : 'switch-btn'}
+              aria-label={t('settings.notifyCatalogChanges')}
+              onClick={() => void handleToggleNotifyCatalogChanges(!notifyCatalogChanges)}
+            />
+          </div>
+          <div className="set-switch">
+            <div className="set-switch__copy">
+              <span className="set-switch__label">{t('settings.notifySound')}</span>
+              <span className="set-switch__hint">{t('settings.notifySoundHint')}</span>
+            </div>
+            <button
+              type="button"
+              className={notifySound ? 'switch-btn switch-btn--on' : 'switch-btn'}
+              aria-label={t('settings.notifySound')}
+              onClick={() => void handleToggleNotifySound(!notifySound)}
+            />
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="settings-covers"
+          title={t('settings.coversTitle')}
+          description={t('settings.coversDesc')}
+          defaultOpen={false}
+        >
+          {coverPrecacheStatus ? (
+            <p className="set-field__hint">
+              {coverPrecacheStatus.running
+                ? t('settings.coversProgress', {
+                    processed: coverPrecacheStatus.processed,
+                    total: coverPrecacheStatus.total,
+                    cached: coverPrecacheStatus.cached,
+                  })
+                : t('settings.coversIdle', {
+                    cached: coverPrecacheStatus.cached,
+                    unresolved: coverPrecacheStatus.unresolved,
+                    failed: coverPrecacheStatus.failed,
+                  })}
+            </p>
+          ) : (
+            <p className="set-field__hint">{t('settings.coversIdleEmpty')}</p>
+          )}
+          <div className="set-card__actions set-card__actions--inline">
+            <button
+              type="button"
+              className="set-btn set-btn--primary set-btn--compact"
+              disabled={coverPrecacheBusy || Boolean(coverPrecacheStatus?.running)}
+              onClick={() => void onStartCoverPrecache()}
+            >
+              {t('settings.coversStart')}
+            </button>
+            <button
+              type="button"
+              className="set-btn set-btn--secondary set-btn--compact"
+              disabled={coverPrecacheBusy || !coverPrecacheStatus?.running}
+              onClick={() => void onStopCoverPrecache()}
+            >
+              {t('settings.coversStop')}
+            </button>
+            <button
+              type="button"
+              className="set-btn set-btn--secondary set-btn--compact"
+              disabled={coverPrecacheBusy || Boolean(coverPrecacheStatus?.running)}
+              onClick={() => void onRetryUnresolvedCovers()}
+            >
+              {t('settings.coversRetry')}
+            </button>
           </div>
         </SettingsSection>
 
@@ -427,15 +599,19 @@ export function SettingsPage({
               {sources.map((source) => {
                 const isSourceSyncing = syncingSourceId === source.id
                 const isSourceDeleting = deletingSourceId === source.id
+                const sourceEnabled = !disabledSourceIds.includes(source.id)
                 return (
-                  <li key={source.id} className="set-source">
+                  <li
+                    key={source.id}
+                    className={`set-source${sourceEnabled ? '' : ' set-source--disabled'}`}
+                  >
                     <div className="set-source__main">
                       <strong className="set-source__name">{source.name}</strong>
                       <span className="set-source__meta">
                         {source.downloadCount > 0
                           ? t('settings.gamesCount', {
-                              count: source.downloadCount.toLocaleString(i18n.language),
-                            })
+                            count: source.downloadCount.toLocaleString(i18n.language),
+                          })
                           : t('settings.gamesCountEmpty')}
                       </span>
                     </div>
@@ -444,6 +620,20 @@ export function SettingsPage({
                       role="group"
                       aria-label={t('settings.sourceActions', { name: source.name })}
                     >
+                      <button
+                        type="button"
+                        className={sourceEnabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
+                        disabled={!disabledSourcesReady || isSourceDeleting}
+                        aria-pressed={sourceEnabled}
+                        aria-label={
+                          sourceEnabled
+                            ? t('settings.disableSource', { name: source.name })
+                            : t('settings.enableSource', { name: source.name })
+                        }
+                        onClick={() =>
+                          void onToggleSourceEnabled(source.id, !sourceEnabled)
+                        }
+                      />
                       <button
                         type="button"
                         className={`set-btn set-btn--sync set-btn--compact${isSourceSyncing ? ' is-busy' : ''}`}

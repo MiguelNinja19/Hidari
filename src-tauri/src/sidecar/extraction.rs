@@ -5,7 +5,10 @@ use crate::db::{
   batch_get_extraction_logs, get_extraction_status, open_database_connection, read_app_setting,
   read_app_setting_bool, upsert_extraction_log, ExtractionLogRow,
 };
-use crate::dto::{EXTRACT_EVENT_STATUS, ExtractStatusEvent, SidecarJobWatcher};
+use crate::dto::{
+  EXTRACT_EVENT_STATUS, ExtractStatusEvent, JobProgressEvent, QUEUE_EVENT_JOB_PROGRESS,
+  SidecarJobWatcher,
+};
 use crate::launch;
 use crate::library::roots::open_path_in_shell;
 use crate::state::ExtractionState;
@@ -14,6 +17,21 @@ use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::{sleep, Duration};
+
+async fn request_continue_torrent_content(app: &AppHandle, job_id: &str) -> Result<(), String> {
+  let port = ensure_sidecar_running(app.clone()).await?;
+  let client = reqwest::Client::new();
+  let response = client
+    .post(format!("http://127.0.0.1:{port}/jobs/{job_id}/continue-torrent"))
+    .send()
+    .await
+    .map_err(|e| format!("sidecar_request_failed: {e}"))?;
+  if !response.status().is_success() {
+    let body = response.text().await.unwrap_or_default();
+    return Err(format!("continue_torrent_failed: {body}"));
+  }
+  Ok(())
+}
 
 pub fn emit_extract_status(app: &AppHandle, job_id: &str, status: &str, message: Option<String>) {
   let _ = app.emit(
@@ -323,10 +341,11 @@ pub async fn process_job_post_download(
   let prior = get_extraction_status(&conn, &job_id);
   if matches!(
     prior.as_deref(),
-    Some("extracting") | Some("extracted") | Some("skipped") | Some("failed")
+    Some("extracting") | Some("extracted") | Some("skipped") | Some("failed") | Some("verify_failed")
   ) {
     return Ok(());
   }
+  // pending_content: continua — o watcher só chama isto quando já há conteúdo real.
   drop(conn);
 
   match verify_download_payload(&dest_path) {
@@ -342,9 +361,49 @@ pub async fn process_job_post_download(
       )?;
     }
     Err(message) => {
+      // Metadados/.torrent pequenos: NÃO falhar o job — continuar o download do conteúdo.
+      if message.contains("verify_too_small") || message.contains("verify_no_file") {
+        log::info!(
+          "job {job_id}: pós-download adiado (ainda metadados) — a pedir conteúdo ao motor"
+        );
+        let _ = request_continue_torrent_content(&app, &job_id).await;
+        let _ = app.emit(
+          QUEUE_EVENT_JOB_PROGRESS,
+          JobProgressEvent {
+            job_id: job_id.clone(),
+            progress: 0.0,
+            status: "downloading".to_string(),
+            speed_bytes_per_sec: 0,
+            eta_seconds: 0,
+            bytes_downloaded: None,
+            total_bytes: None,
+            error_msg: Some("A obter o conteúdo do torrent…".to_string()),
+          },
+        );
+        return Ok(());
+      }
       let conn = open_database_connection(&app)?;
       upsert_extraction_log(&conn, &job_id, "verify_failed", None, None, Some(&message))?;
+      let _ = crate::queue::persist::update_persisted_queue_status(
+        &conn,
+        &job_id,
+        "failed",
+        Some(&message),
+      );
       emit_extract_status(&app, &job_id, "verify_failed", Some(message.clone()));
+      let _ = app.emit(
+        QUEUE_EVENT_JOB_PROGRESS,
+        JobProgressEvent {
+          job_id: job_id.clone(),
+          progress: 0.0,
+          status: "failed".to_string(),
+          speed_bytes_per_sec: 0,
+          eta_seconds: 0,
+          bytes_downloaded: None,
+          total_bytes: None,
+          error_msg: Some(message.clone()),
+        },
+      );
       return Err(message);
     }
   }
@@ -361,16 +420,16 @@ pub async fn process_job_post_download(
   };
 
   if launch::find_setup_executable(&title, &dest_path).is_some() {
-    return mark_skipped(&app, "Download concluído — clique em INSTALAR para executar o setup.exe.");
+    return mark_skipped(
+      &app,
+      "Download concluído — clique em INSTALAR para executar o setup.exe.",
+    );
   }
 
-  if archive::find_job_archive(&dest_path).is_some() {
-    return process_job_extraction(app, job_id, title, dest_path).await;
-  }
-
+  // Repacks/instaladores: não extrair automaticamente. O utilizador instala o que veio no download.
   mark_skipped(
     &app,
-    "Download concluído. Clique em INSTALAR se houver setup.exe na pasta.",
+    "Download concluído — use INSTALAR se houver setup.exe, ou abra a pasta.",
   )
 }
 
@@ -502,23 +561,64 @@ pub async fn list_sidecar_jobs_for_watcher(app: &AppHandle) -> Result<Vec<Sideca
     .collect())
 }
 
+#[allow(dead_code)]
 pub fn job_ready_for_post_download(job: &SidecarJobWatcher) -> bool {
-  if job.status == "completed" {
+  if !matches!(job.status.as_str(), "completed" | "seeding") {
+    return false;
+  }
+  let reported = job.total_bytes.max(job.bytes_downloaded);
+  // Payload ainda minúsculo = metadados — não inventar setup no disco.
+  if reported > 0 && (reported as u64) < MIN_DOWNLOAD_VERIFY_BYTES {
+    return false;
+  }
+  // REGRA: só pós-download com conteúdo real do jogo.
+  dest_has_game_content(&job.title, &job.dest_path)
+}
+
+fn job_reported_metadata_only(job: &SidecarJobWatcher) -> bool {
+  let reported = job.total_bytes.max(job.bytes_downloaded);
+  reported > 0 && (reported as u64) < MIN_DOWNLOAD_VERIFY_BYTES
+}
+
+fn dest_has_game_content(title: &str, dest_path: &str) -> bool {
+  if launch::find_setup_executable(title, dest_path).is_some() {
     return true;
   }
-  if job.status == "seeding" {
-    if archive::find_job_archive(&job.dest_path).is_some() {
+  if launch::job_has_playable_executable(title, dest_path) {
+    return true;
+  }
+  if let Some(archive) = archive::find_job_archive(dest_path) {
+    let size = std::fs::metadata(&archive).map(|m| m.len()).unwrap_or(0);
+    if size >= MIN_DOWNLOAD_VERIFY_BYTES {
       return true;
     }
-    return launch::job_has_playable_executable(&job.title, &job.dest_path);
+  }
+  if let Some(payload) = archive::find_download_payload(dest_path) {
+    if payload
+      .extension()
+      .and_then(|e| e.to_str())
+      .map(|e| e.eq_ignore_ascii_case("torrent"))
+      .unwrap_or(false)
+    {
+      return false;
+    }
+    let size = std::fs::metadata(&payload).map(|m| m.len()).unwrap_or(0);
+    return size >= MIN_DOWNLOAD_VERIFY_BYTES;
   }
   false
+}
+
+async fn dest_has_game_content_async(title: String, dest_path: String) -> bool {
+  tauri::async_runtime::spawn_blocking(move || dest_has_game_content(&title, &dest_path))
+    .await
+    .unwrap_or(false)
 }
 
 pub fn spawn_extraction_watcher(app: AppHandle) {
   tauri::async_runtime::spawn(async move {
     loop {
-      sleep(Duration::from_secs(2)).await;
+      // 4s: scans FS profundos a cada 2s congelavam o IPC/UI no Windows.
+      sleep(Duration::from_secs(4)).await;
 
       let jobs = match list_sidecar_jobs_for_watcher(&app).await {
         Ok(items) => items,
@@ -537,14 +637,94 @@ pub fn spawn_extraction_watcher(app: AppHandle) {
 
       let mut started = false;
       for job in jobs {
-        if !job_ready_for_post_download(&job) {
-          continue;
-        }
         let prior = get_extraction_status(&conn, &job.id);
-        if matches!(
+
+        if prior.as_deref() == Some("pending_content") {
+          if !matches!(job.status.as_str(), "completed" | "seeding") {
+            continue;
+          }
+          if job_reported_metadata_only(&job) {
+            continue;
+          }
+          let ready =
+            dest_has_game_content_async(job.title.clone(), job.dest_path.clone()).await;
+          if !ready {
+            continue;
+          }
+        } else if matches!(
           prior.as_deref(),
-          Some("extracting") | Some("extracted") | Some("skipped") | Some("failed")
+          Some("extracting") | Some("extracted") | Some("skipped")
         ) {
+          continue;
+        } else if matches!(prior.as_deref(), Some("verify_failed") | Some("failed"))
+          || (matches!(job.status.as_str(), "completed" | "seeding" | "failed")
+            && job_reported_metadata_only(&job))
+        {
+          // Só metadados reportados → pedir conteúdo (sem FS scan).
+          let app_clone = app.clone();
+          let job_id = job.id.clone();
+          tauri::async_runtime::spawn(async move {
+            let _ = request_continue_torrent_content(&app_clone, &job_id).await;
+            let _ = app_clone.emit(
+              QUEUE_EVENT_JOB_PROGRESS,
+              JobProgressEvent {
+                job_id: job_id.clone(),
+                progress: 0.0,
+                status: "downloading".to_string(),
+                speed_bytes_per_sec: 0,
+                eta_seconds: 0,
+                bytes_downloaded: None,
+                total_bytes: None,
+                error_msg: Some("A obter o conteúdo do torrent…".to_string()),
+              },
+            );
+            if let Ok(conn) = open_database_connection(&app_clone) {
+              let _ = upsert_extraction_log(&conn, &job_id, "pending_content", None, None, None);
+            }
+            let extraction: tauri::State<'_, ExtractionState> = app_clone.state();
+            extraction.release();
+          });
+          started = true;
+          break;
+        } else if matches!(job.status.as_str(), "completed" | "seeding") {
+          if job_reported_metadata_only(&job) {
+            continue;
+          }
+          let ready =
+            dest_has_game_content_async(job.title.clone(), job.dest_path.clone()).await;
+          if !ready {
+            // Sem bytes úteis nem ficheiros: magnet ainda a resolver — continue uma vez.
+            let reported = job.total_bytes.max(job.bytes_downloaded);
+            if reported <= 0 {
+              let app_clone = app.clone();
+              let job_id = job.id.clone();
+              tauri::async_runtime::spawn(async move {
+                let _ = request_continue_torrent_content(&app_clone, &job_id).await;
+                let _ = app_clone.emit(
+                  QUEUE_EVENT_JOB_PROGRESS,
+                  JobProgressEvent {
+                    job_id: job_id.clone(),
+                    progress: 0.0,
+                    status: "downloading".to_string(),
+                    speed_bytes_per_sec: 0,
+                    eta_seconds: 0,
+                    bytes_downloaded: None,
+                    total_bytes: None,
+                    error_msg: Some("A obter o conteúdo do torrent…".to_string()),
+                  },
+                );
+                if let Ok(conn) = open_database_connection(&app_clone) {
+                  let _ = upsert_extraction_log(&conn, &job_id, "pending_content", None, None, None);
+                }
+                let extraction: tauri::State<'_, ExtractionState> = app_clone.state();
+                extraction.release();
+              });
+              started = true;
+              break;
+            }
+            continue;
+          }
+        } else {
           continue;
         }
 
@@ -562,6 +742,11 @@ pub fn spawn_extraction_watcher(app: AppHandle) {
           )
           .await
           {
+            if error.contains("verify_too_small") || error.contains("verify_no_file") {
+              let extraction: tauri::State<'_, ExtractionState> = app_clone.state();
+              extraction.release();
+              return;
+            }
             if let Ok(conn) = open_database_connection(&app_clone) {
               let _ = upsert_extraction_log(
                 &conn,

@@ -8,13 +8,18 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src/assets/logo.webp"
 OUT = ROOT / "hidari-icon-1024.png"
-BG = (255, 255, 255)
+DOCS_OUT = ROOT / "docs/assets/hidari-logo.webp"
+BG_RGB = (255, 255, 255)
+
+
+def load_logo_rgba() -> Image.Image:
+  return Image.open(SRC).convert("RGBA")
 
 
 def square_from_logo(size: int = 1024) -> Image.Image:
-  """Encaixa a logo inteira num quadrado, sem cortar o emblema."""
-  src = Image.open(SRC).convert("RGB")
-  canvas = Image.new("RGB", (size, size), BG)
+  """Encaixa a logo num quadrado branco (ícone do SO)."""
+  src = load_logo_rgba()
+  canvas = Image.new("RGBA", (size, size), (*BG_RGB, 255))
 
   pad = int(size * 0.08)
   inner = size - pad * 2
@@ -24,8 +29,22 @@ def square_from_logo(size: int = 1024) -> Image.Image:
   fitted = src.resize((w, h), Image.Resampling.LANCZOS)
   ox = (size - w) // 2
   oy = (size - h) // 2
-  canvas.paste(fitted, (ox, oy))
-  return canvas
+  canvas.paste(fitted, (ox, oy), fitted)
+  return canvas.convert("RGB")
+
+
+def export_docs_logo() -> None:
+  """Copia a logo oficial para a documentação."""
+  DOCS_OUT.parent.mkdir(parents=True, exist_ok=True)
+  src = load_logo_rgba()
+  # Mantém webp; se tiver alpha, coloca em fundo branco para docs.
+  if src.mode == "RGBA" and any(px[3] < 255 for px in src.getdata()):
+    web = Image.new("RGBA", src.size, (*BG_RGB, 255))
+    web.paste(src, (0, 0), src)
+    web.convert("RGB").save(DOCS_OUT, "WEBP", quality=92, method=6)
+  else:
+    src.convert("RGB").save(DOCS_OUT, "WEBP", quality=92, method=6)
+  print("saved", DOCS_OUT)
 
 
 def main() -> None:
@@ -34,7 +53,8 @@ def main() -> None:
   icon = square_from_logo(1024)
   icon.save(OUT, "PNG", optimize=True)
   print("saved", OUT)
-  print("run: npm run tauri icon hidari-icon-1024.png")
+  export_docs_logo()
+  print("run: npm run icon:build")
 
 
 if __name__ == "__main__":

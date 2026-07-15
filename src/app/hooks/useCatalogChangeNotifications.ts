@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
+import { useAppSettings } from '../context/AppSettingsContext'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 
 async function ensureNotificationPermission(): Promise<boolean> {
@@ -17,10 +19,12 @@ async function ensureNotificationPermission(): Promise<boolean> {
 
 /** Notifica novidades no catálogo ao focar a janela (sem polling). */
 export function useCatalogChangeNotifications(enabled: boolean) {
+  const { t } = useTranslation()
+  const { notifyCatalogChanges, notifySound } = useAppSettings()
   const seenRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !notifyCatalogChanges) return
     let cancelled = false
 
     const check = async () => {
@@ -34,8 +38,13 @@ export function useCatalogChangeNotifications(enabled: boolean) {
           if (seenRef.current.has(key)) continue
           seenRef.current.add(key)
           void sendNotification({
-            title: 'Novos repacks no catálogo',
-            body: `${change.sourceName}: +${change.newCount} entradas`,
+            title: t('downloads.notifyCatalogTitle'),
+            body: t('downloads.notifyCatalogBody', {
+              name: change.sourceName,
+              count: change.newCount,
+            }),
+            extra: { hidariNav: 'discover' },
+            ...(notifySound ? {} : { silent: true }),
           })
         }
       } catch {
@@ -53,5 +62,5 @@ export function useCatalogChangeNotifications(enabled: boolean) {
       cancelled = true
       window.removeEventListener('focus', onFocus)
     }
-  }, [enabled])
+  }, [enabled, notifyCatalogChanges, notifySound, t])
 }

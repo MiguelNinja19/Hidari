@@ -1,11 +1,9 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Syne:wght@700;800&display=swap");
-
 :root {
   font-family: var(--sans);
   color-scheme: dark;
-  --display: "Syne", ui-sans-serif, system-ui, sans-serif;
-  --sans: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
-  --mono: var(--sans);
+  --display: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --sans: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
   --bg-base: #000000;
   --bg-app: #000000;
   --bg-panel: #0a0a0a;
@@ -99,7 +97,7 @@ textarea {
 .nova-shell {
   min-height: 0;
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-columns: 196px minmax(0, 1fr);
   background: var(--bg-main);
   color: var(--text-main);
 }
@@ -191,20 +189,21 @@ textarea {
 
 .sidebar-link__badge {
   flex-shrink: 0;
-  min-width: 1.125rem;
-  height: 1.125rem;
-  padding: 0 4px;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-family: var(--mono);
   font-size: 0.5625rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-weight: 500;
+  letter-spacing: 0;
   line-height: 1;
-  color: var(--accent-text);
-  background: var(--accent-primary);
-  border: var(--border-width) solid var(--accent-primary);
+  color: var(--text-faint);
+  background: transparent;
+  border: none;
+  opacity: 0.75;
 }
 
 .main-panel {
@@ -613,6 +612,8 @@ select:focus {
 .discover-detail__toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   flex-shrink: 0;
   margin-bottom: -4px;
 }
@@ -1260,7 +1261,9 @@ select:focus {
   width: 100%;
 }
 
-.discover-detail__below .discover-detail__categories + .discover-detail__downloads-wrap {
+.discover-detail__below
+  .discover-detail__categories
+  + .discover-detail__downloads-wrap {
   padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -2887,168 +2890,6 @@ select:focus {
   cursor: wait;
 }
 
-/* legacy pick-sheet / discover-modal (unused) */
-
-.discover-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(2, 2, 6, 0.82);
-  backdrop-filter: blur(8px);
-  display: grid;
-  place-items: center;
-  z-index: 50;
-  padding: 20px;
-}
-
-.discover-modal {
-  width: min(560px, 100%);
-  max-height: 85vh;
-  overflow: auto;
-  background: var(--bg-elevated);
-  backdrop-filter: blur(16px);
-  padding: 22px;
-  border-radius: var(--radius-lg);
-  box-shadow:
-    0 24px 64px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-
-.discover-modal__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.discover-modal__hero {
-  display: flex;
-  gap: 14px;
-  min-width: 0;
-}
-
-.discover-modal__cover {
-  width: 72px;
-  aspect-ratio: 2 / 3;
-  flex-shrink: 0;
-  overflow: hidden;
-  position: relative;
-  border-radius: var(--radius-sm);
-}
-
-.discover-modal__info h3 {
-  margin: 0;
-  font-size: 0.92rem;
-  letter-spacing: 0.06em;
-}
-
-.discover-modal__subtitle {
-  margin-top: 6px;
-  font-size: 0.66rem;
-  color: var(--text-soft);
-}
-
-.discover-modal__close {
-  border: none;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-soft);
-  width: 34px;
-  height: 34px;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-sm);
-}
-
-.discover-modal__close svg {
-  width: 14px;
-  height: 14px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 2;
-}
-
-.discover-modal--compact {
-  width: min(440px, 100%);
-  padding: 16px;
-}
-
-.discover-modal__header--compact {
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.discover-modal__title {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: none;
-  line-height: 1.35;
-  padding-right: 8px;
-}
-
-.discover-source-row--compact {
-  grid-template-columns: 1fr auto;
-  padding: 10px 12px;
-}
-
-.discover-source-row--compact .discover-source-row__badge {
-  display: none;
-}
-
-.discover-source-row--compact strong {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  text-transform: none;
-  letter-spacing: 0.02em;
-}
-
-.discover-modal__body {
-  margin: 0 0 12px;
-}
-
-.discover-source-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.discover-source-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: var(--radius-sm);
-}
-
-.discover-source-row__badge {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--text-main);
-  padding: 5px 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-sm);
-}
-
-.discover-source-row__text strong {
-  display: block;
-  font-size: 0.74rem;
-  letter-spacing: 0.04em;
-}
-
-.discover-source-row__text span {
-  font-size: 0.66rem;
-  color: var(--text-soft);
-}
-
 /* ── Downloads ─────────────────────────────────────────────────────────── */
 
 .downloads-page__header {
@@ -3447,134 +3288,6 @@ select:focus {
   flex-wrap: wrap;
   gap: 4px 10px;
   justify-content: flex-end;
-}
-
-/* legacy download list (unused) */
-
-.download-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.download-item {
-  display: grid;
-  grid-template-columns: 80px 1fr auto;
-  gap: 16px;
-  padding: 16px;
-  background: var(--bg-panel);
-  backdrop-filter: blur(8px);
-  border-radius: var(--radius-md);
-  align-items: start;
-}
-
-.download-item__thumb {
-  width: 80px;
-  aspect-ratio: 2 / 3;
-  overflow: hidden;
-  position: relative;
-  background: #060810;
-  border-radius: var(--radius-sm);
-}
-
-.download-item__thumb .game-card__media,
-.download-item__thumb .game-card__cover-empty {
-  position: absolute;
-  inset: 0;
-}
-
-.download-item__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.download-item__header strong {
-  font-size: 0.76rem;
-  letter-spacing: 0.06em;
-}
-
-.download-item__type {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--text-soft);
-  background: rgba(255, 255, 255, 0.06);
-  padding: 3px 7px;
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-}
-
-.manual-root-indicator {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.08);
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-}
-
-.download-item__percent {
-  font-family: var(--mono);
-  font-size: 1.35rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  min-width: 4.5ch;
-  text-align: right;
-  color: var(--text-main);
-}
-
-.download-item__aside {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  min-width: 88px;
-}
-
-.download-item__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  font-size: 0.64rem;
-  color: var(--text-soft);
-  margin-top: 8px;
-  letter-spacing: 0.04em;
-}
-
-.download-item__status-tag {
-  font-weight: 600;
-  color: var(--link);
-  letter-spacing: -0.01em;
-}
-
-.progress-bar--compact {
-  height: 6px;
-  margin-bottom: 6px;
-}
-
-.downloads-footer {
-  margin-top: 8px;
-  padding-top: 14px;
-  background: linear-gradient(90deg, var(--divider) 0%, transparent 100%) top /
-    100% 1px no-repeat;
-}
-
-.downloads-footer__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-faint);
-  letter-spacing: -0.01em;
 }
 
 /* ── Biblioteca ──────────────────────────────────────────────────────────── */
@@ -4929,65 +4642,6 @@ select:focus {
   background: var(--accent-text);
 }
 
-/* legacy settings — removed duplicate rules below */
-
-.settings-grid {
-  display: grid;
-  gap: 16px;
-}
-
-.settings-panel {
-  padding: 20px;
-  background: var(--bg-panel);
-  backdrop-filter: blur(8px);
-  border-radius: 0;
-}
-
-.settings-panel h3 {
-  margin: 0 0 8px;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.settings-select-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.settings-highlight {
-  font-family: var(--sans);
-  font-weight: 500;
-  color: var(--link);
-}
-
-.settings-option-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 14px 0;
-  background: linear-gradient(90deg, var(--divider) 0%, transparent 100%)
-    bottom / 100% 1px no-repeat;
-}
-
-.settings-option-row:last-child {
-  background: none;
-}
-
-.settings-option-row strong {
-  font-size: 0.7rem;
-}
-
-.settings-option-row span {
-  font-size: 0.7rem;
-  color: var(--text-soft);
-  text-transform: none;
-  letter-spacing: 0;
-}
-
 .browse-alert,
 .library-alert {
   padding: 10px 14px;
@@ -5001,34 +4655,6 @@ select:focus {
 }
 
 @media (max-width: 1024px) {
-  .nova-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    padding: var(--space-3) var(--space-4);
-    min-height: auto;
-    position: static;
-    border-right: none;
-    border-bottom: var(--border-width) solid var(--sidebar-edge);
-  }
-
-  .sidebar__nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    width: 100%;
-    gap: var(--space-2);
-  }
-
-  .sidebar-link {
-    flex: 1;
-    min-width: calc(50% - var(--space-2));
-    justify-content: center;
-  }
-
   .page-hero {
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -5202,17 +4828,7 @@ select:focus {
     min-width: 0;
   }
 
-  .download-item {
-    grid-template-columns: 1fr;
-  }
 
-  .download-item__aside {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-  }
 
   .game-detail__hero {
     grid-template-columns: 1fr;

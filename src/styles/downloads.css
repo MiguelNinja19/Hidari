@@ -6,8 +6,7 @@
   gap: 0;
   width: 100%;
   max-width: none;
-  min-height: 0;
-  flex: 1;
+  min-width: 0;
   padding: 2px 2px 24px;
   border: none;
   background: transparent;
@@ -18,7 +17,9 @@
   color: var(--text-main);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow: auto;
+  /* Só o .main-panel faz scroll — overflow aqui cria setas empilhadas no WebView2. */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .dl-page__head {

@@ -1,48 +1,31 @@
 /* ── Responsividade (carrega por último — sobrepõe layout/App) ─────────── */
 
-/* Sidebar em rail de ícones */
-@media (max-width: 1100px) {
+/* Evita scroll horizontal estranho em qualquer tamanho */
+.app-frame,
+.nova-shell,
+.main-panel,
+.main-content {
+  min-width: 0;
+}
+
+.main-panel {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ── Médio: sidebar mais compacta, com labels ─────────────────────────── */
+@media (max-width: 960px) {
   .nova-shell {
-    grid-template-columns: 64px minmax(0, 1fr) !important;
+    grid-template-columns: 168px minmax(0, 1fr) !important;
   }
 
-  .app-frame .sidebar {
-    min-height: 100% !important;
-    align-self: stretch;
-    padding: 12px 8px;
-    gap: 8px;
-  }
-
-  .sidebar__nav {
-    gap: 4px;
+  .sidebar {
+    padding: 12px 10px;
   }
 
   .sidebar-link {
-    position: relative;
-    justify-content: center;
-    padding: 10px 8px;
-    gap: 0;
-  }
-
-  .sidebar-link__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .sidebar-link__badge {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    min-width: 1rem;
-    height: 1rem;
-    font-size: 0.5rem;
+    min-height: 34px;
+    padding: 8px 10px;
   }
 
   .main-panel {
@@ -59,11 +42,13 @@
   }
 }
 
-/* Shell em coluna: nav no topo */
-@media (max-width: 780px) {
+/* ── Pequeno: nav no topo (largura total para o conteúdo) ─────────────── */
+@media (max-width: 800px) {
   .nova-shell {
     grid-template-columns: 1fr !important;
     grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
   }
 
   .app-frame .sidebar {
@@ -72,35 +57,67 @@
     flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
-    padding: 8px 10px;
+    padding: 6px 8px;
     gap: 0;
     border-right: none;
     border-bottom: var(--border-thin, 1px) solid var(--sidebar-edge);
-    position: static;
+    position: relative;
+    z-index: 40;
+    background: #000000;
   }
 
   .sidebar__nav {
     flex-direction: row;
     flex-wrap: nowrap;
     width: 100%;
-    justify-content: space-around;
+    justify-content: stretch;
     gap: 4px;
   }
 
   .sidebar-link {
     flex: 1 1 0;
     min-width: 0;
+    min-height: 40px;
     justify-content: center;
-    padding: 10px 6px;
+    align-items: center;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 4px;
+    border-radius: var(--radius-md, 2px);
+  }
+
+  .sidebar-link__label {
+    max-width: 100%;
+    font-size: 0.625rem;
+    line-height: 1.1;
+    letter-spacing: 0;
+    font-weight: 500;
+  }
+
+  .sidebar-link__icon,
+  .sidebar-link__icon svg {
+    width: 16px;
+    height: 16px;
   }
 
   .sidebar-link__badge {
+    position: absolute;
     top: 2px;
-    right: 6px;
+    right: 4px;
+    margin-left: 0;
+    min-width: 1rem;
+    height: 1rem;
+    font-size: 0.5rem;
+  }
+
+  .sidebar-link--active::before {
+    display: none;
   }
 
   .main-panel {
     padding: 10px 12px 14px;
+    min-height: 0;
+    overflow: auto;
   }
 
   .titlebar__btn {
@@ -113,8 +130,10 @@
     gap: 8px;
   }
 
+  .page-toolbar__search,
   .browse-search--soft {
     width: 100%;
+    max-width: none;
   }
 
   .browse-search__submit {
@@ -142,10 +161,7 @@
     gap: 14px;
   }
 
-  .discover-detail__media {
-    max-width: none;
-  }
-
+  .discover-detail__media,
   .discover-detail__about {
     max-width: none;
   }
@@ -191,26 +207,48 @@
   }
 
   .discover-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, 132px);
     gap: 12px 10px;
+    justify-content: start;
+  }
+
+  .discover-grid__item,
+  .discover-card {
+    max-width: 132px;
+    width: 100%;
   }
 
   .library-grid {
-    grid-template-columns: repeat(auto-fill, 140px);
+    grid-template-columns: repeat(auto-fill, 132px);
     gap: 12px 10px;
     justify-content: start;
   }
 
   .library-grid__item,
   .library-card {
-    max-width: none;
+    max-width: 132px;
+    width: 100%;
   }
 
   .library-toolbar,
   .downloads-page__header,
-  .downloads-toolbar {
+  .downloads-toolbar,
+  .dl-page__head {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+  }
+
+  .dl-page__actions {
+    margin-left: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .dl-page__actions .set-btn,
+  .downloads-toolbar .btn {
+    flex: 1 1 auto;
   }
 
   .settings-stack,
@@ -221,20 +259,46 @@
     grid-template-columns: 1fr;
   }
 
-  .download-row {
+  .download-row,
+  .dl-row {
     grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-areas:
+      "thumb main"
+      "actions actions";
+    gap: 12px;
   }
 
-  .download-row__actions {
+  .download-row__thumb,
+  .dl-row__thumb {
+    grid-area: thumb;
+  }
+
+  .download-row__main,
+  .dl-row__main {
+    grid-area: main;
+    min-width: 0;
+  }
+
+  .download-row__actions,
+  .dl-row__actions {
+    grid-area: actions;
     grid-column: 1 / -1;
     flex-direction: row;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    justify-content: stretch;
     width: 100%;
+    gap: 8px;
+  }
+
+  .download-row__actions .btn,
+  .download-row__actions .set-btn,
+  .dl-row__actions .set-btn {
+    flex: 1 1 auto;
   }
 }
 
-/* Janela muito estreita */
-@media (max-width: 560px) {
+/* ── Muito estreito (perto do minWidth da janela) ─────────────────────── */
+@media (max-width: 640px) {
   .titlebar {
     --titlebar-height: 36px;
   }
@@ -245,6 +309,39 @@
 
   .titlebar__btn {
     width: 36px;
+  }
+
+  .titlebar__drag {
+    padding: 0 10px;
+  }
+
+  .app-frame .sidebar {
+    padding: 4px 6px;
+  }
+
+  .sidebar-link {
+    min-height: 44px;
+    padding: 8px 2px;
+    gap: 0;
+  }
+
+  /* Só ícones — labels não cabem bem */
+  .sidebar-link__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .sidebar-link__icon,
+  .sidebar-link__icon svg {
+    width: 18px;
+    height: 18px;
   }
 
   .main-panel {
@@ -274,6 +371,10 @@
     max-width: 100%;
   }
 
+  .browse-search {
+    min-width: 0;
+  }
+
   .browse-search__submit {
     padding-inline: 10px;
     font-size: 0.75rem;
@@ -281,13 +382,26 @@
 
   .discover-grid,
   .library-grid {
-    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+    grid-template-columns: repeat(auto-fill, 112px);
     gap: 10px 8px;
+    justify-content: start;
+  }
+
+  .discover-grid__item,
+  .library-grid__item {
+    max-width: 112px;
   }
 
   .settings-nav {
     overflow-x: auto;
     flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .set-page,
+  .dl-page {
+    min-width: 0;
   }
 }
 
@@ -298,6 +412,14 @@
 
   .discover-detail__shot {
     max-height: min(30vh, 240px);
+  }
+
+  .app-frame .sidebar {
+    padding-block: 2px;
+  }
+
+  .sidebar-link {
+    min-height: 36px;
   }
 }
 
@@ -323,7 +445,7 @@
 }
 
 .discover-grid {
-  justify-content: stretch;
+  justify-content: start;
   width: 100%;
 }
 
@@ -335,25 +457,18 @@
   width: 100%;
   max-width: none;
   margin-inline: 0;
-  height: 100%;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
+  display: block;
 }
 
 .main-content--full > div {
-  flex: 1;
-  min-height: 0;
   width: 100%;
-  display: flex;
-  flex-direction: column;
+  min-width: 0;
 }
 
 .set-page,
 .dl-page {
   width: 100%;
-  min-height: 0;
-  flex: 1;
   margin-inline: 0;
 }
 

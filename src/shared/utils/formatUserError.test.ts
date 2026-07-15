@@ -20,4 +20,19 @@ describe('formatUserError', () => {
       'Não foi possível verificar a instalação do jogo.',
     )
   })
+
+  it('omite Exit 1 e códigos de saída sem contexto', () => {
+    expect(formatUserError(new Error('Exit 1'))).toBe('')
+    expect(formatUserError(new Error('exit code: 1'))).toBe('')
+    expect(formatUserError(new Error('powershell_process: exit code 1'))).toBe('')
+  })
+
+  it('omite falhas transitórias do sidecar (não spammar "Falha na fila")', () => {
+    expect(formatUserError(new Error('sidecar_not_running'), 'Falha na fila de downloads.')).toBe(
+      '',
+    )
+    expect(
+      formatUserError(new Error('sidecar_request_failed: connection refused'), 'Falha na fila.'),
+    ).toBe('')
+  })
 })

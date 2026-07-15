@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
+import { listen } from '@tauri-apps/api/event'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { useAppSettings } from '../../app/context/AppSettingsContext'
 import { APP_LOCALE, isAppLanguage, localeForLanguage } from '../../shared/config/locale'
@@ -20,6 +21,7 @@ import { formatUserError } from '../../shared/utils/formatUserError'
 import { useToast } from '../../shared/components/ToastProvider'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { useErrorToast } from '../../shared/hooks/useErrorToast'
+import type { CoverPrecacheStatus } from '../../shared/types/contracts'
 
 export function SettingsTab() {
   const { t } = useTranslation()
@@ -39,6 +41,15 @@ export function SettingsTab() {
     setDownloadSpeedLimit,
     disabledSourceIds,
     setDisabledSourceIds,
+    disabledSourcesReady,
+    notifyReadyToInstall,
+    setNotifyReadyToInstall,
+    notifyReadyToPlay,
+    setNotifyReadyToPlay,
+    notifyCatalogChanges,
+    setNotifyCatalogChanges,
+    notifySound,
+    setNotifySound,
   } = useAppSettings()
   const sources = useAppSelector((state) => state.sources.items)
   const sourcesLoading = useAppSelector((state) => state.sources.loading)
@@ -51,9 +62,58 @@ export function SettingsTab() {
   const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null)
   const [syncingAllSources, setSyncingAllSources] = useState(false)
   const [diskFreeBytes, setDiskFreeBytes] = useState<number | null>(null)
+  const [minimizeToTray, setMinimizeToTray] = useState(false)
+  const [coverPrecacheStatus, setCoverPrecacheStatus] = useState<CoverPrecacheStatus | null>(null)
+  const [coverPrecacheBusy, setCoverPrecacheBusy] = useState(false)
   const { showError, showSuccess } = useToast()
 
   useErrorToast(sourcesError, t('settings.toastSourcesLoadError'))
+
+  useEffect(() => {
+    let cancelled = false
+    void sourcesApi
+      .getAppSetting(SETTING_KEY.minimizeToTray)
+      .then((value) => {
+        if (!cancelled) {
+          setMinimizeToTray(value === '1' || value === 'true')
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+
+    void sourcesApi
+      .getCoverPrecacheStatus()
+      .then((status) => {
+        if (!cancelled) setCoverPrecacheStatus(status)
+      })
+      .catch(() => {
+        /* ignore */
+      })
+
+    void listen<CoverPrecacheStatus>('cover-precache-progress', (event) => {
+      if (!cancelled) setCoverPrecacheStatus(event.payload)
+    }).then((fn) => {
+      if (cancelled) {
+        fn()
+        return
+      }
+      unlisten = fn
+    })
+
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -265,6 +325,126 @@ export function SettingsTab() {
     }
   }
 
+  const handleToggleMinimizeToTray = async (enabled: boolean) => {
+    setMinimizeToTray(enabled)
+    try {
+      await sourcesApi.setAppSetting(SETTING_KEY.minimizeToTray, enabled ? '1' : '0')
+    } catch (error) {
+      setMinimizeToTray(!enabled)
+      showError(formatUserError(error, t('settings.toastTraySaveError')))
+    }
+  }
+
+  const persistNotifyFlag = useCallback(
+    async (
+      key: string,
+      next: boolean,
+      apply: (v: boolean) => void,
+      revert: boolean,
+    ) => {
+      apply(next)
+      try {
+        await sourcesApi.setAppSetting(key, next ? '1' : '0')
+      } catch (error) {
+        apply(revert)
+        showError(formatUserError(error, t('settings.toastNotifySaveError')))
+      }
+    },
+    [showError, t],
+  )
+
+  const handleToggleNotifyReadyToInstall = (enabled: boolean) =>
+    persistNotifyFlag(
+      SETTING_KEY.notifyReadyToInstall,
+      enabled,
+      setNotifyReadyToInstall,
+      notifyReadyToInstall,
+    )
+
+  const handleToggleNotifyReadyToPlay = (enabled: boolean) =>
+    persistNotifyFlag(
+      SETTING_KEY.notifyReadyToPlay,
+      enabled,
+      setNotifyReadyToPlay,
+      notifyReadyToPlay,
+    )
+
+  const handleToggleNotifyCatalogChanges = (enabled: boolean) =>
+    persistNotifyFlag(
+      SETTING_KEY.notifyCatalogChanges,
+      enabled,
+      setNotifyCatalogChanges,
+      notifyCatalogChanges,
+    )
+
+  const handleToggleNotifySound = (enabled: boolean) =>
+    persistNotifyFlag(SETTING_KEY.notifySound, enabled, setNotifySound, notifySound)
+
+  const handleStartCoverPrecache = async () => {
+    setCoverPrecacheBusy(true)
+    try {
+      const status = await sourcesApi.startCoverPrecache()
+      setCoverPrecacheStatus(status)
+    } catch (error) {
+      showError(formatUserError(error, t('settings.toastCoversError')))
+    } finally {
+      setCoverPrecacheBusy(false)
+    }
+  }
+
+  const handleStopCoverPrecache = async () => {
+    setCoverPrecacheBusy(true)
+    try {
+      const status = await sourcesApi.stopCoverPrecache()
+      setCoverPrecacheStatus(status)
+    } catch (error) {
+      showError(formatUserError(error, t('settings.toastCoversError')))
+    } finally {
+      setCoverPrecacheBusy(false)
+    }
+  }
+
+  const handleRetryUnresolvedCovers = async () => {
+    setCoverPrecacheBusy(true)
+    try {
+      const status = await sourcesApi.retryUnresolvedCovers()
+      setCoverPrecacheStatus(status)
+    } catch (error) {
+      showError(formatUserError(error, t('settings.toastCoversError')))
+    } finally {
+      setCoverPrecacheBusy(false)
+    }
+  }
+
+  const handleToggleSourceEnabled = useCallback(
+    async (sourceId: string, enable: boolean) => {
+      if (!disabledSourcesReady) return
+      const previous = disabledSourceIds
+      const next = enable
+        ? disabledSourceIds.filter((id) => id !== sourceId)
+        : disabledSourceIds.includes(sourceId)
+          ? disabledSourceIds
+          : [...disabledSourceIds, sourceId]
+      setDisabledSourceIds(next)
+      try {
+        await sourcesApi.setAppSetting(
+          SETTING_KEY.disabledHydraSourceIds,
+          JSON.stringify(next),
+        )
+      } catch (error) {
+        setDisabledSourceIds(previous)
+        showError(formatUserError(error, t('settings.toastSourcesSaveError')))
+      }
+    },
+    [
+      disabledSourceIds,
+      disabledSourcesReady,
+      setDisabledSourceIds,
+      showError,
+      t,
+    ],
+  )
+
   return (
     <>
       <SettingsPage
@@ -292,12 +472,30 @@ export function SettingsTab() {
         onDeleteSource={handleDeleteSource}
         onSyncSource={handleSyncSource}
         onSyncAllSources={handleSyncAllSources}
+        onToggleSourceEnabled={handleToggleSourceEnabled}
+        disabledSourceIds={disabledSourceIds}
+        disabledSourcesReady={disabledSourcesReady}
         deletingSourceId={deletingSourceId}
         syncingSourceId={syncingSourceId}
         syncingAllSources={syncingAllSources}
         handleToggleRemoveTemp={handleToggleRemoveTemp}
         handleToggleSeed={handleToggleSeed}
         handleSpeedLimitChange={handleSpeedLimitChange}
+        minimizeToTray={minimizeToTray}
+        handleToggleMinimizeToTray={handleToggleMinimizeToTray}
+        notifyReadyToInstall={notifyReadyToInstall}
+        notifyReadyToPlay={notifyReadyToPlay}
+        notifyCatalogChanges={notifyCatalogChanges}
+        notifySound={notifySound}
+        handleToggleNotifyReadyToInstall={handleToggleNotifyReadyToInstall}
+        handleToggleNotifyReadyToPlay={handleToggleNotifyReadyToPlay}
+        handleToggleNotifyCatalogChanges={handleToggleNotifyCatalogChanges}
+        handleToggleNotifySound={handleToggleNotifySound}
+        coverPrecacheStatus={coverPrecacheStatus}
+        coverPrecacheBusy={coverPrecacheBusy}
+        onStartCoverPrecache={handleStartCoverPrecache}
+        onStopCoverPrecache={handleStopCoverPrecache}
+        onRetryUnresolvedCovers={handleRetryUnresolvedCovers}
       />
       <ConfirmDialog
         open={pendingDelete !== null}

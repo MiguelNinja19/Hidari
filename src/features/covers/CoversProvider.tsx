@@ -29,18 +29,23 @@ export function CoversProvider({
   syncJobCoversRef.current = covers.syncJobCovers
   resolveCoversBatchRef.current = covers.resolveCoversBatch
 
+  const jobsRef = useRef(jobs)
+  jobsRef.current = jobs
   const jobsKey = jobs.map((job) => job.id).join('|')
   const preloadKey = preloadTitles.join('\0')
 
   useEffect(() => {
-    if (jobs.length === 0) return
-    syncJobCoversRef.current(jobs)
-  }, [jobs, jobsKey])
+    if (!jobsKey) return
+    // Só quando entram/saem jobs — não a cada tick de progresso.
+    syncJobCoversRef.current(jobsRef.current)
+  }, [jobsKey])
 
   useEffect(() => {
-    if (preloadTitles.length === 0) return
+    if (!preloadKey) return
     resolveCoversBatchRef.current(preloadTitles)
-  }, [preloadKey, preloadTitles])
+    // preloadTitles identity muda; preloadKey é a chave estável.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloadKey])
 
   return <CoversContext.Provider value={covers}>{children}</CoversContext.Provider>
 }

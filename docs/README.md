@@ -12,12 +12,12 @@ Inspired by [Hydra Launcher](https://github.com/hydralauncher/hydra), with its o
 
 ## Index
 
-| Document | Contents |
-|----------|----------|
-| [Getting started](./getting-started.md) | Install, commands, **how to add sources**, user flow |
-| [Architecture](./architecture.md) | Layers, library, queue, DB, Steam, events |
-| [Tauri API](./api.md) | IPC commands, events, TypeScript modules |
-| [Build and release](./build-and-release.md) | Binaries, packaging, resources |
+| Document                                    | Contents                                             |
+| ------------------------------------------- | ---------------------------------------------------- |
+| [Getting started](./getting-started.md)     | Install, commands, **how to add sources**, user flow |
+| [Architecture](./architecture.md)           | Layers, library, queue, DB, Steam, events            |
+| [Tauri API](./api.md)                       | IPC commands, events, TypeScript modules             |
+| [Build and release](./build-and-release.md) | Binaries, packaging, resources                       |
 
 ## Quick overview
 
@@ -27,12 +27,12 @@ Discover → Downloads → Library → Play
      └─ Hydra sources   sidecar + SQLite
 ```
 
-| Tab | Role |
-|-----|------|
-| **Discover** | Search active-source catalogs (Enter or Search) |
+| Tab           | Role                                             |
+| ------------- | ------------------------------------------------ |
+| **Discover**  | Search active-source catalogs (Enter or Search)  |
 | **Downloads** | Active queue (transfer, automatic post-download) |
-| **Library** | Games ready to install/play (deduped) |
-| **Settings** | Download folder, sources (on/off), speed, seed |
+| **Library**   | Games ready to install/play (deduped)            |
+| **Settings**  | Download folder, sources (on/off), speed, seed   |
 
 ## Why Tauri?
 
@@ -54,12 +54,12 @@ npm run lint         # ESLint
 
 ## Where to look
 
-| Need… | Go to… |
-|-------|--------|
-| Run the project | [getting-started.md](./getting-started.md) |
-| Library / queue / cache | [architecture.md](./architecture.md) |
-| Invoke a Rust command | [api.md](./api.md) |
-| Release build / binaries | [build-and-release.md](./build-and-release.md) |
-| TS contracts | `src/shared/types/contracts/` |
-| Persisted settings | `src/shared/config/appSettings.ts` |
-| Logo / icon | `docs/assets/`, `src/assets/logo.webp`, `src-tauri/icons/` |
+| Need…                    | Go to…                                                     |
+| ------------------------ | ---------------------------------------------------------- |
+| Run the project          | [getting-started.md](./getting-started.md)                 |
+| Library / queue / cache  | [architecture.md](./architecture.md)                       |
+| Invoke a Rust command    | [api.md](./api.md)                                         |
+| Release build / binaries | [build-and-release.md](./build-and-release.md)             |
+| TS contracts             | `src/shared/types/contracts/`                              |
+| Persisted settings       | `src/shared/config/appSettings.ts`                         |
+| Logo / icon              | `docs/assets/`, `src/assets/logo.webp`, `src-tauri/icons/` |

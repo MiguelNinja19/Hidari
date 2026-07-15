@@ -218,7 +218,10 @@ export function useDiscoverCatalog({
 
     const requestQuery = query;
     const requestId = ++searchRequestIdRef.current;
+    const loadingStartedAt = Date.now();
     setCatalogLoading(true);
+    setCatalogGames([]);
+    setCatalogHasMore(false);
 
     void (async () => {
       const applyIfCurrent = (fn: () => void) => {
@@ -231,8 +234,21 @@ export function useDiscoverCatalog({
         }
       };
 
+      const finishLoading = async () => {
+        const elapsed = Date.now() - loadingStartedAt;
+        const remaining = Math.max(0, 200 - elapsed);
+        if (remaining > 0) {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, remaining);
+          });
+        }
+        applyIfCurrent(() => {
+          setCatalogLoading(false);
+        });
+      };
+
       try {
-        // 1) Cache/JSON local — UI imediata
+        // 1) Cache/JSON local — UI imediata quando já há resultados
         const localRows = await sourcesApi.searchGameCatalog({
           query: requestQuery,
           includeSteam: false,
@@ -245,7 +261,10 @@ export function useDiscoverCatalog({
         applyIfCurrent(() => {
           setCatalogHasMore(localRows.length > DISCOVER_PAGE_SIZE);
           setCatalogGames(dedupeCatalogGames(localRows.slice(0, DISCOVER_PAGE_SIZE)));
-          setCatalogLoading(false);
+          // Só larga o loading cedo se já há algo para mostrar; senão espera a API.
+          if (localRows.length > 0) {
+            setCatalogLoading(false);
+          }
         });
 
         // 2) API Hydra — títulos novos + gravação no cache local
@@ -284,12 +303,9 @@ export function useDiscoverCatalog({
       } catch (error) {
         applyIfCurrent(() => {
           showError(formatUserError(error, t("discover.searchError")));
-          setCatalogLoading(false);
         });
       } finally {
-        applyIfCurrent(() => {
-          setCatalogLoading(false);
-        });
+        await finishLoading();
       }
     })();
 

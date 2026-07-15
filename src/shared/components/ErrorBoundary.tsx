@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import i18n from '../i18n'
 
 type ErrorBoundaryProps = {
   children: ReactNode
@@ -23,14 +24,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.state.error) {
       return (
         <section className="app-error" role="alert">
-          <h1 className="app-error__title">Algo correu mal</h1>
+          <h1 className="app-error__title">{i18n.t('common.errorTitle')}</h1>
           <p className="app-error__message">{this.state.error.message}</p>
           <button
             type="button"
             className="btn btn-primary"
             onClick={() => this.setState({ error: null })}
           >
-            Tentar novamente
+            {i18n.t('common.retry')}
           </button>
         </section>
       )

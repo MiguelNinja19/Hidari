@@ -21,17 +21,21 @@
     "postinstall": "node scripts/setup-binaries.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@reduxjs/toolkit": "^2.11.2",
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-updater": "^2.10.1",
-    "classic-level": "^3.0.0",
     "i18next": "^26.3.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-i18next": "^17.0.8",
     "react-redux": "^9.2.0"
+  },
+  "optionalDependencies": {
+    "classic-level": "^3.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

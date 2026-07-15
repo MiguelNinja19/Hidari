@@ -124,16 +124,61 @@ describe('libraryItemState', () => {
 
   it('jobBelongsInLibrary só aceita download concluído', async () => {
     const { jobBelongsInLibrary, isActiveQueueJob } = await import('./libraryItemState')
-    const active = { status: 'paused' } as DownloadJob
-    const done = { status: 'completed' } as DownloadJob
+    const active = { status: 'paused', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob
+    const done = {
+      status: 'completed',
+      url: 'https://example/setup.exe',
+      totalBytes: 80_000_000,
+      bytesDownloaded: 80_000_000,
+      errorMsg: null,
+    } as DownloadJob
+    const stickyDone = {
+      ...done,
+      url: 'magnet:?xt=urn:btih:abc',
+      errorMsg: 'A obter o conteúdo do torrent…',
+    } as DownloadJob
     expect(isActiveQueueJob(active)).toBe(true)
     expect(jobBelongsInLibrary(active)).toBe(false)
-    expect(jobBelongsInLibrary({ status: 'downloading' } as DownloadJob)).toBe(false)
-    expect(jobBelongsInLibrary({ status: 'failed' } as DownloadJob)).toBe(false)
-    expect(jobBelongsInLibrary({ status: 'verify_failed' } as DownloadJob)).toBe(true)
+    expect(jobBelongsInLibrary({ status: 'downloading', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob)).toBe(false)
+    expect(jobBelongsInLibrary({ status: 'failed', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob)).toBe(false)
+    expect(jobBelongsInLibrary({ status: 'verify_failed', url: '', totalBytes: 80_000_000, bytesDownloaded: 80_000_000 } as DownloadJob)).toBe(true)
     expect(jobBelongsInLibrary(done)).toBe(true)
-    expect(jobBelongsInLibrary({ status: 'extracted' } as DownloadJob)).toBe(true)
-    expect(jobBelongsInLibrary({ status: 'seeding' } as DownloadJob)).toBe(true)
-    expect(jobBelongsInLibrary({ status: 'cancelled' } as DownloadJob)).toBe(false)
+    expect(jobBelongsInLibrary(stickyDone)).toBe(true)
+    expect(jobBelongsInLibrary({ status: 'extracted', url: '', totalBytes: 80_000_000, bytesDownloaded: 80_000_000 } as DownloadJob)).toBe(true)
+    expect(jobBelongsInLibrary({ status: 'seeding', url: 'magnet:?xt=urn:btih:x', totalBytes: 80_000_000, bytesDownloaded: 80_000_000 } as DownloadJob)).toBe(true)
+    expect(jobBelongsInLibrary({ status: 'cancelled', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob)).toBe(false)
+  })
+
+  it('jobBelongsInLibrary aceita 100% ainda em downloading (aria2 a semear)', async () => {
+    const { jobBelongsInLibrary } = await import('./libraryItemState')
+    const stuck = {
+      status: 'downloading',
+      url: 'magnet:?xt=urn:btih:abc',
+      totalBytes: 2_010_000_000,
+      bytesDownloaded: 2_010_000_000,
+      progress: 100,
+      errorMsg: 'download_stalled_recovering: Sem atividade',
+    } as DownloadJob
+    expect(jobBelongsInLibrary(stuck)).toBe(true)
+  })
+
+  it('jobBelongsInLibrary rejeita completed/skipped a meio do download', async () => {
+    const { jobBelongsInLibrary } = await import('./libraryItemState')
+    const mid = {
+      status: 'completed',
+      url: 'magnet:?xt=urn:btih:abc',
+      totalBytes: 2_010_000_000,
+      bytesDownloaded: 1_070_000_000,
+      progress: 100,
+      extractionStatus: 'skipped',
+      errorMsg: null,
+    } as DownloadJob
+    expect(jobBelongsInLibrary(mid)).toBe(false)
+    expect(
+      jobBelongsInLibrary({
+        ...mid,
+        status: 'skipped',
+      } as DownloadJob),
+    ).toBe(false)
   })
 })

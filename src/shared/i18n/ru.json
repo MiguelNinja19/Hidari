@@ -1,6 +1,7 @@
 {
   "nav": {
     "discover": "Обзор",
+    "favorites": "Избранное",
     "downloads": "Загрузки",
     "library": "Библиотека",
     "settings": "Настройки",
@@ -28,7 +29,10 @@
     "add": "Добавить",
     "sync": "Синхронизировать",
     "import": "Импорт",
-    "browse": "Обзор"
+    "browse": "Обзор",
+    "errorTitle": "Что-то пошло не так",
+    "loadingTab": "Загрузка…",
+    "saving": "Сохранение…"
   },
   "titlebar": {
     "minimize": "Свернуть",
@@ -38,8 +42,13 @@
   },
   "library": {
     "filterPlaceholder": "Фильтр библиотеки…",
+    "sidebarGames": "Игры",
+    "sidebarGamesCount": "{{count}} игр",
+    "sidebarAdd": "Добавить игру",
+    "sidebarSearch": "Поиск",
     "sortTitleAsc": "Название А–Я",
     "sortTitleDesc": "Название Я–А",
+    "sortRecent": "Недавно играли",
     "emptyTitle": "Библиотека пуста",
     "emptyDescription": "Скачайте игры из каталога или импортируйте существующую папку.",
     "noResultsTitle": "Нет результатов",
@@ -48,6 +57,7 @@
     "openFolderTitle": "Открыть папку загрузки",
     "openExplorer": "Открыть папку",
     "openExplorerTitle": "Открыть папку в проводнике",
+    "extractTitle": "Распаковать архив загрузки",
     "locate": "Найти",
     "locateTitle": "Указать, где установлена игра",
     "locateFolder": "Найти папку",
@@ -93,7 +103,16 @@
     "deleteConfirmBody": "Удалить «{{title}}»? Файлы в папке установки также будут удалены, это действие нельзя отменить.",
     "deleteError": "Не удалось удалить элемент.",
     "verifyPathError": "Не удалось проверить папку загрузок.",
-    "readPathError": "Не удалось прочитать папку загрузок."
+    "readPathError": "Не удалось прочитать папку загрузок.",
+    "viewDetails": "Подробнее",
+    "viewDetailsTitle": "Открыть детали игры из каталога",
+    "pickLaunchExe": "Выбрать .exe",
+    "pickLaunchExeTitle": "Выбрать исполняемый файл для запуска",
+    "pickLaunchExeError": "Не удалось сохранить исполняемый файл.",
+    "exeFilter": "Исполняемый файл",
+    "noteLabel": "Заметки",
+    "notePlaceholder": "Личные заметки об этой игре…",
+    "noteSaveError": "Не удалось сохранить заметку."
   },
   "gameDetail": {
     "back": "Назад",
@@ -143,7 +162,18 @@
     "pickInvalidOptions": "Варианты найдены, но нет подходящих загрузок. Попробуйте другую игру или источник.",
     "pickNoDownloads": "Загрузки для этого названия не найдены. Проверьте активные источники в Настройках.",
     "pickFetchError": "Не удалось запросить источники. Проверьте соединение и попробуйте снова.",
-    "enqueueError": "Не удалось добавить загрузку в очередь."
+    "enqueueError": "Не удалось добавить загрузку в очередь.",
+    "addFavorite": "В избранное",
+    "removeFavorite": "Убрать из избранного",
+    "favoriteError": "Не удалось обновить избранное.",
+    "favoritesFilter": "Избранное",
+    "favoritesEmptyTitle": "Нет избранного",
+    "favoritesEmptyHint": "Отмечайте игры ★ в карточке каталога. Они появятся на этой странице.",
+    "filtersAria": "Фильтры каталога"
+  },
+  "favorites": {
+    "pageHint": "Игры, отмеченные в каталоге. Подробности загружаются только при открытии.",
+    "empty": "Нет избранного"
   },
   "downloads": {
     "verified": "Проверено",
@@ -170,7 +200,12 @@
     "summaryMixed": "{{active}} в процессе · {{done}} завершено",
     "emptyTitle": "Нет загрузок",
     "emptyHint": "Игры, скачанные из каталога, появятся здесь.",
-    "emptyAction": "Смотреть игры"
+    "emptyAction": "Смотреть игры",
+    "notifyReadyToInstall": "Готово к установке",
+    "notifyReadyToPlay": "Готово к игре",
+    "notifyReadyBody": "{{title}}",
+    "notifyCatalogTitle": "Новые репаки в каталоге",
+    "notifyCatalogBody": "{{name}}: +{{count}} записей"
   },
   "settings": {
     "title": "Настройки",
@@ -253,6 +288,39 @@
     "toastSourcesSaveError": "Не удалось сохранить активные источники.",
     "toastSeedSaveError": "Не удалось сохранить настройку раздачи.",
     "toastAddSourceError": "Не удалось добавить источник по URL.",
-    "toastImportError": "Не удалось импортировать источник."
+    "trayTitle": "Окно",
+    "trayDesc": "Поведение при закрытии приложения.",
+    "minimizeToTray": "Сворачивать в трей при закрытии",
+    "minimizeToTrayHint": "Оставляет Hidari в фоне на значке трея",
+    "minimizeToTrayAria": "Сворачивать в трей при закрытии",
+    "toastTraySaveError": "Не удалось сохранить настройку трея.",
+    "toastImportError": "Не удалось импортировать источник.",
+    "notificationsTitle": "Уведомления",
+    "notificationsDesc": "Системные оповещения о загрузках и каталоге.",
+    "notifyReadyToInstall": "Готово к установке",
+    "notifyReadyToInstallHint": "Когда загрузка завершена и можно установить",
+    "notifyReadyToPlay": "Готово к игре",
+    "notifyReadyToPlayHint": "Когда игра установлена и готова",
+    "notifyCatalogChanges": "Обновления каталога",
+    "notifyCatalogChangesHint": "Когда источники получают новые репаки",
+    "notifySound": "Звук уведомлений",
+    "notifySoundHint": "Воспроизводить системный звук уведомлений",
+    "toastNotifySaveError": "Не удалось сохранить настройку уведомлений.",
+    "coversTitle": "Кэш обложек",
+    "coversDesc": "Предзагрузка обложек каталога (вручную).",
+    "coversStart": "Старт",
+    "coversStop": "Стоп",
+    "coversRetry": "Повторить ошибки",
+    "coversProgress": "{{processed}}/{{total}} · {{cached}} в кэше",
+    "coversIdle": "{{cached}} в кэше · {{unresolved}} без обложки · {{failed}} ошибок",
+    "coversIdleEmpty": "Пока нет прогресса. Запустите вручную.",
+    "toastCoversError": "Ошибка операции кэша обложек."
+  },
+  "updater": {
+    "available": "Доступно обновление",
+    "availableWithVersion": "Доступна версия {{version}}",
+    "install": "Обновить",
+    "later": "Позже",
+    "installing": "Обновление…"
   }
 }

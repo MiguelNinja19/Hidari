@@ -5,12 +5,23 @@ export const SETTING_KEY = {
   downloadSpeedLimitBps: 'download_speed_limit_bps',
   disabledHydraSourceIds: 'disabled_hydra_source_ids',
   librarySort: 'library_sort',
+  minimizeToTray: 'minimize_to_tray',
+  notifyReadyToInstall: 'notify_ready_to_install',
+  notifyReadyToPlay: 'notify_ready_to_play',
+  notifyCatalogChanges: 'notify_catalog_changes',
+  notifySound: 'notify_sound',
 } as const
 
-export type LibrarySort = 'title-asc' | 'title-desc'
+/** Preferências booleanas guardadas como `'1'` / `'0'` (default ligado). */
+export function parseSettingFlag(value: string | null | undefined, defaultOn = true): boolean {
+  if (value === null || value === undefined || value === '') return defaultOn
+  return value === '1' || value === 'true'
+}
+
+export type LibrarySort = 'title-asc' | 'title-desc' | 'recent'
 
 export function parseLibrarySort(value: string | null | undefined): LibrarySort {
-  if (value === 'title-desc') return value
+  if (value === 'title-desc' || value === 'recent') return value
   return 'title-asc'
 }
 

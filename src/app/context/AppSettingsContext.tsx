@@ -30,6 +30,14 @@ export type AppSettingsContextValue = {
   setDisabledSourceIds: Dispatch<SetStateAction<string[]>>
   /** true depois de carregar `disabled_hydra_source_ids` do SQLite (evita race no toggle). */
   disabledSourcesReady: boolean
+  notifyReadyToInstall: boolean
+  setNotifyReadyToInstall: Dispatch<SetStateAction<boolean>>
+  notifyReadyToPlay: boolean
+  setNotifyReadyToPlay: Dispatch<SetStateAction<boolean>>
+  notifyCatalogChanges: boolean
+  setNotifyCatalogChanges: Dispatch<SetStateAction<boolean>>
+  notifySound: boolean
+  setNotifySound: Dispatch<SetStateAction<boolean>>
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -43,6 +51,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [afterInstallAction, setAfterInstallAction] = useState(AFTER_INSTALL_ACTION_DEFAULT)
   const [disabledSourceIds, setDisabledSourceIds] = useState<string[]>([])
   const [disabledSourcesReady, setDisabledSourcesReady] = useState(false)
+  const [notifyReadyToInstall, setNotifyReadyToInstall] = useState(true)
+  const [notifyReadyToPlay, setNotifyReadyToPlay] = useState(true)
+  const [notifyCatalogChanges, setNotifyCatalogChanges] = useState(true)
+  const [notifySound, setNotifySound] = useState(true)
 
   useAppBootstrap({
     setDefaultDownloadPath,
@@ -53,6 +65,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     setDownloadSpeedLimit,
     setDisabledSourceIds,
     setDisabledSourcesReady,
+    setNotifyReadyToInstall,
+    setNotifyReadyToPlay,
+    setNotifyCatalogChanges,
+    setNotifySound,
   })
 
   const value = useMemo(
@@ -72,6 +88,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       disabledSourceIds,
       setDisabledSourceIds,
       disabledSourcesReady,
+      notifyReadyToInstall,
+      setNotifyReadyToInstall,
+      notifyReadyToPlay,
+      setNotifyReadyToPlay,
+      notifyCatalogChanges,
+      setNotifyCatalogChanges,
+      notifySound,
+      setNotifySound,
     }),
     [
       afterInstallAction,
@@ -80,6 +104,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       disabledSourcesReady,
       downloadSpeedLimit,
       installOrganization,
+      notifyCatalogChanges,
+      notifyReadyToInstall,
+      notifyReadyToPlay,
+      notifySound,
       removeTemporaryFiles,
       seedTorrentsEnabled,
     ],

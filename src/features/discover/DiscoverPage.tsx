@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DiscoverNoSources } from './DiscoverNoSources'
 import { DiscoverEmptyCatalog } from './DiscoverEmptyCatalog'
@@ -11,6 +11,9 @@ import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { CoverWarmGridItem } from '../covers/CoverWarmGridItem'
 import { useCovers } from '../covers/CoversProvider'
 import { catalogGameDisplayTitle } from '../../shared/utils/normalizeTitleKey'
+import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
+import { formatUserError } from '../../shared/utils/formatUserError'
+import { useToast } from '../../shared/components/ToastProvider'
 import { useDiscoverController } from './DiscoverController'
 
 const SEARCH_SKELETON_COUNT = 12
@@ -60,11 +63,67 @@ export function DiscoverPage() {
     handleEnqueueFromDiscover,
   } = useDiscoverController()
 
+  const { showError } = useToast()
   const { resolveCover, warmCover, invalidateLocalCover, resolveCoversBatch } = useCovers()
+  const [favorite, setFavorite] = useState(false)
+  const [favoriteBusy, setFavoriteBusy] = useState(false)
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null)
+
+  const enabledSources = useMemo(
+    () => sources.filter((source) => isSourceEnabled(source.id)),
+    [sources, isSourceEnabled],
+  )
+
+  useEffect(() => {
+    if (!discoverPickGame) {
+      setFavorite(false)
+      return
+    }
+    let cancelled = false
+    const key = discoverPickGame.id || discoverPickGame.title
+    void sourcesApi
+      .isFavoriteCatalogEntry(key)
+      .then((value) => {
+        if (!cancelled) setFavorite(value)
+      })
+      .catch(() => {
+        if (!cancelled) setFavorite(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [discoverPickGame])
+
+  const handleToggleFavorite = useCallback(async () => {
+    if (!discoverPickGame || favoriteBusy) return
+    setFavoriteBusy(true)
+    try {
+      const next = await sourcesApi.toggleFavoriteCatalogEntry(
+        discoverPickGame.title,
+        discoverPickGame.id || undefined,
+      )
+      setFavorite(next)
+    } catch (error) {
+      showError(formatUserError(error, t('discover.favoriteError')))
+    } finally {
+      setFavoriteBusy(false)
+    }
+  }, [discoverPickGame, favoriteBusy, showError, t])
 
   const query = discoverSearch.trim()
   const isSearching = query.length >= 2
-  const resultCount = displayCatalogSource.length
+
+  const filteredSearchGames = useMemo(() => {
+    if (!sourceFilter) return displayCatalogSource
+    const needle = sourceFilter.trim().toLowerCase()
+    return displayCatalogSource.filter((game) => {
+      const src = game.source?.trim()
+      if (!src) return true
+      return src.toLowerCase() === needle || src.toLowerCase().includes(needle)
+    })
+  }, [displayCatalogSource, sourceFilter])
+
+  const resultCount = filteredSearchGames.length
   const hasActiveSources = enabledSourcesCount > 0
   const hasCatalogData = useMemo(
     () => sources.some((source) => isSourceEnabled(source.id) && source.downloadCount > 0),
@@ -87,7 +146,7 @@ export function DiscoverPage() {
       !isSearching ||
       catalogLoading ||
       !catalogHasMore ||
-      resultCount === 0
+      displayCatalogSource.length === 0
     ) {
       return
     }
@@ -112,7 +171,7 @@ export function DiscoverPage() {
     catalogLoading,
     catalogLoadingMore,
     catalogHasMore,
-    resultCount,
+    displayCatalogSource.length,
     loadMoreCatalog,
   ])
 
@@ -126,6 +185,9 @@ export function DiscoverPage() {
         synopsis={discoverPickSynopsis}
         screenshots={discoverPickScreenshots}
         busyUrl={discoverBusy}
+        favorite={favorite}
+        favoriteBusy={favoriteBusy}
+        onToggleFavorite={() => void handleToggleFavorite()}
         onBack={closeDiscoverPicker}
         onDownload={handleEnqueueFromDiscover}
       />
@@ -155,7 +217,11 @@ export function DiscoverPage() {
               <button
                 type="button"
                 className="browse-search__submit"
-                disabled={!hasActiveSources || catalogLoading || discoverSearchDraft.trim().length < 2}
+                disabled={
+                  !hasActiveSources ||
+                  catalogLoading ||
+                  discoverSearchDraft.trim().length < 2
+                }
                 onClick={submitDiscoverSearch}
               >
                 {catalogLoading ? t('discover.searching') : t('common.search')}
@@ -163,6 +229,23 @@ export function DiscoverPage() {
             }
           />
         </div>
+        {isSearching && enabledSources.length > 1 ? (
+          <div className="page-toolbar__filters" role="toolbar" aria-label={t('discover.filtersAria')}>
+            {enabledSources.map((source) => (
+              <button
+                key={source.id}
+                type="button"
+                className={`chip${sourceFilter === source.name ? ' chip--active' : ''}`}
+                aria-pressed={sourceFilter === source.name}
+                onClick={() =>
+                  setSourceFilter((prev) => (prev === source.name ? null : source.name))
+                }
+              >
+                {source.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </header>
 
       {!sourcesLoading && !hasActiveSources ? (
@@ -178,11 +261,18 @@ export function DiscoverPage() {
       ) : null}
 
       {hasActiveSources && isSearching && resultCount > 0 ? (
-        <ul className="discover-grid">
-          {displayCatalogSource.map((game, index) => {
+        <ul className="discover-grid" role="list" aria-label={t('nav.discover')}>
+          {filteredSearchGames.map((game, index) => {
             const cover = resolveCover(game.title, game.coverUrl, game.localCoverPath)
-            const itemCoverUrl = game.coverUrl?.trim() || cover.coverUrl
-            const itemLocalPath = game.localCoverPath?.trim() || cover.localPath
+            const catalogUrl = game.coverUrl?.trim() || null
+            const itemCoverUrl = catalogUrl || cover.coverUrl
+            const itemLocalPath =
+              (cover.localPath &&
+              (!catalogUrl || cover.coverUrl === catalogUrl)
+                ? cover.localPath
+                : null) ||
+              game.localCoverPath?.trim() ||
+              null
             const displayTitle = catalogGameDisplayTitle(game.title)
             const hasCover =
               cover.status !== 'error' && Boolean(itemLocalPath || itemCoverUrl)
@@ -223,7 +313,10 @@ export function DiscoverPage() {
         </ul>
       ) : null}
 
-      {hasActiveSources && isSearching && resultCount > 0 && (catalogHasMore || catalogLoadingMore) ? (
+      {hasActiveSources &&
+      isSearching &&
+      resultCount > 0 &&
+      (catalogHasMore || catalogLoadingMore) ? (
         <div
           ref={loadMoreSentinelRef}
           className="discover-load-more"
@@ -238,7 +331,10 @@ export function DiscoverPage() {
         </div>
       ) : null}
 
-      {hasActiveSources && isSearching && !catalogLoading && resultCount === 0 ? (
+      {hasActiveSources &&
+      isSearching &&
+      !catalogLoading &&
+      filteredSearchGames.length === 0 ? (
         <DiscoverNoResults query={query} />
       ) : null}
     </section>

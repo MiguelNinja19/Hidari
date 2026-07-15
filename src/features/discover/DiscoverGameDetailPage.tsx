@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Spinner } from '../../shared/components/Spinner'
 import { catalogGameDisplayTitle } from '../../shared/utils/normalizeTitleKey'
@@ -9,6 +9,7 @@ import {
   pickOptionVariantLabel,
 } from '../../shared/utils/pickDownloadOptions'
 import type { CatalogGame, DownloadOption } from '../../shared/types/contracts'
+import { parseGenreList } from '../genres/parseGenreList'
 import { coverUrlFromScreenshots } from '../../shared/utils/coverCandidates'
 
 const MAX_SHOTS = 8
@@ -22,17 +23,14 @@ type DiscoverGameDetailPageProps = {
   synopsis: string | null
   screenshots: string[]
   busyUrl: string | null
+  favorite: boolean
+  favoriteBusy: boolean
+  onToggleFavorite: () => void
   onBack: () => void
-  onDownload: (title: string, url: string, coverUrl?: string | null) => Promise<void>
-}
-
-function parseGenres(genre: string | undefined | null): string[] {
-  const raw = genre?.trim() ?? ''
-  if (!raw) return []
-  return raw
-    .split(/[,/;|]/)
-    .map((part) => part.trim())
-    .filter(Boolean)
+  onDownload?: (title: string, url: string, coverUrl?: string | null) => Promise<void>
+  /** Conteúdo extra sob os downloads (ex.: notas na biblioteca). */
+  footerSlot?: ReactNode
+  hideDownloads?: boolean
 }
 
 export function DiscoverGameDetailPage({
@@ -43,8 +41,13 @@ export function DiscoverGameDetailPage({
   synopsis,
   screenshots,
   busyUrl,
+  favorite,
+  favoriteBusy,
+  onToggleFavorite,
   onBack,
   onDownload,
+  footerSlot,
+  hideDownloads = false,
 }: DiscoverGameDetailPageProps) {
   const { t } = useTranslation()
   const pageRef = useRef<HTMLElement>(null)
@@ -52,7 +55,7 @@ export function DiscoverGameDetailPage({
   const displayTitle = catalogGameDisplayTitle(game.title)
 
   const pickOptions = useMemo(() => dedupeDownloadOptions(options), [options])
-  const genres = useMemo(() => parseGenres(game.genre).slice(0, MAX_GENRES), [game.genre])
+  const genres = useMemo(() => parseGenreList(game.genre).slice(0, MAX_GENRES), [game.genre])
   const shots = useMemo(
     () => screenshots.filter((url) => url.trim().length > 0).slice(0, MAX_SHOTS),
     [screenshots],
@@ -154,6 +157,16 @@ export function DiscoverGameDetailPage({
             ←
           </span>
           {t('common.back')}
+        </button>
+        <button
+          type="button"
+          className={`set-btn set-btn--compact set-btn--secondary${favoriteBusy ? ' is-busy' : ''}`}
+          aria-pressed={favorite}
+          disabled={favoriteBusy}
+          onClick={onToggleFavorite}
+        >
+          {favoriteBusy ? <span className="set-btn__spinner" aria-hidden="true" /> : null}
+          {favorite ? t('discover.removeFavorite') : t('discover.addFavorite')}
         </button>
       </header>
 
@@ -268,7 +281,13 @@ export function DiscoverGameDetailPage({
         ) : null}
 
         <div className="discover-detail__downloads-wrap">
-          {loading ? (
+          {hideDownloads && loading ? (
+            <div className="discover-detail__loading">
+              <Spinner size="md" label={t('common.loadingTab')} />
+            </div>
+          ) : null}
+
+          {!hideDownloads && loading ? (
             <div className="discover-detail__loading">
               <Spinner size="md" label={t('discover.loadingOptions')} />
               <p className="discover-detail__loading-label">{t('discover.loadingOptions')}</p>
@@ -279,11 +298,11 @@ export function DiscoverGameDetailPage({
             <p className="discover-detail__empty discover-detail__empty--error">{error}</p>
           ) : null}
 
-          {!loading && !error && pickOptions.length === 0 ? (
+          {!hideDownloads && !loading && !error && pickOptions.length === 0 ? (
             <p className="discover-detail__empty">{t('discover.noDownloadsAvailable')}</p>
           ) : null}
 
-          {!loading && pickOptions.length > 0 ? (
+          {!hideDownloads && !loading && pickOptions.length > 0 && onDownload ? (
             <section className="discover-detail__downloads" aria-label={t('discover.pickVersion')}>
               <div className="discover-detail__downloads-head">
                 <p className="discover-detail__section-label">{t('discover.pickVersion')}</p>
@@ -321,6 +340,8 @@ export function DiscoverGameDetailPage({
               </ul>
             </section>
           ) : null}
+
+          {footerSlot}
         </div>
       </div>
 

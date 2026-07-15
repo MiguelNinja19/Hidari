@@ -1,57 +1,115 @@
-import { useEffect, useRef } from 'react'
-import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
-import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
-import type { DownloadJob } from '../../shared/types/contracts'
-
-const NOTIFY_STATUSES = new Set(['completed', 'extracted'])
+import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
+import { useAppSettings } from "../context/AppSettingsContext";
+import { cleanTitleForDisplay } from "../../shared/utils/normalizeTitleKey";
+import type { DownloadJob } from "../../shared/types/contracts";
+import {
+  resolveDownloadNotifyKind,
+  type DownloadNotifySnapshot,
+} from "./downloadNotifyKind";
 
 async function ensureNotificationPermission(): Promise<boolean> {
   try {
-    let granted = await isPermissionGranted()
+    let granted = await isPermissionGranted();
     if (!granted) {
-      const permission = await requestPermission()
-      granted = permission === 'granted'
+      const permission = await requestPermission();
+      granted = permission === "granted";
     }
-    return granted
+    return granted;
   } catch {
-    return false
+    return false;
   }
 }
 
-/** Notifica quando um download conclui ou fica pronto para jogar. */
-export function useDownloadNotifications(jobs: DownloadJob[]) {
-  const prevStatusRef = useRef<Map<string, string>>(new Map())
+function snapshotOf(job: DownloadJob): DownloadNotifySnapshot {
+  return {
+    status: job.status,
+    extractionStatus: job.extractionStatus ?? null,
+  };
+}
+
+type UseDownloadNotificationsOptions = {
+  onReadyToInstall?: (gameTitle: string) => void;
+  onReadyToPlay?: (gameTitle: string) => void;
+};
+
+/** Notifica (OS + callbacks) quando o job fica pronto para instalar ou jogar. */
+export function useDownloadNotifications(
+  jobs: DownloadJob[],
+  options: UseDownloadNotificationsOptions = {},
+) {
+  const { t } = useTranslation();
+  const {
+    notifyReadyToInstall,
+    notifyReadyToPlay,
+    notifySound,
+  } = useAppSettings();
+  const prevRef = useRef<Map<string, DownloadNotifySnapshot>>(new Map());
+  const onReadyToInstallRef = useRef(options.onReadyToInstall);
+  const onReadyToPlayRef = useRef(options.onReadyToPlay);
+  onReadyToInstallRef.current = options.onReadyToInstall;
+  onReadyToPlayRef.current = options.onReadyToPlay;
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
 
     void (async () => {
-      const canNotify = await ensureNotificationPermission()
-      if (!canNotify || cancelled) return
+      const pending: Array<{ kind: "install" | "play"; gameTitle: string }> =
+        [];
 
       for (const job of jobs) {
-        const prev = prevStatusRef.current.get(job.id)
-        if (prev === job.status) continue
-        prevStatusRef.current.set(job.id, job.status)
+        const next = snapshotOf(job);
+        const prev = prevRef.current.get(job.id) ?? null;
+        prevRef.current.set(job.id, next);
 
-        if (!prev || !NOTIFY_STATUSES.has(job.status)) continue
+        const kind = resolveDownloadNotifyKind(prev, next);
+        if (!kind) continue;
+        if (kind === "install" && !notifyReadyToInstall) continue;
+        if (kind === "play" && !notifyReadyToPlay) continue;
+        pending.push({ kind, gameTitle: cleanTitleForDisplay(job.title) });
+      }
 
+      if (pending.length === 0 || cancelled) return;
+
+      const canNotify = await ensureNotificationPermission();
+      if (cancelled) return;
+
+      for (const item of pending) {
         const title =
-          job.status === 'extracted'
-            ? 'Pronto para jogar'
-            : 'Download concluído'
-        const body = cleanTitleForDisplay(job.title)
+          item.kind === "install"
+            ? t("downloads.notifyReadyToInstall")
+            : t("downloads.notifyReadyToPlay");
+        const body = t("downloads.notifyReadyBody", { title: item.gameTitle });
 
+        if (item.kind === "install") {
+          onReadyToInstallRef.current?.(item.gameTitle);
+        } else {
+          onReadyToPlayRef.current?.(item.gameTitle);
+        }
+
+        if (!canNotify) continue;
         try {
-          await sendNotification({ title, body })
+          await sendNotification({
+            title,
+            body,
+            extra: {
+              hidariNav: item.kind === "install" ? "downloads" : "library",
+            },
+            ...(notifySound ? {} : { silent: true }),
+          });
         } catch {
-          // ignorar falha de notificação
+          // ignorar falha de notificação OS
         }
       }
-    })()
+    })();
 
     return () => {
-      cancelled = true
-    }
-  }, [jobs])
+      cancelled = true;
+    };
+  }, [jobs, notifyReadyToInstall, notifyReadyToPlay, notifySound, t]);
 }

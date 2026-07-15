@@ -19,11 +19,26 @@ pub use game_detail::get_game_detail;
 
 const EMBEDDED_CATALOG_JSON: &str = include_str!("../../resources/embedded_catalog.json");
 
+fn fold_match_char(c: char) -> char {
+  match c {
+    'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+    'é' | 'è' | 'ê' | 'ë' => 'e',
+    'í' | 'ì' | 'î' | 'ï' => 'i',
+    'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+    'ú' | 'ù' | 'û' | 'ü' => 'u',
+    'ý' | 'ÿ' => 'y',
+    'ç' => 'c',
+    'ñ' => 'n',
+    _ => c,
+  }
+}
+
 pub fn normalize_match_text(value: &str) -> String {
   value
     .to_lowercase()
     .replace(['™', '®', '©', '–', '—', '-', ':', ',', '.', '\'', '"', '’'], " ")
     .chars()
+    .map(fold_match_char)
     .filter(|c| c.is_alphanumeric() || c.is_whitespace())
     .collect::<String>()
     .split_whitespace()
@@ -35,14 +50,17 @@ pub fn title_word_matches_query_word(title_word: &str, query_word: &str) -> bool
   if title_word == query_word {
     return true;
   }
-  // Ex.: "hades" casa com "hadesii" raro; prefixo só se a palavra do título começa com a query completa.
-  query_word.len() >= 4 && title_word.starts_with(query_word)
+  // Substring: "mega" em "megaman" / "omega"; mínimo 3 chars.
+  query_word.chars().count() >= 3 && title_word.contains(query_word)
 }
 
-pub fn title_matches_query(title: &str, query: &str) -> bool {
-  let title_norm = normalize_match_text(title);
-  let query_norm = normalize_match_text(query);
-  let title_words: Vec<&str> = title_norm.split_whitespace().collect();
+/// Matching sobre texto já normalizado (ex.: índices HydraLinks em memória).
+/// Com ≥3 caracteres, qualquer título que **contenha** a query (espaços ignorados).
+pub fn title_norm_matches_query_norm(title_norm: &str, query_norm: &str) -> bool {
+  let title_words: Vec<&str> = title_norm
+    .split_whitespace()
+    .filter(|word| !word.is_empty())
+    .collect();
   let query_words: Vec<&str> = query_norm
     .split_whitespace()
     .filter(|word| !word.is_empty())
@@ -52,14 +70,30 @@ pub fn title_matches_query(title: &str, query: &str) -> bool {
     return true;
   }
 
+  let title_compact: String = title_words.concat();
+
+  // Frase colada: "mega man" / "megaman" → "megaman11".
+  let query_compact = query_words.concat();
+  if query_compact.chars().count() >= 3 && title_compact.contains(&query_compact) {
+    return true;
+  }
+
+  // Cada termo ≥3: substring no título; ≤2: palavra exacta (evita ruído de "a"/"ii").
   query_words.iter().all(|query_word| {
-    if query_word.len() <= 2 {
-      return title_words.iter().any(|title_word| title_word == query_word);
+    let q_chars = query_word.chars().count();
+    if q_chars <= 2 {
+      title_words.iter().any(|title_word| *title_word == *query_word)
+    } else {
+      title_compact.contains(query_word)
     }
-    title_words
-      .iter()
-      .any(|title_word| title_word_matches_query_word(title_word, query_word))
   })
+}
+
+pub fn title_matches_query(title: &str, query: &str) -> bool {
+  title_norm_matches_query_norm(
+    &normalize_match_text(title),
+    &normalize_match_text(query),
+  )
 }
 
 pub fn embedded_catalog_entries() -> Vec<EmbeddedCatalogEntry> {
@@ -648,7 +682,7 @@ fn search_catalog_from_sources_sync(
       genre: String::new(),
       cover_url: None,
       local_cover_path: None,
-      source: "source".to_string(),
+      source: hit._source_name,
       option_count: (hit.option_count > 1).then_some(hit.option_count as u32),
       group_key: Some(hit.group_key),
     })
@@ -729,15 +763,11 @@ mod search_match_tests {
   use crate::catalog::{title_matches_query, title_word_matches_query_word};
 
   #[test]
-  fn hades_does_not_match_shades_or_shadespire() {
-    assert!(!title_matches_query(
-      "OUTBREAK: SHADES OF HORROR - CHROMATIC SPLIT",
-      "HADES",
-    ));
-    assert!(!title_matches_query(
-      "WARHAMMER UNDERWORLDS: SHADESPIRE EDITION - V1.8.7 + ALL DLCS",
-      "HADES",
-    ));
+  fn substring_finds_letters_anywhere_in_title() {
+    assert!(title_matches_query("Mega Man 11", "mega"));
+    assert!(title_matches_query("Omega Protocol", "mega"));
+    assert!(title_matches_query("OUTBREAK: SHADES OF HORROR", "hades"));
+    assert!(title_matches_query("SHADESPIRE EDITION", "hades"));
   }
 
   #[test]
@@ -750,9 +780,29 @@ mod search_match_tests {
   }
 
   #[test]
-  fn substring_hades_inside_shades_is_rejected() {
-    assert!(!title_word_matches_query_word("shades", "hades"));
-    assert!(!title_word_matches_query_word("shadespire", "hades"));
+  fn substring_inside_single_word() {
+    assert!(title_word_matches_query_word("shades", "hades"));
+    assert!(title_word_matches_query_word("megaman", "mega"));
     assert!(title_word_matches_query_word("hades", "hades"));
+  }
+
+  #[test]
+  fn megaman_matches_mega_man_spaced_title() {
+    assert!(title_matches_query("Mega Man 11", "megaman"));
+    assert!(title_matches_query("Mega Man 11 - FitGirl Repack", "MegaMan"));
+    assert!(title_matches_query("Mega Man X Legacy Collection", "mega man"));
+    assert!(title_matches_query("Megaman 11", "mega man"));
+  }
+
+  #[test]
+  fn short_tokens_still_require_exact_word() {
+    assert!(title_matches_query("Hades II", "ii"));
+    assert!(!title_matches_query("Civilization", "ii"));
+  }
+
+  #[test]
+  fn accent_folding_in_search() {
+    assert!(title_matches_query("Pokémon Legends", "pokemon"));
+    assert!(title_matches_query("Café Grande", "cafe"));
   }
 }

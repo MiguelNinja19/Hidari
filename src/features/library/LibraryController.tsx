@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 import { useAppDispatch } from '../../app/hooks'
 import { resumeJob } from '../queue/queueSlice'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import type { DownloadJob, LibraryPathState } from '../../shared/types/contracts'
+import type { DownloadJob, CatalogGame, DownloadOption, LibraryPathState } from '../../shared/types/contracts'
 import type { LibrarySort } from '../../shared/config/appSettings'
 import type { ResolvedCover } from '../covers/useGameCovers'
 import {
@@ -44,11 +44,34 @@ export type LibraryControllerValue = {
     busyKey: string,
     jobId?: string,
   ) => Promise<void>
+  handlePickLaunchExe: (item: LibraryEntry) => Promise<void>
   handleDeleteLibraryItem: (item: LibraryEntry) => void
   handleConfirmDeleteLibraryItem: () => Promise<void>
   handleCancelDeleteLibraryItem: () => void
   pendingDeleteItem: LibraryEntry | null
   deletingLibraryKey: string | null
+  /** Detalhe do catálogo aberto a partir da biblioteca (um de cada vez). */
+  libraryDetail: {
+    item: LibraryEntry
+    game: CatalogGame | null
+    loading: boolean
+    error: string | null
+    options: DownloadOption[]
+    synopsis: string | null
+    screenshots: string[]
+    note: string
+    noteSaving: boolean
+    busyUrl: string | null
+  } | null
+  openLibraryDetail: (item: LibraryEntry) => void
+  closeLibraryDetail: () => void
+  setLibraryDetailNote: (note: string) => void
+  saveLibraryDetailNote: () => Promise<void>
+  handleEnqueueFromLibraryDetail: (
+    title: string,
+    url: string,
+    coverUrl?: string | null,
+  ) => Promise<void>
 }
 
 const LibraryControllerContext = createContext<LibraryControllerValue | null>(null)

@@ -8,6 +8,7 @@ import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { STARTUP_JOBS_DEFER_MS } from '../../shared/config/polling'
 import {
   bpsToSpeedKey,
+  parseSettingFlag,
   SETTING_KEY,
 } from '../../shared/config/appSettings'
 import { isAppLanguage } from '../../shared/config/locale'
@@ -22,6 +23,10 @@ type BootstrapSettings = {
   setDownloadSpeedLimit: (v: string) => void
   setDisabledSourceIds: (v: string[]) => void
   setDisabledSourcesReady: (v: boolean) => void
+  setNotifyReadyToInstall: (v: boolean) => void
+  setNotifyReadyToPlay: (v: boolean) => void
+  setNotifyCatalogChanges: (v: boolean) => void
+  setNotifySound: (v: boolean) => void
 }
 
 function parseDisabledSourceIds(raw: string | null): string[] {
@@ -49,6 +54,10 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     setDownloadSpeedLimit,
     setDisabledSourceIds,
     setDisabledSourcesReady,
+    setNotifyReadyToInstall,
+    setNotifyReadyToPlay,
+    setNotifyCatalogChanges,
+    setNotifySound,
   } = settings
 
   useEffect(() => {
@@ -93,16 +102,25 @@ export function useAppBootstrap(settings: BootstrapSettings) {
 
           const enabled = await sourcesApi.getSeedTorrentsEnabled()
           setSeedTorrentsEnabled(enabled)
-          const [org, after, rem, speed] = await Promise.all([
-            sourcesApi.getAppSetting(SETTING_KEY.installOrganization),
-            sourcesApi.getAppSetting(SETTING_KEY.afterInstallAction),
-            sourcesApi.getAppSetting(SETTING_KEY.removeTempFiles),
-            sourcesApi.getAppSetting(SETTING_KEY.downloadSpeedLimitBps),
-          ])
+          const [org, after, rem, speed, nInstall, nPlay, nCatalog, nSound] =
+            await Promise.all([
+              sourcesApi.getAppSetting(SETTING_KEY.installOrganization),
+              sourcesApi.getAppSetting(SETTING_KEY.afterInstallAction),
+              sourcesApi.getAppSetting(SETTING_KEY.removeTempFiles),
+              sourcesApi.getAppSetting(SETTING_KEY.downloadSpeedLimitBps),
+              sourcesApi.getAppSetting(SETTING_KEY.notifyReadyToInstall),
+              sourcesApi.getAppSetting(SETTING_KEY.notifyReadyToPlay),
+              sourcesApi.getAppSetting(SETTING_KEY.notifyCatalogChanges),
+              sourcesApi.getAppSetting(SETTING_KEY.notifySound),
+            ])
           if (org) setInstallOrganization(org)
           if (after) setAfterInstallAction(after)
           if (rem !== null) setRemoveTemporaryFiles(rem === '1' || rem === 'true')
           if (speed !== null) setDownloadSpeedLimit(bpsToSpeedKey(speed))
+          setNotifyReadyToInstall(parseSettingFlag(nInstall))
+          setNotifyReadyToPlay(parseSettingFlag(nPlay))
+          setNotifyCatalogChanges(parseSettingFlag(nCatalog))
+          setNotifySound(parseSettingFlag(nSound))
         } catch {
           // Tauri indisponível (ex.: dev no browser)
         }
@@ -154,6 +172,10 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     setDisabledSourcesReady,
     setDownloadSpeedLimit,
     setInstallOrganization,
+    setNotifyCatalogChanges,
+    setNotifyReadyToInstall,
+    setNotifyReadyToPlay,
+    setNotifySound,
     setRemoveTemporaryFiles,
     setSeedTorrentsEnabled,
   ])

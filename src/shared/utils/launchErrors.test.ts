@@ -23,4 +23,9 @@ describe('formatLaunchError', () => {
   it('remove prefixo could_not_launch_game', () => {
     expect(formatLaunchError(new Error('could_not_launch_game: algo falhou'))).toBe('algo falhou')
   })
+
+  it('omite exit codes técnicos', () => {
+    expect(formatLaunchError(new Error('powershell_process: exit code 1'))).toBe('')
+    expect(formatLaunchError(new Error('Exit 1'))).toBe('')
+  })
 })

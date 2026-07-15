@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppDispatch } from '../../app/hooks'
+import { useNavigation } from '../../app/context/NavigationContext'
 import {
   cancelJob,
   clearCompletedJobs,
@@ -11,7 +12,7 @@ import {
 import { queueApi } from '../../shared/api/tauri/queueApi'
 import { useToast } from '../../shared/components/ToastProvider'
 import { useErrorToast } from '../../shared/hooks/useErrorToast'
-import { CoversProvider, useCovers } from '../covers/CoversProvider'
+import { useCovers } from '../covers/CoversProvider'
 import { DownloadsPage } from './DownloadsPage'
 import {
   formatProgressPercent,
@@ -26,11 +27,12 @@ type DownloadsTabProps = {
   queueError: string | null
 }
 
-function DownloadsTabContent({
+export function DownloadsTab({
   jobs,
   queueError,
 }: DownloadsTabProps) {
   const dispatch = useAppDispatch()
+  const { navigateLibrary } = useNavigation()
   const { resolveCover, invalidateLocalCover } = useCovers()
   const { showError } = useToast()
   const { t } = useTranslation()
@@ -114,41 +116,9 @@ function DownloadsTabContent({
         }
       }}
       onOpenJobFolder={(id) => runJobAction(id, () => queueApi.openJobFolder(id))}
-      onPlayJob={(id) =>
-        runJobAction(id, async () => {
-          await queueApi.launchJob(id)
-        })
-      }
+      onGoLibrary={navigateLibrary}
       resolveCover={resolveCover}
       invalidateLocalCover={invalidateLocalCover}
     />
-  )
-}
-
-export function DownloadsTab(props: DownloadsTabProps) {
-  const catalogGames = useMemo(
-    () =>
-      props.jobs.map((job) => ({
-        id: `job:${job.id}`,
-        title: job.title,
-        genre: '',
-        coverUrl: null,
-        localCoverPath: null,
-        source: 'queue',
-      })),
-    [props.jobs],
-  )
-
-  const preloadTitles = useMemo(() => props.jobs.map((job) => job.title), [props.jobs])
-
-  return (
-    <CoversProvider
-      catalogGames={catalogGames}
-      jobs={props.jobs}
-      eager
-      preloadTitles={preloadTitles}
-    >
-      <DownloadsTabContent {...props} />
-    </CoversProvider>
   )
 }

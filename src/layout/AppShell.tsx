@@ -6,16 +6,16 @@ import type { NavTab } from './types'
 type AppShellProps = {
   activeTab: NavTab
   activeDownloadsCount: number
-  activeDownloadSpeedBps?: number
   onTabChange: (tab: NavTab) => void
+  banner?: ReactNode
   children: ReactNode
 }
 
 export function AppShell({
   activeTab,
   activeDownloadsCount,
-  activeDownloadSpeedBps = 0,
   onTabChange,
+  banner,
   children,
 }: AppShellProps) {
   return (
@@ -25,17 +25,17 @@ export function AppShell({
         <Sidebar
           activeTab={activeTab}
           activeDownloadsCount={activeDownloadsCount}
-          activeDownloadSpeedBps={activeDownloadSpeedBps}
           onTabChange={onTabChange}
         />
         <section className="main-panel">
+          {banner}
           <section
             className={`main-content${
               activeTab === 'settings' || activeTab === 'downloads'
                 ? ' main-content--full'
                 : activeTab === 'library'
                   ? ' main-content--library'
-                  : activeTab === 'discover'
+                  : activeTab === 'discover' || activeTab === 'favorites'
                     ? ' main-content--discover'
                     : ''
             }`}

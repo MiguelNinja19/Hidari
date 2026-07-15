@@ -42,10 +42,7 @@ pub fn set_default_download_path(
   payload: SetDefaultDownloadPathPayload,
 ) -> Result<(), String> {
   let conn = open_database_connection(&app)?;
-  let path = payload.path.trim();
-  if path.is_empty() {
-    return Err("default_download_path_empty".to_string());
-  }
+  let path = crate::path_security::validate_download_root_setting(&payload.path)?;
   conn
     .execute(
       "INSERT INTO app_settings (key, value) VALUES ('default_download_path', ?1) \

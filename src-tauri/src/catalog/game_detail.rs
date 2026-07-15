@@ -254,7 +254,13 @@ pub async fn get_game_detail(
     .map(|url| url.trim().is_empty())
     .unwrap_or(true);
   if needs_cover {
-    if let Some(details) = steam.as_ref() {
+    if let Some(app_id) = steam_app_id {
+      let url = crate::catalog::steam_grid_cover(app_id);
+      game_with_cover.cover_url = Some(url.clone());
+      if let Ok(conn) = open_database_connection(&app) {
+        let _ = crate::covers::upsert_game_cover_if_absent(&conn, &game_with_cover.title, &url);
+      }
+    } else if let Some(details) = steam.as_ref() {
       let fallback = details
         .header_image
         .as_ref()
@@ -270,6 +276,11 @@ pub async fn get_game_detail(
             .map(|url| url.to_string())
         });
       if let Some(url) = fallback {
+        // Preferir cápsula vertical se o fallback for um header Steam.
+        let url = crate::covers::cover_download_urls(&url)
+          .into_iter()
+          .find(|candidate| candidate.contains("library_600x900"))
+          .unwrap_or(url);
         game_with_cover.cover_url = Some(url.clone());
         if let Ok(conn) = open_database_connection(&app) {
           let _ = crate::covers::upsert_game_cover_if_absent(&conn, &game_with_cover.title, &url);

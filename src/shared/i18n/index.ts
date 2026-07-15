@@ -15,6 +15,11 @@ import ru from './ru.json'
 
 const supportedLngs = APP_LANGUAGES.map((lang) => lang.code)
 
+function syncDocumentLang(code: string) {
+  if (typeof document === 'undefined') return
+  document.documentElement.lang = code
+}
+
 void i18n.use(initReactI18next).init({
   resources: {
     'pt-BR': { translation: ptBR },
@@ -30,6 +35,9 @@ void i18n.use(initReactI18next).init({
     escapeValue: false,
   },
 })
+
+syncDocumentLang(i18n.language)
+i18n.on('languageChanged', syncDocumentLang)
 
 export async function setAppLanguage(code: AppLanguage): Promise<void> {
   persistLanguage(code)

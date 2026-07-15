@@ -37,3 +37,6 @@ scripts/__pycache__/
 # Catálogos locais de desenvolvimento
 fitgirl.json
 arqui.json
+
+# Chaves do updater Tauri (nunca commitar a private key)
+.tauri/

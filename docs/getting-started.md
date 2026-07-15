@@ -87,7 +87,7 @@ Errors show as a **toast** in the top-right (they do not block the page).
 
 1. `npm run tauri:dev`
 2. Vite at `http://localhost:5173` (`tauri.conf.json`)
-3. **Hidari** window (1094×816 px)
+3. **Hidari** window (1280×816 px)
 
 ### “Tauri unavailable” error
 

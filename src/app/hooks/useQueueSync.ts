@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react'
 import { useAppDispatch, useAppSelector } from '../hooks'
 import { fetchJobs } from '../../features/queue/queueSlice'
 import { selectHasActiveDownloads } from '../../features/queue/queueSelectors'
-import { POLL_ACTIVE_JOBS_MS } from '../../shared/config/polling'
+import {
+  POLL_ACTIVE_JOBS_BACKGROUND_MS,
+  POLL_ACTIVE_JOBS_MS,
+} from '../../shared/config/polling'
 import type { NavTab } from '../../layout/types'
 
 type UseQueueSyncArgs = {
@@ -21,6 +24,7 @@ export function useQueueSync({
   const hasActiveDownloads = useAppSelector(selectHasActiveDownloads)
   const onJobsReconciledRef = useRef(onJobsReconciled)
   onJobsReconciledRef.current = onJobsReconciled
+  const reconcileInFlightRef = useRef(false)
 
   useEffect(() => {
     if (activeTab !== 'library' && activeTab !== 'downloads') return
@@ -29,15 +33,17 @@ export function useQueueSync({
 
     const loadQueue = async (attempt = 0) => {
       if (activeTab === 'downloads') setDownloadsBooting?.(true)
-      const result = await dispatch(fetchJobs())
+      // silent nos retries — evita toast "Falha na fila" a cada tentativa.
+      const result = await dispatch(fetchJobs({ silent: attempt > 0 || activeTab !== 'downloads' }))
       if (cancelled) return
 
       const shouldRetry =
-        activeTab === 'downloads' &&
         fetchJobs.rejected.match(result) &&
         attempt < 8 &&
         (result.error.message?.includes('sidecar') ||
-          result.error.message?.includes('download-engine'))
+          result.error.message?.includes('download-engine') ||
+          result.error.message?.includes('connection refused') ||
+          result.error.message?.includes('10061'))
 
       if (shouldRetry) {
         await new Promise((resolve) => window.setTimeout(resolve, 400))
@@ -59,22 +65,37 @@ export function useQueueSync({
   useEffect(() => {
     if (!hasActiveDownloads) return
 
+    const intervalMs =
+      activeTab === 'downloads' ? POLL_ACTIVE_JOBS_MS : POLL_ACTIVE_JOBS_BACKGROUND_MS
+
     const reconcile = () => {
-      void dispatch(fetchJobs({ silent: true })).then(() => {
-        onJobsReconciledRef.current?.()
-      })
+      if (reconcileInFlightRef.current) return
+      reconcileInFlightRef.current = true
+      void dispatch(fetchJobs({ silent: true }))
+        .then(() => {
+          onJobsReconciledRef.current?.()
+        })
+        .finally(() => {
+          reconcileInFlightRef.current = false
+        })
     }
 
     reconcile()
-    const id = window.setInterval(reconcile, POLL_ACTIVE_JOBS_MS)
+    const id = window.setInterval(reconcile, intervalMs)
     return () => window.clearInterval(id)
-  }, [hasActiveDownloads, dispatch])
+  }, [hasActiveDownloads, dispatch, activeTab])
 
   useEffect(() => {
     const onFocus = () => {
-      void dispatch(fetchJobs({ silent: true })).then(() => {
-        onJobsReconciledRef.current?.()
-      })
+      if (reconcileInFlightRef.current) return
+      reconcileInFlightRef.current = true
+      void dispatch(fetchJobs({ silent: true }))
+        .then(() => {
+          onJobsReconciledRef.current?.()
+        })
+        .finally(() => {
+          reconcileInFlightRef.current = false
+        })
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)

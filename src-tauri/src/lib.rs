@@ -5,9 +5,11 @@ mod config;
 mod covers;
 mod db;
 mod dto;
+mod favorites;
 mod launch;
 mod launch_errors;
 mod library;
+mod path_security;
 mod queue;
 mod sidecar;
 mod sources;
@@ -23,35 +25,27 @@ use sidecar::{
 use state::{ExtractionState, SidecarState};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, WindowEvent};
+use tauri::{AppHandle, Manager, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-#[cfg(target_os = "windows")]
-fn clear_window_title_bar_icon(hwnd: windows::Win32::Foundation::HWND) {
-  use windows::Win32::Foundation::{LPARAM, WPARAM};
-  use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_SETICON, ICON_BIG, ICON_SMALL};
-
-  unsafe {
-    let _ = SendMessageW(
-      hwnd,
-      WM_SETICON,
-      Some(WPARAM(ICON_SMALL as usize)),
-      Some(LPARAM(0)),
-    );
-    let _ = SendMessageW(
-      hwnd,
-      WM_SETICON,
-      Some(WPARAM(ICON_BIG as usize)),
-      Some(LPARAM(0)),
-    );
+fn show_main_window(app: &AppHandle) {
+  if let Some(window) = app.get_webview_window("main") {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
   }
 }
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   load_env_from_cwd();
 
   tauri::Builder::default()
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+      // Segunda abertura: não criar outra instância — só repor a janela existente.
+      // Sem isto, o processo novo morre e a app pode ficar "escondida" na bandeja
+      // (e no Windows ficam ícones fantasmas se a instância anterior congelou).
+      show_main_window(app);
       for arg in argv {
         if arg.starts_with("hidari://") || arg.starts_with("mylauncher://") {
           let _ = emit_deep_link_event(app, &arg);
@@ -82,7 +76,12 @@ pub fn run() {
           }
         });
       }
+      crate::path_security::migrate_legacy_app_data(app.handle())?;
       crate::db::init_database_pool(app.handle())?;
+      #[cfg(desktop)]
+      {
+        app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+      }
       if let (Ok(conn), Ok(covers_dir)) = (
         crate::db::open_database_connection(app.handle()),
         crate::covers::covers_dir_for_app(app.handle()),
@@ -130,11 +129,9 @@ pub fn run() {
 
       let app_icon = app.default_window_icon().cloned();
 
-      if let Some(window) = app.get_webview_window("main") {
-        #[cfg(target_os = "windows")]
-        if let Ok(hwnd) = window.hwnd() {
-          clear_window_title_bar_icon(hwnd);
-        }
+      // Garante o ícone da barra de tarefas / Alt+Tab (logo.webp → icons/).
+      if let (Some(window), Some(icon)) = (app.get_webview_window("main"), app_icon.clone()) {
+        let _ = window.set_icon(icon);
       }
 
       // Pré-cache em disco só manual (Configurações) — evita competir com a UI no arranque.
@@ -146,18 +143,14 @@ pub fn run() {
       let app_handle = app.handle().clone();
       let mut tray_builder = TrayIconBuilder::new()
         .menu(&tray_menu)
+        .tooltip("Hidari")
         .show_menu_on_left_click(false);
       if let Some(icon) = app_icon {
         tray_builder = tray_builder.icon(icon);
       }
       let _tray = tray_builder
         .on_menu_event(move |app, event| match event.id.as_ref() {
-          "tray_show" => {
-            if let Some(window) = app.get_webview_window("main") {
-              let _ = window.show();
-              let _ = window.set_focus();
-            }
-          }
+          "tray_show" => show_main_window(app),
           "tray_hide" => {
             if let Some(window) = app.get_webview_window("main") {
               let _ = window.hide();
@@ -173,23 +166,13 @@ pub fn run() {
             ..
           } = event
           {
-            if let Some(window) = app_handle.get_webview_window("main") {
-              let _ = window.show();
-              let _ = window.set_focus();
-            }
+            show_main_window(&app_handle);
           }
         })
         .build(app)?;
       Ok(())
     })
     .on_window_event(|window, event| {
-      #[cfg(target_os = "windows")]
-      if matches!(event, WindowEvent::Focused(true)) {
-        if let Ok(hwnd) = window.hwnd() {
-          clear_window_title_bar_icon(hwnd);
-        }
-      }
-
       if let WindowEvent::CloseRequested { api, .. } = event {
         let app_handle = window.app_handle().clone();
         let minimize = crate::db::open_database_connection(window.app_handle())
@@ -260,9 +243,16 @@ pub fn run() {
       inspect_library_path,
       inspect_library_paths,
       set_library_game_root,
+      set_library_launch_exe,
+      get_library_note,
+      set_library_note,
       launch_setup_from_path,
       is_executable_running_at_path,
-      extract_library_folder
+      extract_library_folder,
+      list_favorite_catalog_entries,
+      toggle_favorite_catalog_entry,
+      is_favorite_catalog_entry,
+      list_library_play_stats
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

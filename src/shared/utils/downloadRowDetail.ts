@@ -1,13 +1,21 @@
 import type { DownloadJob } from '../types/contracts'
 import { formatEta, formatSize, formatSpeed, jobStatusLabel, showEtaForJob } from './formatters'
-import { jobNeedsExtraction } from './jobExtraction'
-import { isTorrentMetadataPhase } from './jobProgress'
+import {
+  isAwaitingTorrentContent,
+  isGameContentReady,
+  isInsufficientGameDownload,
+  isTorrentMetadataPhase,
+} from './jobProgress'
 
 export function downloadRowDetail(job: DownloadJob, downloadNow: number): string {
   void downloadNow
 
-  if (isTorrentMetadataPhase(job)) {
-    return 'Obtendo metadados do torrent'
+  if (isAwaitingTorrentContent(job) || isTorrentMetadataPhase(job) || isInsufficientGameDownload(job)) {
+    const soft = job.errorMsg?.trim() ?? ''
+    if (soft.includes('conteúdo') || soft.includes('metadados') || soft.includes('aguardar')) {
+      return soft.length < 120 ? soft : 'A obter o conteúdo do torrent…'
+    }
+    return 'A obter o conteúdo do torrent…'
   }
 
   const softError = job.errorMsg?.trim() ?? ''
@@ -46,11 +54,14 @@ export function downloadRowDetail(job: DownloadJob, downloadNow: number): string
     return 'Extraindo arquivos…'
   }
 
-  if ((job.status === 'completed' || job.status === 'seeding') && jobNeedsExtraction(job)) {
-    return 'Preparando arquivos…'
+  if (isGameContentReady(job)) {
+    return 'Pronto para instalar'
   }
 
-  if (job.status === 'completed' && job.extractionStatus === 'skipped') {
+  if (job.status === 'completed' || job.status === 'seeding' || job.status === 'skipped') {
+    if (isAwaitingTorrentContent(job) || isInsufficientGameDownload(job)) {
+      return 'A obter o conteúdo do torrent…'
+    }
     return 'Pronto para instalar'
   }
 

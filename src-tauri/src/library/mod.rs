@@ -4,7 +4,8 @@ pub mod watcher;
 use crate::db::{get_default_download_path, open_database_connection};
 use crate::dto::{
   DeleteLocalLibraryItemPayload, InspectLibraryPathsPayload, InspectLibraryPathResultItem,
-  LaunchGamePayload, LibraryPathStateDto, LocalLibraryItemDto, SetLibraryGameRootPayload,
+  LaunchGamePayload, LibraryNotePayload, LibraryPathStateDto, LocalLibraryItemDto,
+  SetLibraryGameRootPayload, SetLibraryLaunchExePayload,
 };
 use crate::launch;
 use crate::launch_errors;
@@ -219,6 +220,7 @@ pub async fn launch_game_from_path(
   payload: LaunchGamePayload,
 ) -> Result<String, String> {
   tauri::async_runtime::spawn_blocking(move || {
+    let _validated = crate::path_security::validate_managed_path(&app, &payload.path)?;
     let conn = open_database_connection(&app)?;
     let cached_exe = read_library_launch_exe(&conn, &payload.path, &payload.title);
     let extra_roots = launch_extra_roots(
@@ -256,10 +258,9 @@ pub async fn launch_game_from_path(
 
 #[tauri::command]
 pub fn set_library_game_root(app: AppHandle, payload: SetLibraryGameRootPayload) -> Result<LibraryPathStateDto, String> {
-  let game_root = PathBuf::from(payload.game_root.trim());
-  if !game_root.is_dir() {
-    return Err("A pasta escolhida não existe.".to_string());
-  }
+  let _ = crate::path_security::validate_managed_path(&app, &payload.dest_path)?;
+  let game_root = crate::path_security::validate_existing_directory(&payload.game_root)
+    .map_err(|_| "A pasta escolhida não existe.".to_string())?;
   if !launch::folder_has_playable_game_exe(&payload.title, &game_root) {
     return Err(
       "Não encontramos um executável jogável nessa pasta. Escolha a pasta onde o jogo foi instalado (com o .exe do jogo)."
@@ -275,6 +276,69 @@ pub fn set_library_game_root(app: AppHandle, payload: SetLibraryGameRootPayload)
     &payload.dest_path,
     payload.job_id.as_deref(),
   ))
+}
+
+#[tauri::command]
+pub fn set_library_launch_exe(app: AppHandle, payload: SetLibraryLaunchExePayload) -> Result<(), String> {
+  let _ = crate::path_security::validate_managed_path(&app, &payload.dest_path)?;
+  let exe_path = crate::path_security::validate_absolute_user_path(&payload.exe_path)?;
+  let _ = crate::path_security::validate_managed_path(&app, &payload.exe_path)?;
+  if !exe_path.is_file() {
+    return Err("O ficheiro .exe escolhido não existe.".to_string());
+  }
+  let conn = open_database_connection(&app)?;
+  upsert_library_launch_exe(&conn, &payload.dest_path, &payload.title, &exe_path)?;
+  Ok(())
+}
+
+fn library_note_path_key(path: &str, title: &str) -> String {
+  format!("{}::{}", path.to_lowercase(), title.to_lowercase())
+}
+
+#[tauri::command]
+pub fn get_library_note(app: AppHandle, payload: LibraryNotePayload) -> Result<String, String> {
+  let path = payload.path.trim();
+  let title = payload.title.trim();
+  if path.is_empty() || title.is_empty() {
+    return Ok(String::new());
+  }
+  let conn = open_database_connection(&app)?;
+  let key = library_note_path_key(path, title);
+  Ok(
+    conn
+      .query_row(
+        "SELECT note FROM library_notes WHERE path_key = ?1",
+        params![key],
+        |row| row.get::<_, String>(0),
+      )
+      .unwrap_or_default(),
+  )
+}
+
+#[tauri::command]
+pub fn set_library_note(app: AppHandle, payload: LibraryNotePayload) -> Result<(), String> {
+  let path = payload.path.trim();
+  let title = payload.title.trim();
+  if path.is_empty() || title.is_empty() {
+    return Err("library_note_path_or_title_empty".to_string());
+  }
+  let note = payload.note.unwrap_or_default();
+  let conn = open_database_connection(&app)?;
+  let key = library_note_path_key(path, title);
+  if note.trim().is_empty() {
+    conn
+      .execute("DELETE FROM library_notes WHERE path_key = ?1", params![key])
+      .map_err(|e| format!("could_not_clear_library_note: {e}"))?;
+  } else {
+    conn
+      .execute(
+        "INSERT INTO library_notes (path_key, note) VALUES (?1, ?2) \
+         ON CONFLICT(path_key) DO UPDATE SET note = excluded.note",
+        params![key, note],
+      )
+      .map_err(|e| format!("could_not_save_library_note: {e}"))?;
+  }
+  Ok(())
 }
 
 pub fn folder_extraction_job_id(path: &str) -> String {
@@ -355,11 +419,11 @@ pub async fn inspect_library_paths(
 
 #[tauri::command]
 pub async fn launch_setup_from_path(app: AppHandle, payload: LaunchGamePayload) -> Result<String, String> {
-  let extra_roots = payload
-    .job_id
-    .as_deref()
-    .map(|job_id| db::extraction_roots_for_job(&app, job_id))
-    .unwrap_or_default();
+  let preferred_setup = payload
+    .preferred_setup
+    .as_ref()
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty());
 
   if let Some(job_id) = payload.job_id.clone() {
     let app_pause = app.clone();
@@ -381,31 +445,54 @@ pub async fn launch_setup_from_path(app: AppHandle, payload: LaunchGamePayload) 
     });
   }
 
-  let setup = launch::find_setup_executable_with_extra_roots(
-    &payload.title,
-    &payload.path,
-    &extra_roots,
-  )
-  .ok_or_else(|| {
-    "Nenhum instalador (setup.exe) encontrado na pasta do download.".to_string()
-  })?;
-  let install_dir = launch::resolve_game_content_root(&payload.title, &payload.path);
-  if !setup.is_file() {
-    return Err("setup.exe ainda não está disponível na pasta. Aguarde o download terminar.".to_string());
-  }
-  if !install_dir.exists() {
-    return Err("Pasta do repack não encontrada. Aguarde o download terminar.".to_string());
-  }
+  tauri::async_runtime::spawn_blocking(move || {
+    let _ = crate::path_security::validate_managed_path(&app, &payload.path)?;
+    let extra_roots = payload
+      .job_id
+      .as_deref()
+      .map(|job_id| db::extraction_roots_for_job(&app, job_id))
+      .unwrap_or_default();
 
-  launch::spawn_setup_executable_in(&setup, Some(&install_dir))
-    .map_err(|error| launch_errors::map_launch_user_error(&error, &payload.path))?;
-  Ok(setup.to_string_lossy().to_string())
+    let setup = preferred_setup
+      .as_deref()
+      .map(std::path::PathBuf::from)
+      .filter(|path| launch::is_usable_setup_path(path))
+      .or_else(|| {
+        launch::find_setup_executable_with_extra_roots(
+          &payload.title,
+          &payload.path,
+          &extra_roots,
+        )
+      })
+      .ok_or_else(|| {
+        "Nenhum instalador (setup.exe) encontrado na pasta do download.".to_string()
+      })?;
+
+    let install_dir = launch::resolve_game_content_root(&payload.title, &payload.path);
+    if !setup.is_file() {
+      return Err(
+        "setup.exe ainda não está disponível na pasta. Aguarde o download terminar.".to_string(),
+      );
+    }
+    if !install_dir.exists() {
+      return Err("Pasta do repack não encontrada. Aguarde o download terminar.".to_string());
+    }
+
+    launch::spawn_setup_executable_in(&setup, Some(&install_dir))
+      .map_err(|error| launch_errors::map_launch_user_error(&error, &payload.path))?;
+    Ok(setup.to_string_lossy().to_string())
+  })
+  .await
+  .map_err(|error| format!("launch_setup_task_failed: {error}"))?
 }
 
 #[tauri::command]
-pub fn is_executable_running_at_path(path: String) -> bool {
+pub fn is_executable_running_at_path(app: AppHandle, path: String) -> bool {
   let trimmed = path.trim();
   if trimmed.is_empty() {
+    return false;
+  }
+  if crate::path_security::validate_managed_path(&app, trimmed).is_err() {
     return false;
   }
   launch::is_executable_running(std::path::Path::new(trimmed))

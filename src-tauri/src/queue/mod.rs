@@ -40,8 +40,23 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
       Err(_) => continue,
     };
     let extracted = get_extraction_status(&conn, &job.id);
-    let should_remove = matches!(job.status.as_str(), "completed" | "cancelled" | "failed")
-      || matches!(extracted.as_deref(), Some("extracted"));
+    let mut should_remove = matches!(
+      job.status.as_str(),
+      "completed" | "cancelled" | "failed" | "seeding" | "skipped"
+    ) || matches!(
+      extracted.as_deref(),
+      Some("extracted") | Some("skipped") | Some("verified")
+    );
+    // Job a 100% ainda em downloading: também limpar.
+    if !should_remove && matches!(job.status.as_str(), "downloading" | "pending") {
+      let reported = job.total_bytes.max(job.bytes_downloaded);
+      if reported >= 5 * 1024 * 1024
+        && job.total_bytes > 0
+        && job.bytes_downloaded >= (job.total_bytes as f64 * 0.995) as i64
+      {
+        should_remove = true;
+      }
+    }
     if !should_remove {
       continue;
     }
@@ -59,7 +74,7 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
 
   conn
     .execute(
-      "DELETE FROM download_jobs WHERE status IN ('completed', 'cancelled', 'failed')",
+      "DELETE FROM download_jobs WHERE status IN ('completed', 'cancelled', 'failed', 'seeding', 'skipped')",
       [],
     )
     .map_err(|e| format!("could_not_clear_jobs: {e}"))?;

@@ -1,6 +1,7 @@
 {
   "nav": {
     "discover": "Discover",
+    "favorites": "Favorites",
     "downloads": "Downloads",
     "library": "Library",
     "settings": "Settings",
@@ -28,7 +29,10 @@
     "add": "Add",
     "sync": "Sync",
     "import": "Import",
-    "browse": "Browse"
+    "browse": "Browse",
+    "errorTitle": "Something went wrong",
+    "loadingTab": "Loading…",
+    "saving": "Saving…"
   },
   "titlebar": {
     "minimize": "Minimize",
@@ -38,8 +42,13 @@
   },
   "library": {
     "filterPlaceholder": "Filter library…",
+    "sidebarGames": "Games",
+    "sidebarGamesCount": "{{count}} games",
+    "sidebarAdd": "Add game",
+    "sidebarSearch": "Search",
     "sortTitleAsc": "Title A–Z",
     "sortTitleDesc": "Title Z–A",
+    "sortRecent": "Recently played",
     "emptyTitle": "Library is empty",
     "emptyDescription": "Download games from the catalog or import an existing folder.",
     "noResultsTitle": "No results",
@@ -48,6 +57,7 @@
     "openFolderTitle": "Open download folder",
     "openExplorer": "Open folder",
     "openExplorerTitle": "Open folder in Explorer",
+    "extractTitle": "Extract download archive",
     "locate": "Locate",
     "locateTitle": "Point to where the game was installed",
     "locateFolder": "Locate folder",
@@ -93,7 +103,16 @@
     "deleteConfirmBody": "Delete \"{{title}}\"? Install folder files will also be removed and this cannot be undone.",
     "deleteError": "Failed to delete item.",
     "verifyPathError": "Failed to verify the download folder.",
-    "readPathError": "Failed to read the download folder."
+    "readPathError": "Failed to read the download folder.",
+    "viewDetails": "View details",
+    "viewDetailsTitle": "Open game details from the catalog",
+    "pickLaunchExe": "Choose .exe",
+    "pickLaunchExeTitle": "Select the executable to launch",
+    "pickLaunchExeError": "Could not save the executable.",
+    "exeFilter": "Executable",
+    "noteLabel": "Notes",
+    "notePlaceholder": "Personal notes about this game…",
+    "noteSaveError": "Could not save the note."
   },
   "gameDetail": {
     "back": "Back",
@@ -143,7 +162,18 @@
     "pickInvalidOptions": "Options were found, but none are valid downloads. Try another game or source.",
     "pickNoDownloads": "No downloads found for this title. Check active sources in Settings.",
     "pickFetchError": "Could not query sources. Check your connection and try again.",
-    "enqueueError": "Failed to add the download to the queue."
+    "enqueueError": "Failed to add the download to the queue.",
+    "addFavorite": "Favorite",
+    "removeFavorite": "Remove favorite",
+    "favoriteError": "Could not update favorites.",
+    "favoritesFilter": "Favorites",
+    "favoritesEmptyTitle": "No favorites",
+    "favoritesEmptyHint": "Star games in the catalog detail. They show up on this page.",
+    "filtersAria": "Catalog filters"
+  },
+  "favorites": {
+    "pageHint": "Games you starred in the catalog. Details load only when you open one.",
+    "empty": "No favorites"
   },
   "downloads": {
     "verified": "Verified",
@@ -170,7 +200,12 @@
     "summaryMixed": "{{active}} in progress · {{done}} completed",
     "emptyTitle": "No downloads",
     "emptyHint": "Games you download from the catalog show up here.",
-    "emptyAction": "Browse games"
+    "emptyAction": "Browse games",
+    "notifyReadyToInstall": "Ready to install",
+    "notifyReadyToPlay": "Ready to play",
+    "notifyReadyBody": "{{title}}",
+    "notifyCatalogTitle": "New catalog repacks",
+    "notifyCatalogBody": "{{name}}: +{{count}} entries"
   },
   "settings": {
     "title": "Settings",
@@ -253,6 +288,39 @@
     "toastSourcesSaveError": "Failed to save active sources.",
     "toastSeedSaveError": "Failed to save seeding preference.",
     "toastAddSourceError": "Failed to add source from URL.",
-    "toastImportError": "Failed to import source."
+    "trayTitle": "Window",
+    "trayDesc": "Behavior when closing the app.",
+    "minimizeToTray": "Minimize to tray on close",
+    "minimizeToTrayHint": "Keep Hidari running in the tray icon",
+    "minimizeToTrayAria": "Minimize to tray on close",
+    "toastTraySaveError": "Failed to save tray preference.",
+    "toastImportError": "Failed to import source.",
+    "notificationsTitle": "Notifications",
+    "notificationsDesc": "System alerts for downloads and catalog.",
+    "notifyReadyToInstall": "Ready to install",
+    "notifyReadyToInstallHint": "When a download finishes and can be installed",
+    "notifyReadyToPlay": "Ready to play",
+    "notifyReadyToPlayHint": "When the game is installed and ready",
+    "notifyCatalogChanges": "Catalog updates",
+    "notifyCatalogChangesHint": "When sources get new repacks",
+    "notifySound": "Notification sound",
+    "notifySoundHint": "Play the system sound with notifications",
+    "toastNotifySaveError": "Failed to save notification preference.",
+    "coversTitle": "Cover cache",
+    "coversDesc": "Precache catalog covers (manual).",
+    "coversStart": "Start",
+    "coversStop": "Stop",
+    "coversRetry": "Retry failed",
+    "coversProgress": "{{processed}}/{{total}} · {{cached}} cached",
+    "coversIdle": "{{cached}} cached · {{unresolved}} unresolved · {{failed}} failed",
+    "coversIdleEmpty": "No progress yet. Start manually.",
+    "toastCoversError": "Cover cache operation failed."
+  },
+  "updater": {
+    "available": "A new update is available",
+    "availableWithVersion": "Version {{version}} is available",
+    "install": "Update",
+    "later": "Later",
+    "installing": "Updating…"
   }
 }

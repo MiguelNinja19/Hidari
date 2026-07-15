@@ -380,12 +380,13 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
             prev.total_bytes,
             &prev.status,
           );
+          let bytes_delta = (row.bytes_downloaded - prev.bytes_downloaded).abs();
+          // Não emitir a cada tick de speed — isso congelava a UI (Redux + Library + capas).
           prev.status != row.status
             || prev.error_msg != row.error_msg
-            || (prev_progress - progress).abs() >= 0.05
-            || prev.bytes_downloaded != row.bytes_downloaded
+            || (prev_progress - progress).abs() >= 0.5
+            || bytes_delta >= 1_048_576
             || prev.total_bytes != row.total_bytes
-            || prev.speed_bps != row.speed_bps
             || stall_hint.is_some()
         });
         if !changed {
@@ -479,6 +480,20 @@ fn update_stall_tracker(
   if !active {
     stall_state.remove(&row.id);
     return None;
+  }
+
+  // Download já completo (100%): não é stall — evita pause/resume infinito
+  // e a mensagem "Sem atividade — a retomar automaticamente…".
+  let finished_transfer = row.total_bytes >= 5 * 1024 * 1024
+    && row.bytes_downloaded >= row.total_bytes
+    && row.total_bytes > 0;
+  if finished_transfer || progress >= 99.5 {
+    let was = stall_state.remove(&row.id);
+    return if was.map(|t| t.recovering || t.kick_count > 0).unwrap_or(false) {
+      Some(String::new())
+    } else {
+      None
+    };
   }
 
   let now = Instant::now();

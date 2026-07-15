@@ -1,6 +1,7 @@
 {
   "nav": {
     "discover": "Explorar",
+    "favorites": "Favoritos",
     "downloads": "Downloads",
     "library": "Biblioteca",
     "settings": "Configurações",
@@ -28,7 +29,10 @@
     "add": "Adicionar",
     "sync": "Sincronizar",
     "import": "Importar",
-    "browse": "Procurar"
+    "browse": "Procurar",
+    "errorTitle": "Algo correu mal",
+    "loadingTab": "A carregar…",
+    "saving": "A guardar…"
   },
   "titlebar": {
     "minimize": "Minimizar",
@@ -38,8 +42,13 @@
   },
   "library": {
     "filterPlaceholder": "Filtrar biblioteca…",
+    "sidebarGames": "Jogos",
+    "sidebarGamesCount": "{{count}} jogos",
+    "sidebarAdd": "Adicionar jogo",
+    "sidebarSearch": "Buscar",
     "sortTitleAsc": "Título A–Z",
     "sortTitleDesc": "Título Z–A",
+    "sortRecent": "Recentemente jogados",
     "emptyTitle": "Biblioteca vazia",
     "emptyDescription": "Baixe jogos no catálogo ou importe uma pasta existente.",
     "noResultsTitle": "Sem resultados",
@@ -48,6 +57,7 @@
     "openFolderTitle": "Abrir pasta de download",
     "openExplorer": "Abrir pasta",
     "openExplorerTitle": "Abrir pasta no Explorer",
+    "extractTitle": "Extrair arquivo do download",
     "locate": "Localizar",
     "locateTitle": "Indicar onde o jogo foi instalado",
     "locateFolder": "Localizar pasta",
@@ -93,7 +103,16 @@
     "deleteConfirmBody": "Deseja excluir \"{{title}}\"? Os arquivos da pasta de instalação também serão removidos e essa ação não pode ser desfeita.",
     "deleteError": "Falha ao excluir item.",
     "verifyPathError": "Falha ao verificar a pasta de downloads.",
-    "readPathError": "Falha ao ler a pasta de downloads."
+    "readPathError": "Falha ao ler a pasta de downloads.",
+    "viewDetails": "Ver detalhes",
+    "viewDetailsTitle": "Abrir detalhes do jogo no catálogo",
+    "pickLaunchExe": "Escolher .exe",
+    "pickLaunchExeTitle": "Selecionar o executável para iniciar",
+    "pickLaunchExeError": "Não foi possível guardar o executável.",
+    "exeFilter": "Executável",
+    "noteLabel": "Notas",
+    "notePlaceholder": "Notas pessoais sobre este jogo…",
+    "noteSaveError": "Não foi possível guardar a nota."
   },
   "gameDetail": {
     "back": "Voltar",
@@ -143,7 +162,18 @@
     "pickInvalidOptions": "Foram encontradas opções, mas nenhum download válido. Tente outro jogo ou fonte.",
     "pickNoDownloads": "Nenhum download encontrado para este título. Verifique as fontes ativas em Configurações.",
     "pickFetchError": "Não foi possível consultar as fontes. Verifique a conexão e tente novamente.",
-    "enqueueError": "Falha ao adicionar o download à fila."
+    "enqueueError": "Falha ao adicionar o download à fila.",
+    "addFavorite": "Favoritar",
+    "removeFavorite": "Remover favorito",
+    "favoriteError": "Não foi possível atualizar os favoritos.",
+    "favoritesFilter": "Favoritos",
+    "favoritesEmptyTitle": "Sem favoritos",
+    "favoritesEmptyHint": "Marque jogos com ★ no detalhe do catálogo. Eles aparecem nesta página.",
+    "filtersAria": "Filtros do catálogo"
+  },
+  "favorites": {
+    "pageHint": "Jogos que marcaste no catálogo. O detalhe abre só quando clicas.",
+    "empty": "Não há favoritos"
   },
   "downloads": {
     "verified": "Verificado",
@@ -170,7 +200,12 @@
     "summaryMixed": "{{active}} em andamento · {{done}} concluído(s)",
     "emptyTitle": "Sem downloads",
     "emptyHint": "Os jogos que você baixar no catálogo aparecem aqui.",
-    "emptyAction": "Explorar jogos"
+    "emptyAction": "Explorar jogos",
+    "notifyReadyToInstall": "Pronto para instalar",
+    "notifyReadyToPlay": "Pronto para jogar",
+    "notifyReadyBody": "{{title}}",
+    "notifyCatalogTitle": "Novos repacks no catálogo",
+    "notifyCatalogBody": "{{name}}: +{{count}} entradas"
   },
   "settings": {
     "title": "Configurações",
@@ -253,6 +288,39 @@
     "toastSourcesSaveError": "Falha ao salvar fontes ativas.",
     "toastSeedSaveError": "Falha ao salvar preferência de semeadura.",
     "toastAddSourceError": "Falha ao adicionar a fonte pela URL.",
-    "toastImportError": "Falha ao importar a fonte."
+    "trayTitle": "Janela",
+    "trayDesc": "Comportamento ao fechar a aplicação.",
+    "minimizeToTray": "Minimizar para a bandeja ao fechar",
+    "minimizeToTrayHint": "Mantém o Hidari em segundo plano no ícone da bandeja",
+    "minimizeToTrayAria": "Minimizar para a bandeja ao fechar",
+    "toastTraySaveError": "Falha ao salvar preferência da bandeja.",
+    "toastImportError": "Falha ao importar a fonte.",
+    "notificationsTitle": "Notificações",
+    "notificationsDesc": "Alertas do sistema para downloads e catálogo.",
+    "notifyReadyToInstall": "Pronto para instalar",
+    "notifyReadyToInstallHint": "Quando o download terminar e puder instalar",
+    "notifyReadyToPlay": "Pronto para jogar",
+    "notifyReadyToPlayHint": "Quando o jogo estiver instalado e pronto",
+    "notifyCatalogChanges": "Novidades no catálogo",
+    "notifyCatalogChangesHint": "Quando as fontes tiverem novos repacks",
+    "notifySound": "Som nas notificações",
+    "notifySoundHint": "Reproduz o som do sistema nas notificações",
+    "toastNotifySaveError": "Falha ao guardar preferência de notificação.",
+    "coversTitle": "Cache de capas",
+    "coversDesc": "Pré-carregar capas do catálogo (manual).",
+    "coversStart": "Iniciar",
+    "coversStop": "Parar",
+    "coversRetry": "Repetir falhas",
+    "coversProgress": "{{processed}}/{{total}} · {{cached}} em cache",
+    "coversIdle": "{{cached}} em cache · {{unresolved}} sem capa · {{failed}} falhas",
+    "coversIdleEmpty": "Nenhum progresso ainda. Inicie manualmente.",
+    "toastCoversError": "Falha na operação de cache de capas."
+  },
+  "updater": {
+    "available": "Nova atualização disponível",
+    "availableWithVersion": "Nova versão {{version}} disponível",
+    "install": "Atualizar",
+    "later": "Depois",
+    "installing": "A atualizar…"
   }
 }

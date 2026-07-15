@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { formatSpeed } from '../shared/utils/formatters'
 import type { NavTab } from './types'
 
 type TabDef = { id: NavTab; labelKey: string; icon: ReactNode }
@@ -13,6 +12,19 @@ const tabs: TabDef[] = [
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="11" cy="11" r="7" />
         <path d="M20 20l-4-4" />
+      </svg>
+    ),
+  },
+  {
+    id: 'favorites',
+    labelKey: 'nav.favorites',
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M12 17.3l-5.4 3.2 1.45-5.85L3.5 10.2l6-.5L12 4.4l2.5 5.3 6 .5-4.55 4.45 1.45 5.85z"
+          fill="currentColor"
+          stroke="none"
+        />
       </svg>
     ),
   },
@@ -54,35 +66,20 @@ const tabs: TabDef[] = [
 type SidebarProps = {
   activeTab: NavTab
   activeDownloadsCount: number
-  activeDownloadSpeedBps?: number
   onTabChange: (tab: NavTab) => void
 }
 
-export function Sidebar({
-  activeTab,
-  activeDownloadsCount,
-  activeDownloadSpeedBps = 0,
-  onTabChange,
-}: SidebarProps) {
+export function Sidebar({ activeTab, activeDownloadsCount, onTabChange }: SidebarProps) {
   const { t } = useTranslation()
-  const showSpeed = activeDownloadSpeedBps > 0
-  const speedLabel = showSpeed ? formatSpeed(activeDownloadSpeedBps) : null
   const downloadsBadge =
     activeDownloadsCount > 0
-      ? showSpeed
-        ? speedLabel
-        : activeDownloadsCount > 99
-          ? '99+'
-          : String(activeDownloadsCount)
+      ? activeDownloadsCount > 99
+        ? '99+'
+        : String(activeDownloadsCount)
       : null
   const downloadsAria =
     activeDownloadsCount > 0
-      ? showSpeed
-        ? t('library.activeDownloadsSpeed', {
-            count: activeDownloadsCount,
-            speed: speedLabel,
-          })
-        : t('library.activeDownloads', { count: activeDownloadsCount })
+      ? t('library.activeDownloads', { count: activeDownloadsCount })
       : undefined
 
   return (
@@ -103,15 +100,13 @@ export function Sidebar({
                 ? `${t(tab.labelKey)} — ${downloadsAria}`
                 : t(tab.labelKey)
             }
+            aria-current={activeTab === tab.id ? 'page' : undefined}
             onClick={() => onTabChange(tab.id)}
           >
             <span className="sidebar-link__icon">{tab.icon}</span>
             <span className="sidebar-link__label">{t(tab.labelKey)}</span>
             {tab.id === 'downloads' && downloadsBadge ? (
-              <span
-                className={`sidebar-link__badge${showSpeed ? ' sidebar-link__badge--speed' : ''}`}
-                aria-hidden="true"
-              >
+              <span className="sidebar-link__badge" aria-hidden="true">
                 {downloadsBadge}
               </span>
             ) : null}

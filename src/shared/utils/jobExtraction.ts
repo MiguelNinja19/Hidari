@@ -6,48 +6,14 @@ export function normalizeLibraryPath(path: string): string {
   return resolveDeletePath(path).trim().toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
-/** Job finished downloading but post-download prep (verify/extract) is still pending. */
-export function jobNeedsExtraction(job: DownloadJob): boolean {
-  const extraction = job.extractionStatus?.trim()
-  if (
-    extraction === 'skipped' ||
-    extraction === 'extracted' ||
-    extraction === 'verified' ||
-    extraction === 'failed' ||
-    extraction === 'verify_failed'
-  ) {
-    return false
-  }
-
-  if (['extracting', 'extracted', 'skipped', 'cancelled'].includes(job.status)) {
-    return false
-  }
-
-  if (job.status === 'completed' || job.status === 'seeding' || job.status === 'failed') {
-    return true
-  }
-
-  if (
-    job.progress >= 99 &&
-    ['downloading', 'retrying', 'pending', 'seeding'].includes(job.status)
-  ) {
-    return true
-  }
-
+/** Não pedimos extrair — o download já é o instalável. */
+export function jobNeedsExtraction(_job: DownloadJob): boolean {
   return false
 }
 
-/** Mostrar botão Extrair (manual ou retry após falha). */
-export function jobCanExtract(job: DownloadJob): boolean {
-  const extraction = job.extractionStatus?.trim()
-  if (job.status === 'extracting' || extraction === 'extracting') return true
-  if (extraction === 'failed') return true
-  if (extraction === 'extracted' || extraction === 'skipped') return false
-  if (job.status === 'cancelled') return false
-  return (
-    jobNeedsExtraction(job) &&
-    (job.status === 'completed' || job.status === 'seeding')
-  )
+/** Botão Extrair desactivado. */
+export function jobCanExtract(_job: DownloadJob): boolean {
+  return false
 }
 
 export function jobPathsOverlap(a: string, b: string): boolean {
