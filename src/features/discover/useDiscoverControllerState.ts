@@ -28,6 +28,12 @@ export function useDiscoverControllerState({
 
   const [discoverSearchDraft, setDiscoverSearchDraft] = useState('')
   const [discoverSearch, setDiscoverSearch] = useState('')
+  const [discoverGridColumns, setDiscoverGridColumnsState] = useState(5)
+
+  const setDiscoverGridColumns = useCallback((columns: number) => {
+    const next = Math.max(1, Math.min(12, Math.floor(columns) || 5))
+    setDiscoverGridColumnsState((prev) => (prev === next ? prev : next))
+  }, [])
 
   const enabledSourcesCount = useMemo(
     () =>
@@ -67,6 +73,7 @@ export function useDiscoverControllerState({
     enabledSourcesCount,
     enabledSourcesKey,
     defaultDownloadPath,
+    gridColumns: discoverGridColumns,
   })
 
   const handleEnqueueFromDiscover = useCallback(
@@ -117,6 +124,7 @@ export function useDiscoverControllerState({
     catalogLoadingMore: discover.catalogLoadingMore,
     catalogHasMore: discover.catalogHasMore,
     loadMoreCatalog: discover.loadMoreCatalog,
+    setDiscoverGridColumns,
     displayCatalogSource: discover.displayCatalogSource,
     discoverPickGame: discover.discoverPickGame,
     discoverPickLoading: discover.discoverPickLoading,

@@ -15,8 +15,12 @@ import type {
   DownloadOption,
   GetGameDetailInput,
 } from "../../shared/types/contracts";
+import {
+  discoverLoadMoreLimit,
+  discoverPageSize,
+} from "./discoverGridPaging";
 
-const DISCOVER_PAGE_SIZE = 24;
+const DISCOVER_ROWS_PER_PAGE = 5;
 
 /** Mesma base de jogo (groupKey canónico ou título limpo) — evita local+API a duplicar. */
 function catalogDedupeKey(game: CatalogGame): string {
@@ -122,6 +126,8 @@ type UseDiscoverCatalogArgs = {
   enabledSourcesCount: number;
   enabledSourcesKey: string;
   defaultDownloadPath: string;
+  /** Colunas da grelha (medida no DOM) — página alinhada a linhas cheias. */
+  gridColumns?: number;
 };
 
 function isCatalogGame(
@@ -163,9 +169,16 @@ export function useDiscoverCatalog({
   enabledSourcesCount,
   enabledSourcesKey,
   defaultDownloadPath,
+  gridColumns = 5,
 }: UseDiscoverCatalogArgs) {
   const { showError } = useToast();
   const { t, i18n } = useTranslation();
+  const columns = Math.max(1, gridColumns);
+  const pageSize = discoverPageSize(columns, DISCOVER_ROWS_PER_PAGE);
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+  const columnsRef = useRef(columns);
+  columnsRef.current = columns;
   const [catalogGames, setCatalogGames] = useState<CatalogGame[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogLoadingMore, setCatalogLoadingMore] = useState(false);
@@ -256,11 +269,12 @@ export function useDiscoverCatalog({
           attachCovers: true,
           localOnly: true,
           offset: 0,
-          limit: DISCOVER_PAGE_SIZE + 1,
+          limit: pageSizeRef.current + 1,
         });
         applyIfCurrent(() => {
-          setCatalogHasMore(localRows.length > DISCOVER_PAGE_SIZE);
-          setCatalogGames(dedupeCatalogGames(localRows.slice(0, DISCOVER_PAGE_SIZE)));
+          const size = pageSizeRef.current;
+          setCatalogHasMore(localRows.length > size);
+          setCatalogGames(dedupeCatalogGames(localRows.slice(0, size)));
           // Só larga o loading cedo se já há algo para mostrar; senão espera a API.
           if (localRows.length > 0) {
             setCatalogLoading(false);
@@ -275,14 +289,15 @@ export function useDiscoverCatalog({
           attachCovers: false,
           localOnly: false,
           offset: 0,
-          limit: DISCOVER_PAGE_SIZE + 1,
+          limit: pageSizeRef.current + 1,
         });
         applyIfCurrent(() => {
+          const size = pageSizeRef.current;
           setCatalogGames((prev) => {
             const prevByKey = new Map(
               prev.map((game) => [catalogDedupeKey(game), game]),
             );
-            const merged = fullRows.slice(0, DISCOVER_PAGE_SIZE).map((row) => {
+            const merged = fullRows.slice(0, size).map((row) => {
               const existing = prevByKey.get(catalogDedupeKey(row));
               if (!existing) return row;
               return {
@@ -296,8 +311,7 @@ export function useDiscoverCatalog({
             return dedupeCatalogGames(merged);
           });
           setCatalogHasMore(
-            fullRows.length > DISCOVER_PAGE_SIZE ||
-              localRows.length > DISCOVER_PAGE_SIZE,
+            fullRows.length > size || localRows.length > size,
           );
         });
       } catch (error) {
@@ -331,6 +345,11 @@ export function useDiscoverCatalog({
     loadMoreInFlightRef.current = true;
     setCatalogLoadingMore(true);
     try {
+      const limit = discoverLoadMoreLimit(
+        catalogGames.length,
+        columnsRef.current,
+        DISCOVER_ROWS_PER_PAGE,
+      );
       const rows = await sourcesApi.searchGameCatalog({
         query,
         includeSteam: false,
@@ -338,11 +357,11 @@ export function useDiscoverCatalog({
         attachCovers: true,
         localOnly: false,
         offset: catalogGames.length,
-        limit: DISCOVER_PAGE_SIZE + 1,
+        limit: limit + 1,
       });
-      setCatalogHasMore(rows.length > DISCOVER_PAGE_SIZE);
+      setCatalogHasMore(rows.length > limit);
       setCatalogGames((prev) =>
-        mergeCatalogGames(prev, rows.slice(0, DISCOVER_PAGE_SIZE)),
+        mergeCatalogGames(prev, rows.slice(0, limit)),
       );
     } catch (error) {
       showError(formatUserError(error, t("discover.loadMoreError")));

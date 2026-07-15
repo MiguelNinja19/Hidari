@@ -15,6 +15,7 @@ import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { useToast } from '../../shared/components/ToastProvider'
 import { useDiscoverController } from './DiscoverController'
+import { resolveDiscoverColumns } from './discoverGridPaging'
 
 const SEARCH_SKELETON_COUNT = 12
 
@@ -45,6 +46,7 @@ export function DiscoverPage() {
     catalogLoadingMore,
     catalogHasMore,
     loadMoreCatalog,
+    setDiscoverGridColumns,
     displayCatalogSource,
     discoverPickGame,
     discoverPickLoading,
@@ -131,6 +133,24 @@ export function DiscoverPage() {
   )
 
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
+  const discoverGridRef = useRef<HTMLUListElement>(null)
+  const discoverPageRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const target = discoverGridRef.current ?? discoverPageRef.current
+    if (!target) return
+
+    const publish = () => {
+      setDiscoverGridColumns(resolveDiscoverColumns(target))
+    }
+    publish()
+
+    const observer = new ResizeObserver(() => {
+      publish()
+    })
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [setDiscoverGridColumns, resultCount, isSearching])
 
   const onNeedsCover = useCallback(
     (title: string) => {
@@ -196,6 +216,7 @@ export function DiscoverPage() {
 
   return (
     <section
+      ref={discoverPageRef}
       className={`browse-page${catalogLoading && resultCount > 0 ? ' browse-page--loading' : ''}`}
     >
       <header className="page-toolbar page-toolbar--discover">
@@ -261,7 +282,12 @@ export function DiscoverPage() {
       ) : null}
 
       {hasActiveSources && isSearching && resultCount > 0 ? (
-        <ul className="discover-grid" role="list" aria-label={t('nav.discover')}>
+        <ul
+          ref={discoverGridRef}
+          className="discover-grid"
+          role="list"
+          aria-label={t('nav.discover')}
+        >
           {filteredSearchGames.map((game, index) => {
             const cover = resolveCover(game.title, game.coverUrl, game.localCoverPath)
             const catalogUrl = game.coverUrl?.trim() || null

@@ -12,6 +12,7 @@ export type DiscoverControllerValue = {
   catalogLoadingMore: boolean
   catalogHasMore: boolean
   loadMoreCatalog: () => Promise<void>
+  setDiscoverGridColumns: (columns: number) => void
   displayCatalogSource: CatalogGame[]
   discoverPickGame: CatalogGame | null
   discoverPickLoading: boolean
