@@ -45,12 +45,11 @@ Changing the identifier from `com.mylauncher.app` to `com.hidari.app` creates a 
 
 1. Generate keys: `npx tauri signer generate -w ./.tauri/hidari.key`
 2. Put the **public** key in `plugins.updater.pubkey` (`tauri.conf.json`).
-3. Store private key + password as GitHub secrets:
+3. For signed release builds locally, set env vars before `npm run tauri:build`:
    - `TAURI_SIGNING_PRIVATE_KEY`
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-4. Release tags `v*` build signed updater artifacts via `.github/workflows/release.yml`.
 
-Never commit `.tauri/*.key`.
+Never commit `.tauri/*.key`. There is no GitHub Actions workflow in this repo — builds and releases are done locally.
 
 ## Required binaries
 
