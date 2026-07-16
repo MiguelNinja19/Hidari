@@ -22,6 +22,7 @@ TypeScript contracts: `src/shared/types/contracts/` (`queue.ts`, `catalog.ts`, `
 | `get_disk_free_bytes_for_path` | `sourcesApi` | Free disk space |
 | `open_deep_link` | — | Handle deep-link URL (`hidari://`) |
 | `open_local_path` | — | Open folder in Explorer |
+| `send_desktop_notification` | `osNotification` / invoke | OS toast (silent; Windows AUMID) |
 
 ---
 
@@ -50,14 +51,16 @@ Disabled sources: ID list in `disabled_hydra_source_ids` (via `get_app_setting` 
 | `set_default_download_path` | `sourcesApi` | Default download folder |
 | `get_default_download_path` | `sourcesApi` | Get default folder |
 | `scan_default_download_path` | `sourcesApi` | List entries in the folder |
-| `delete_local_library_item` | `sourcesApi` | Delete folder/file (does not delete download root) |
-| `inspect_library_path` | `sourcesApi` | Install/play state for a path |
+| `delete_local_library_item` | `sourcesApi` | Delete folder/file + related torrent sidecars (does not delete download root) |
+| `inspect_library_path` | `sourcesApi` | Install/play state for a path (`needsInstall` if setup without game root) |
 | `inspect_library_paths` | `sourcesApi` | Batch inspection |
-| `set_library_game_root` | `sourcesApi` | Manual install folder |
+| `set_library_game_root` | `sourcesApi` | Manual install folder (enables **Play** after setup) |
+| `set_library_launch_exe` | `sourcesApi` | Cache preferred launch executable |
+| `get_library_note` / `set_library_note` | `sourcesApi` | Per-path library note |
 | `launch_game_from_path` | `sourcesApi` | Launch game |
 | `launch_setup_from_path` | `sourcesApi` | Open installer (`setup.exe`) |
 | `extract_library_folder` | `sourcesApi` | Extract archive in a library folder |
-| `set_seed_torrents_enabled` | `sourcesApi` | Torrent seed on/off |
+| `set_seed_torrents_enabled` | `sourcesApi` | Torrent seed on/off (controls post-download `.torrent` cleanup) |
 | `get_seed_torrents_enabled` | `sourcesApi` | Seed state |
 
 ---
@@ -133,8 +136,10 @@ unlisten()
 | `JobProgressEvent` | `queue.ts` | Progress event |
 | `ExtractStatusEvent` | `queue.ts` | `verified`, `skipped`, `extracting`, `extracted`, `failed` |
 | `CatalogGame` | `catalog.ts` | Catalog entry |
-| `LibraryPathState` | `library.ts` | `hasGame`, `needsInstall`, `needsExtraction` |
+| `LibraryPathState` | `library.ts` | `hasGame`, `needsInstall`, `needsExtraction`, `playable`, `customGameRoot` |
 | `LocalLibraryItem` | `library.ts` | Folder listed by scan |
+
+`inspect_library_path`: with `setup.exe` and no `customGameRoot`, `needsInstall` is true and `playable` / `hasGame` are false — even if other executables exist in the download folder.
 
 ---
 

@@ -65,7 +65,8 @@ launcher-app/
     ├── catalog/
     ├── covers/              # steam_index, precache
     ├── db/
-    ├── library/             # scan, inspect, watcher (notify)
+    ├── library/             # scan, inspect, delete, torrent sidecars
+    ├── notifications.rs     # desktop notifications (Windows AUMID)
     ├── sidecar/             # engine, extraction, commands
     └── launch/
 ```
@@ -99,7 +100,7 @@ Downloads (sidecar queue, live progress)
         ↓
 Automatic post-download (verify / extract if needed)
         ↓
-Library (Install → Play)
+Library (**Install** if `setup.exe` → **Play** after install folder is known)
 ```
 
 ---
@@ -112,20 +113,23 @@ The library does **not** use a `games` table or a dedicated Redux slice.
 
 | Source | Role |
 |--------|------|
-| `queue.jobs` (Redux) | Jobs with **completed** download |
+| `queue.jobs` (Redux) | Jobs with **completed** download (incl. `seeding` / 100%) |
 | `scan_default_download_path` | Folders on disk |
-| `inspect_library_path(s)` | `hasGame`, `needsInstall`, `needsExtraction` |
+| `inspect_library_path(s)` | `hasGame`, `needsInstall`, `needsExtraction`, `playable` |
 | `pathStateByKey` (React) | Inspection cache per job/folder |
 | `libraryDedupe` | One card per game (equivalent titles) |
+| `library_game_roots` / launch exe | Manual install folder and cached executable |
 
 ### Business rules
 
 | Rule | Implementation |
 |------|----------------|
-| Only **completed** downloads in the library | `jobBelongsInLibrary` — states `completed`, `seeding`, `extracting`, `extracted`, `skipped` |
-| Active downloads stay on **Downloads** | `downloading`, `pending`, `retrying`, `paused` do not enter the library |
+| Only **completed** downloads in the library | `jobBelongsInLibrary` — states `completed`, `seeding`, `extracting`, `extracted`, `skipped` (also 100% still marked `downloading` while seeding) |
+| Active downloads stay on **Downloads** | Incomplete `downloading`, `pending`, `retrying`, `paused` do not enter the library |
+| **Install** vs **Play** | If `setup.exe` is present and no `custom_game_root` was chosen → `needsInstall` / not playable — even if other `.exe` files exist in the download folder (FitGirl-style repacks) |
+| After install | User picks the real game folder (`set_library_game_root`) or install watch detects it → **Play** |
 | One card per game | `libraryTitlesMatch` + `dedupeLibraryEntries` (e.g. `Stardew` = `Stardew Valley`) |
-| Delete always available | Any entry can be removed (job + related folders) |
+| Delete always available | Removes job, related folders, queue/extraction DB rows, notes, launch roots |
 | On-demand scan | On tab open, after `extract://status` or `library://folder-changed` |
 
 ### Title deduplication
@@ -138,7 +142,17 @@ The library does **not** use a `games` table or a dedicated Redux slice.
 
 ### Deletion
 
-`resolveLibraryDeletePaths` deletes game subfolders without removing the download root. If files are locked (installer open, error 32), the job is removed from the library but a toast asks to close Setup.
+`resolveLibraryDeletePaths` (frontend) + `delete_local_library_item` (Rust) delete game subfolders without removing the download root, and also related `.torrent` / `.aria2` siblings. If files are locked (installer open, error 32), the job is removed from the library but a toast asks to close Setup. The UI shows a short “Deleting…” state on the card.
+
+### `.torrent` / `.aria2` cleanup
+
+| When | Behavior |
+|------|----------|
+| Seed **enabled** (`seed_torrents_enabled`) | After download, sidecar files are **kept** so the engine can keep seeding |
+| Seed **disabled** | `maybe_cleanup_torrent_sidecar_files` deletes matching `.torrent` / `.aria2` next to the job folder (name matched to title / folder) |
+| Cancel job / remove from library / delete folder | Always runs `cleanup_torrent_sidecar_files` (seeding stops) |
+
+Matching is by title/folder stem — hash-only names (e.g. `a1b2c3….torrent`) are left alone.
 
 ---
 
@@ -150,13 +164,14 @@ The library does **not** use a `games` table or a dedicated Redux slice.
 
 ### Automatic post-download
 
-Watcher in `sidecar/extraction.rs` (~2s cycle):
+Watcher in `sidecar/extraction.rs` (~4s cycle):
 
 1. Eligible `completed` / `seeding` job → `process_job_post_download`
-2. **Verify** payload (recursive search in subfolders — torrents)
-3. If `setup.exe` found → `skipped` (ready to install)
-4. If `.zip`/`.7z`/`.rar` archive → `process_job_extraction` (7-Zip)
-5. `extract://status` events update Redux
+2. **Verify** payload (recursive search in subfolders — torrents); tiny metadata-only payloads stay downloading
+3. If playable game `.exe` and **no** setup → mark `extracted` / playable
+4. If `setup.exe` found → `skipped` (ready to **Install**, not Play); do not finalize as playable
+5. If `.zip`/`.7z`/`.rar` archive and no setup → `process_job_extraction` (7-Zip) when applicable
+6. `extract://status` events update Redux
 
 ### UI states (Downloads)
 
@@ -166,7 +181,7 @@ Watcher in `sidecar/extraction.rs` (~2s cycle):
 | Preparing files… | 100% but post-download not finished |
 | Extracting files… | 7-Zip extracting |
 | Ready to install | Verification done, setup available |
-| Completed | Job finished in the queue |
+| Completed / seeding | Job finished; may still seed if enabled |
 
 The manual **Extract** button was removed — the process is automatic.
 
@@ -212,9 +227,25 @@ Selectors in `queueSelectors.ts` (`selectActiveDownloadsCount`, etc.).
 | `sources` | Hydra + hydralinks |
 | `catalog` | Search, detail, optional Steam cache |
 | `covers` | Local Steam index, precache, batch resolve |
-| `library` | Scan, inspect, delete, launch roots, notify |
+| `library` | Scan, inspect, delete, launch roots, torrent sidecar cleanup |
+| `notifications` | OS desktop notifications (Windows toast + AUMID) |
 | `launch` | Detect and spawn `.exe` |
 | `archive` | Recursive payload search (torrents) |
+
+---
+
+## Notifications
+
+Desktop notifications are **silent** (no in-app notification sound).
+
+| Kind | Setting key | Default | When |
+|------|-------------|---------|------|
+| Ready to install | `notify_ready_to_install` | on | Post-download ready for setup |
+| Ready to play | `notify_ready_to_play` | on | Game becomes playable |
+| Catalog updates | `notify_catalog_changes` | **off** | New entries detected on synced sources |
+
+Frontend: `useDownloadNotifications`, `useCatalogChangeNotifications`, `osNotification.ts`.  
+Backend: `send_desktop_notification` (`notifications.rs`) for reliable Windows toasts.
 
 ---
 
@@ -256,6 +287,9 @@ Drop the connection (`drop(conn)`) **before** `.await` in commands that hit the 
 | `steam_game_details` | Cached `appdetails` JSON |
 | `catalog_steam_cache` | `storesearch` results (24h) |
 | `library_game_roots` | Manual install folder |
+| `library_launch_exe` | Cached launch executable per entry |
+| `library_notes` | Per-path user notes |
+| `persisted_queue_jobs` | Queue snapshot across restarts |
 | `app_settings` | Persisted configuration |
 
 ### Indexes
@@ -335,11 +369,21 @@ Keys in `src/shared/config/appSettings.ts`; persistence via `get_app_setting` / 
 |-----|-----|
 | `disabled_hydra_source_ids` | JSON `string[]` — disabled source IDs (denylist). Active = not in this list. |
 | `default_download_path` | Default download folder |
-| `seed_torrents_enabled` | Seed after download |
+| `seed_torrents_enabled` | Seed after download (when on, `.torrent` / `.aria2` are kept) |
 | `install_organization` | Install folder layout |
 | `after_install_action` | Action after install |
 | `remove_temp_files` | Remove temporary files |
 | `download_speed_limit_bps` | Speed limit |
+| `hidari.language` | UI language (`en` / `pt-BR` / `es` / `ru`) — also synced from `localStorage` |
+| `minimize_to_tray` | Close to tray |
+| `notify_ready_to_install` | Desktop notify when ready to install |
+| `notify_ready_to_play` | Desktop notify when ready to play |
+| `notify_catalog_changes` | Desktop notify for new catalog entries (**default off**) |
+| `library_sort` | Library sort order |
+
+### Language
+
+Default UI language is **English** (`APP_LOCALE = 'en'` in `src/shared/config/locale.ts`). Preference is stored in `localStorage` (`hidari.language`) and mirrored to SQLite for Steam synopsis locale. Fallback / Steam store default without a setting: English.
 
 Source on/off state does **not** live in `hydra_download_sources`: only the denylist above. Bootstrap loads `disabled_hydra_source_ids` immediately on startup (before other deferred settings) so toggles do not overwrite an empty list.
 

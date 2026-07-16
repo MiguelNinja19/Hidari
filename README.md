@@ -36,15 +36,16 @@ The name plays on **Hydra**: shared catalogs, its own identity (logo with an “
 
 ## Features
 
-1. **Settings** — download folder, import/sync sources, enable/disable sources, speed, seed, language  
+1. **Settings** — download folder, import/sync sources, enable/disable sources, speed, seed, language (default **English**)  
 2. **Discover** — search the local catalog (Enter or button) → pick a link → enqueue  
-3. **Downloads** — live progress; automatic extraction  
-4. **Library** — install (`setup`) and play  
+3. **Downloads** — live progress; automatic post-download  
+4. **Library** — **Install** (`setup`) then **Play** (not Play while only the installer is present)  
 
 ```
 Settings → Discover → Downloads → Library → Play
 ```
 
+**Seed:** with seeding on, `.torrent` / `.aria2` stay on disk; with seeding off, they are removed after a verified download.
 ---
 
 ## How to add sources
@@ -107,6 +108,8 @@ Build and binaries: [docs/build-and-release.md](./docs/build-and-release.md).
 | “Tauri unavailable” | Use `npm run tauri:dev` |
 | Extraction / `7z_not_found` | `npm run setup:binaries` |
 | Empty search | Active sources + sync catalog |
+| Library shows **Play** but only setup exists | Rebuild / update — inspect treats `setup.exe` as Install until a game root is set |
+| `.torrent` not deleted after download | Expected if **Seed after download** is on |
 
 More in [docs/getting-started.md](./docs/getting-started.md).
 

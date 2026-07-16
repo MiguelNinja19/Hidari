@@ -44,7 +44,9 @@ On first run, Rust compiles dependencies (may take a few minutes).
 1. **Settings** — download folder + add at least one catalog source (see below)
 2. **Discover** — type a game name → **Enter** or Search → pick a version → enqueue
 3. **Downloads** — watch progress; post-download is **automatic**
-4. **Library** — **Install** (setup) → **Play**
+4. **Library** — **Install** (`setup.exe` repacks) → choose/locate game folder → **Play**
+
+> First launch uses **English** as the default UI language. Change it anytime under **Settings → Language**.
 
 ### How to add sources
 
@@ -77,11 +79,13 @@ If search is empty with “active” sources, sync the catalog (per-source refre
 | Stage | Where | What you see |
 |-------|-------|--------------|
 | Transferring | Downloads | Progress bar, speed |
-| At 100% | Downloads | “Preparing files…” (seconds) |
-| Ready | Downloads / Library | “Ready to install” or **Install** |
-| Installed | Library | **Play** |
+| At 100% | Downloads | “Preparing files…” (seconds); may stay as seeding if seed is on |
+| Ready to install | Downloads / Library | **Install** — download folder still has `setup.exe` (not Play yet) |
+| Installed | Library | **Play** after the real game folder is known |
+| Seed on | Disk | `.torrent` / `.aria2` kept so the engine can keep seeding |
+| Seed off | Disk | Matching `.torrent` / `.aria2` removed after the download is verified |
 
-Errors show as a **toast** in the top-right (they do not block the page).
+Errors show as a **toast** in the top-right (they do not block the page). Desktop notifications (install / play ready) are silent; catalog-update toasts are off by default.
 
 ## Development
 

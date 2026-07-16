@@ -31,8 +31,10 @@ Discover → Downloads → Library → Play
 | ------------- | ------------------------------------------------ |
 | **Discover**  | Search active-source catalogs (Enter or Search)  |
 | **Downloads** | Active queue (transfer, automatic post-download) |
-| **Library**   | Games ready to install/play (deduped)            |
-| **Settings**  | Download folder, sources (on/off), speed, seed   |
+| **Library**   | Install (`setup`) then Play; deduped cards       |
+| **Settings**  | Folder, sources, speed, seed, language (default EN), notifications |
+
+Default UI language: **English**. Catalog-update desktop notifications default to **off**.
 
 ## Why Tauri?
 
