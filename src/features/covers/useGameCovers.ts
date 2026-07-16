@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type MutableRefObject, type RefObject } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import type { CatalogGame, CoverPrecacheStatus, DownloadJob, GameCover } from '../../shared/types/contracts'
 import { coverTitleKey, coverTitleKeyCandidates, coverStorageKeyAliases, normalizeTitleKey } from '../../shared/utils/normalizeTitleKey'
 import { scheduleDeferred } from '../../shared/utils/scheduleDeferred'
+import {
+  collectCoverKeysFromTitles,
+  notifyCoverKeys,
+  notifyCoverTitle,
+} from './coverSubscriptions'
 
 export type CoverStatus = 'idle' | 'loading' | 'cached' | 'error'
 
@@ -15,7 +20,7 @@ export type ResolvedCover = {
 
 const WARM_RETRY_MS = 30 * 60 * 1000
 const BATCH_LOOKUP_RETRY_MS = 15 * 60 * 1000
-const BATCH_DEBOUNCE_MS = 40
+const BATCH_DEBOUNCE_MS = 80
 const MAX_WARM_CONCURRENT = 2
 const INVALIDATE_COOLDOWN_MS = 10 * 60 * 1000
 
@@ -162,7 +167,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
   const batchTimerRef = useRef<number | null>(null)
   const pendingBatchTitlesRef = useRef<string[]>([])
   const invalidateAttemptAtRef = useRef(new Map<string, number>())
-  const [loadingVersion, setLoadingVersion] = useState(0)
+  const [, startCoverTransition] = useTransition()
 
   useEffect(() => {
     savedCoversRef.current = savedCovers
@@ -182,6 +187,27 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
     return map
   }, [catalogGames])
 
+  const coverByTitleKeyRef = useRef(coverByTitleKey)
+  useEffect(() => {
+    coverByTitleKeyRef.current = coverByTitleKey
+  }, [coverByTitleKey])
+
+  const commitSavedCovers = useCallback(
+    (updater: (prev: Record<string, GameCover>) => Record<string, GameCover>, notifyTitles?: string[]) => {
+      const next = updater(savedCoversRef.current)
+      savedCoversRef.current = next
+      startCoverTransition(() => {
+        setSavedCovers(next)
+      })
+      if (notifyTitles && notifyTitles.length > 0) {
+        notifyCoverKeys(collectCoverKeysFromTitles(notifyTitles))
+      } else {
+        notifyCoverKeys(Object.keys(next))
+      }
+    },
+    [startCoverTransition],
+  )
+
   const refreshTimerRef = useRef<number | null>(null)
 
   const refreshCovers = useCallback(() => {
@@ -191,10 +217,13 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
     refreshTimerRef.current = window.setTimeout(() => {
       refreshTimerRef.current = null
       void sourcesApi.listGameCovers().then((rows) => {
-        setSavedCovers((prev) => indexSavedCoverRows({ ...prev }, rows))
+        commitSavedCovers(
+          (prev) => indexSavedCoverRows({ ...prev }, rows),
+          rows.map((row) => row.titleKey),
+        )
       })
     }, 350)
-  }, [])
+  }, [commitSavedCovers])
 
   const refreshCoversRef = useRef(refreshCovers)
   useEffect(() => {
@@ -204,7 +233,10 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
   useEffect(() => {
     const loadSavedCovers = () => {
       void sourcesApi.listGameCovers().then((rows) => {
-        setSavedCovers((prev) => indexSavedCoverRows({ ...prev }, rows))
+        commitSavedCovers(
+          (prev) => indexSavedCoverRows({ ...prev }, rows),
+          rows.map((row) => row.titleKey),
+        )
       })
     }
 
@@ -215,7 +247,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
 
     const cancel = scheduleDeferred(loadSavedCovers, 0)
     return cancel
-  }, [options?.eager])
+  }, [options?.eager, commitSavedCovers])
 
   useEffect(() => {
     let cancelled = false
@@ -237,14 +269,11 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
       catalogCoverUrl?: string | null,
       catalogLocalPath?: string | null,
     ): ResolvedCover => {
-      const saved = findSavedCover(title, savedCovers)
-      const catalog = findCatalogCover(title, coverByTitleKey)
+      const saved = findSavedCover(title, savedCoversRef.current)
+      const catalog = findCatalogCover(title, coverByTitleKeyRef.current)
       const explicitUrl = catalogCoverUrl?.trim() || null
-      // Preferir: URL explícita (pesquisa) → capa guardada no download → catálogo em memória → Steam
-      // Preferir: URL explícita (pesquisa) → capa guardada → catálogo em memória
       const coverUrl =
         explicitUrl || saved?.coverUrl || catalog?.coverUrl || null
-      // Local só quando a URL guardada é a que estamos a mostrar (evita capa de outro jogo).
       const savedLocalOk =
         Boolean(saved?.localPath?.trim()) &&
         Boolean(coverUrl) &&
@@ -261,12 +290,15 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
       if (coverUrl) {
         return { coverUrl, localPath: null, status: 'idle' }
       }
-      if (loadingKeysRef.current.has(normalizeTitleKey(title)) || isCoverLookupPending(title, loadingKeysRef.current)) {
+      if (
+        loadingKeysRef.current.has(normalizeTitleKey(title)) ||
+        isCoverLookupPending(title, loadingKeysRef.current)
+      ) {
         return { coverUrl: null, localPath: null, status: 'loading' }
       }
       return { coverUrl: null, localPath: null, status: 'idle' }
     },
-    [savedCovers, coverByTitleKey, loadingVersion],
+    [],
   )
 
   const resolveCoverRef = useRef(resolveCover)
@@ -275,8 +307,8 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
   }, [resolveCover])
 
   const patchSavedCover = useCallback((row: GameCover) => {
-    setSavedCovers((prev) => indexSavedCoverRows({ ...prev }, [row]))
-  }, [])
+    commitSavedCovers((prev) => indexSavedCoverRows({ ...prev }, [row]), [row.titleKey])
+  }, [commitSavedCovers])
 
   const patchSavedCoverRef = useRef(patchSavedCover)
   useEffect(() => {
@@ -398,7 +430,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
         markCoverLookupPending(title, loadingKeysRef.current)
         batchLookupAttemptAtRef.current.set(coverTitleKey(title), Date.now())
       }
-      setLoadingVersion((value) => value + 1)
+      notifyCoverKeys(collectCoverKeysFromTitles(pending))
       batchInFlightRef.current = true
 
       void sourcesApi
@@ -411,30 +443,30 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
               enqueueWarm(row.title, url)
             }
           }
-          setSavedCovers((prev) => {
-            const map = { ...prev }
-            const patched: GameCover[] = []
-            for (const row of rows) {
-              clearCoverLookupPending(row.title, loadingKeysRef.current)
-              if (!row.coverUrl?.trim()) continue
-              const key = coverTitleKey(row.title)
-              patched.push({
-                titleKey: key,
-                coverUrl: row.coverUrl,
-                localPath: row.localCoverPath ?? null,
-              })
-            }
-            return indexSavedCoverRows(map, patched)
-          })
+          const patched: GameCover[] = []
+          for (const row of rows) {
+            clearCoverLookupPending(row.title, loadingKeysRef.current)
+            if (!row.coverUrl?.trim()) continue
+            const key = coverTitleKey(row.title)
+            patched.push({
+              titleKey: key,
+              coverUrl: row.coverUrl,
+              localPath: row.localCoverPath ?? null,
+            })
+          }
+          commitSavedCovers(
+            (prev) => indexSavedCoverRows({ ...prev }, patched),
+            pending,
+          )
         })
         .catch(() => {
           for (const title of pending) {
             clearCoverLookupPending(title, loadingKeysRef.current)
           }
+          notifyCoverKeys(collectCoverKeysFromTitles(pending))
         })
         .finally(() => {
           batchInFlightRef.current = false
-          setLoadingVersion((value) => value + 1)
           const queued = pendingBatchTitlesRef.current
           pendingBatchTitlesRef.current = []
           if (queued.length > 0) {
@@ -442,7 +474,7 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
           }
         })
     }, BATCH_DEBOUNCE_MS)
-  }, [enqueueWarm])
+  }, [commitSavedCovers, enqueueWarm])
 
   const resolveCoversBatch = useCallback(
     (titles: string[]) => {
@@ -473,22 +505,27 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
         .resolveGameCoverUrl(title)
         .then((url) => {
           if (url?.trim()) {
-            setSavedCovers((prev) => ({
-              ...prev,
-              [key]: {
-                titleKey: key,
-                coverUrl: url.trim(),
-                localPath: prev[key]?.localPath ?? null,
-              },
-            }))
+            commitSavedCovers(
+              (prev) => ({
+                ...prev,
+                [key]: {
+                  titleKey: key,
+                  coverUrl: url.trim(),
+                  localPath: prev[key]?.localPath ?? null,
+                },
+              }),
+              [title],
+            )
+          } else {
+            notifyCoverTitle(title)
           }
         })
         .finally(() => {
           loadingKeysRef.current.delete(key)
-          setLoadingVersion((value) => value + 1)
+          notifyCoverTitle(title)
         })
     },
-    [warmCover],
+    [commitSavedCovers, warmCover],
   )
 
   const lookupMissingLibraryCover = useCallback(
@@ -517,16 +554,28 @@ export function useGameCovers(catalogGames: CatalogGame[], options?: { eager?: b
     })
   }, [])
 
-  return {
-    savedCovers,
-    resolveCover,
-    warmCover,
-    warmCovers,
-    refreshCovers,
-    syncJobCovers,
-    resolveCoversBatch,
-    lookupCoverForTitle,
-    lookupMissingLibraryCover,
-    invalidateLocalCover,
-  }
+  return useMemo(
+    () => ({
+      resolveCover,
+      warmCover,
+      warmCovers,
+      refreshCovers,
+      syncJobCovers,
+      resolveCoversBatch,
+      lookupCoverForTitle,
+      lookupMissingLibraryCover,
+      invalidateLocalCover,
+    }),
+    [
+      resolveCover,
+      warmCover,
+      warmCovers,
+      refreshCovers,
+      syncJobCovers,
+      resolveCoversBatch,
+      lookupCoverForTitle,
+      lookupMissingLibraryCover,
+      invalidateLocalCover,
+    ],
+  )
 }

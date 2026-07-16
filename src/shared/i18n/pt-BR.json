@@ -168,7 +168,7 @@
     "favoriteError": "Não foi possível atualizar os favoritos.",
     "favoritesFilter": "Favoritos",
     "favoritesEmptyTitle": "Sem favoritos",
-    "favoritesEmptyHint": "Marque jogos com ★ no detalhe do catálogo. Eles aparecem nesta página.",
+    "favoritesEmptyHint": "Use o coração no card ou no detalhe do jogo para guardar favoritos aqui.",
     "filtersAria": "Filtros do catálogo"
   },
   "favorites": {

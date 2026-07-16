@@ -41,6 +41,7 @@ import {
   LIBRARY_COVER_LOOKUP_DEBOUNCE_MS,
   LIBRARY_INSPECT_BATCH_PAUSE_MS,
   LIBRARY_INSPECT_BATCH_SIZE,
+  LIBRARY_SCAN_DEBOUNCE_MS,
 } from "../../shared/config/polling";
 import {
   parseLibrarySort,
@@ -143,6 +144,9 @@ export function useLibraryControllerState({
   const knownDownloadPathRef = useRef("");
   const jobStatusRef = useRef<Map<string, string>>(new Map());
   const libraryCoverLookupAttemptedRef = useRef(new Set<string>());
+  const libraryScanInFlightRef = useRef<Promise<void> | null>(null);
+  const libraryScanQueuedRef = useRef(false);
+  const libraryScanTimerRef = useRef<number | null>(null);
 
   const {
     installingKeys,
@@ -223,23 +227,28 @@ export function useLibraryControllerState({
           await new Promise<void>((resolve) => {
             window.setTimeout(resolve, LIBRARY_INSPECT_BATCH_PAUSE_MS);
           });
+          // Cede ao browser entre lotes para a UI não congelar.
+          await new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => resolve());
+          });
         }
         const chunk = entries.slice(index, index + LIBRARY_INSPECT_BATCH_SIZE);
+        const chunkMerged: LibraryControllerValue["pathStateByKey"] = {};
         try {
           const results = await sourcesApi.inspectLibraryPaths(chunk);
           for (const item of results) {
+            chunkMerged[item.key] = item.state;
             merged[item.key] = item.state;
           }
         } catch {
           for (const item of chunk) {
+            chunkMerged[item.key] = emptyPathState();
             merged[item.key] = emptyPathState();
           }
         }
-      }
-
-      if (!isCancelled()) {
-        mergeLibraryPathStateCache(merged, downloadPath);
-        setPathStateByKey((prev) => ({ ...prev, ...merged }));
+        if (isCancelled()) return;
+        mergeLibraryPathStateCache(chunkMerged, downloadPath);
+        setPathStateByKey((prev) => ({ ...prev, ...chunkMerged }));
       }
     },
     [],
@@ -317,28 +326,71 @@ export function useLibraryControllerState({
   }, [jobs, refreshPathState]);
 
   const refreshLibraryScan = useCallback(
-    (_options?: { background?: boolean }) => {
+    (options?: { background?: boolean }) => {
       if (!defaultDownloadPathRef.current.trim()) {
         setLibraryScanSettled(true);
         return Promise.resolve();
       }
-      return sourcesApi
-        .scanDefaultDownloadPath()
-        .then(async (items) => {
-          setLocalLibraryItems(items);
-          await runBatchPathInspection(items, jobsRef.current, {
-            onlyUnresolved: true,
-          });
-        })
-        .catch((error) => {
-          showError(formatUserError(error, t("library.readPathError")));
-        })
-        .finally(() => {
-          setLibraryScanSettled(true);
+
+      const debounceMs = options?.background ? LIBRARY_SCAN_DEBOUNCE_MS : 0;
+
+      const runScan = async () => {
+        if (libraryScanInFlightRef.current) {
+          libraryScanQueuedRef.current = true;
+          await libraryScanInFlightRef.current;
+          if (!libraryScanQueuedRef.current) return;
+          libraryScanQueuedRef.current = false;
+        }
+
+        const work = (async () => {
+          try {
+            const items = await sourcesApi.scanDefaultDownloadPath();
+            setLocalLibraryItems(items);
+            await runBatchPathInspection(items, jobsRef.current, {
+              onlyUnresolved: true,
+            });
+          } catch (error) {
+            showError(formatUserError(error, t("library.readPathError")));
+          } finally {
+            setLibraryScanSettled(true);
+          }
+        })();
+
+        libraryScanInFlightRef.current = work.finally(() => {
+          libraryScanInFlightRef.current = null;
         });
+        await libraryScanInFlightRef.current;
+
+        if (libraryScanQueuedRef.current) {
+          libraryScanQueuedRef.current = false;
+          await runScan();
+        }
+      };
+
+      if (debounceMs <= 0) {
+        return runScan();
+      }
+
+      return new Promise<void>((resolve) => {
+        if (libraryScanTimerRef.current != null) {
+          window.clearTimeout(libraryScanTimerRef.current);
+        }
+        libraryScanTimerRef.current = window.setTimeout(() => {
+          libraryScanTimerRef.current = null;
+          void runScan().finally(resolve);
+        }, debounceMs);
+      });
     },
     [runBatchPathInspection, showError, t],
   );
+
+  useEffect(() => {
+    return () => {
+      if (libraryScanTimerRef.current != null) {
+        window.clearTimeout(libraryScanTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (activeTab !== "library") return;

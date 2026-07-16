@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { memo, type MouseEvent, type ReactNode } from 'react'
+import { FavoriteHeartButton } from '../../shared/components/FavoriteHeartButton'
 
 type DiscoverGameCardProps = {
   title: string
@@ -9,9 +10,12 @@ type DiscoverGameCardProps = {
   showTitle?: boolean
   actionLabel: string
   onOpen: () => void
+  favorite?: boolean
+  favoriteBusy?: boolean
+  onToggleFavorite?: () => void
 }
 
-export function DiscoverGameCard({
+export const DiscoverGameCard = memo(function DiscoverGameCard({
   title,
   titleAttr,
   genre: _genre,
@@ -19,16 +23,38 @@ export function DiscoverGameCard({
   showTitle = false,
   actionLabel,
   onOpen,
+  favorite,
+  favoriteBusy = false,
+  onToggleFavorite,
 }: DiscoverGameCardProps) {
   const label = titleAttr ?? title
+  const hasFavorite = onToggleFavorite != null
+
+  const handleFavoriteClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onToggleFavorite?.()
+  }
 
   return (
     <article
-      className="discover-card discover-card--explore library-card--actionable"
+      className={`discover-card discover-card--explore library-card--actionable${hasFavorite ? ' discover-card--has-favorite' : ''}`}
       aria-label={label}
       title={label}
     >
       <div className="discover-card__panel">
+        {hasFavorite ? (
+          <div
+            className={`discover-card__favorite-wrap${favorite ? ' discover-card__favorite-wrap--on' : ''}`}
+          >
+            <FavoriteHeartButton
+              active={favorite ?? false}
+              busy={favoriteBusy}
+              size="card"
+              onClick={handleFavoriteClick}
+            />
+          </div>
+        ) : null}
         <button
           type="button"
           className="discover-card__cover-hitbox"
@@ -47,4 +73,4 @@ export function DiscoverGameCard({
       </div>
     </article>
   )
-}
+})

@@ -1,16 +1,11 @@
 import type { TFunction } from 'i18next'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { localeForLanguage, isAppLanguage, APP_LOCALE, type AppLanguage } from '../../shared/config/locale'
-import type { LibraryStatusMeta } from './libraryItemState'
-import { itemPathCtx, pathStateKey } from './libraryItemState'
-import { CatalogCover } from '../../shared/components/CatalogCover'
+import { isAppLanguage, APP_LOCALE, type AppLanguage } from '../../shared/config/locale'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
-import { LibraryGameCard } from './LibraryGameCard'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { LibrarySortToggle } from './LibrarySortToggle'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
-import { favoriteCatalogKeyForGame } from '../../shared/utils/favoriteCatalogKey'
 import type { LibraryEntry } from './types'
 import {
   useLibraryController,
@@ -20,42 +15,11 @@ import {
 } from './LibraryController'
 import type { LibraryControllerValue } from './LibraryController'
 import { DiscoverGameDetailPage } from '../discover/DiscoverGameDetailPage'
-import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
+import { useFavoriteCatalog } from '../favorites/FavoriteCatalogProvider'
+import { VirtualizedLibraryGrid } from './VirtualizedLibraryGrid'
+import type { LibraryGridCardModel } from './LibraryGridCard'
 
 import type { GameTileAction } from '../../shared/components/GameTileAction'
-
-function formatStatusPct(pct: number, language: AppLanguage): string {
-  const decimal = localeForLanguage(language) === 'en-US' ? '.' : ','
-  return `${pct.toFixed(1).replace('.', decimal)}%`
-}
-
-function libraryStatusLine(
-  meta: LibraryStatusMeta,
-  primary: GameTileAction | null,
-  t: TFunction,
-  language: AppLanguage,
-): string | null {
-  if (meta.tone === 'ready' || meta.tone === 'waiting') return null
-  if (
-    (primary?.id === 'play' || primary?.id === 'install') &&
-    meta.tone !== 'installing' &&
-    meta.tone !== 'verifying'
-  ) {
-    return null
-  }
-  if (meta.pct != null) {
-    return t(meta.labelKey, { pct: formatStatusPct(meta.pct, language) })
-  }
-  return t(meta.labelKey)
-}
-
-function libraryPendingActivity(meta: LibraryStatusMeta): boolean {
-  return (
-    meta.tone === 'verifying' ||
-    meta.tone === 'installing' ||
-    (meta.tone === 'downloading' && meta.pct == null)
-  )
-}
 
 function busyKey(item: LibraryEntry) {
   return item.kind === 'job' ? item.id : item.destPath
@@ -307,8 +271,6 @@ export function LibraryPage() {
     setLibraryFilter,
     setLibrarySort,
     onGoDownloads,
-    resolveCover,
-    invalidateLocalCover,
     handlePlayLibraryItem,
     handleInstallItem,
     handleExtractItem,
@@ -316,7 +278,6 @@ export function LibraryPage() {
     handlePickLaunchExe,
     handleDeleteLibraryItem,
     deletingLibraryKey,
-    pathStateByKey,
     libraryDetail,
     openLibraryDetail,
     closeLibraryDetail,
@@ -334,28 +295,7 @@ export function LibraryPage() {
   const onResumeItem = useLibraryResumeItem()
   const onOpenLocalPath = useOpenLocalPath()
   const [pendingInstall, setPendingInstall] = useState<LibraryEntry | null>(null)
-  const [detailFavorite, setDetailFavorite] = useState(false)
-  const [detailFavoriteBusy, setDetailFavoriteBusy] = useState(false)
-
-  useEffect(() => {
-    if (!libraryDetail?.game) {
-      setDetailFavorite(false)
-      return
-    }
-    let cancelled = false
-    const key = favoriteCatalogKeyForGame(libraryDetail.game)
-    void sourcesApi
-      .isFavoriteCatalogEntry(key)
-      .then((value) => {
-        if (!cancelled) setDetailFavorite(value)
-      })
-      .catch(() => {
-        if (!cancelled) setDetailFavorite(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [libraryDetail?.game])
+  const { isFavorite, isBusy, toggleFavorite } = useFavoriteCatalog()
 
   const requestInstallConfirm = useCallback((item: LibraryEntry) => {
     setPendingInstall(item)
@@ -366,14 +306,90 @@ export function LibraryPage() {
     (installBusyId === busyKey(pendingInstall) ||
       installingKeys.has(busyKey(pendingInstall)))
 
+  const gridModels = useMemo((): LibraryGridCardModel[] => {
+    return filteredEntries.map((item) => {
+      const key = busyKey(item)
+      let statusMeta = libraryStatusMeta(item)
+      if (playBusyId === key) {
+        statusMeta = { labelKey: 'library.playStarting', tone: 'starting' }
+      } else if (installBusyId === key) {
+        statusMeta = { labelKey: 'library.installOpening', tone: 'installing' }
+      }
+      const canPlay = showPlayAction(item)
+      const canInstall = showInstallAction(item)
+      const canLocate = showLocateInstallAction(item)
+      const pathStatePending = !isPathStateResolved(item)
+      const manualRoot = hasManualInstallRoot(item)
+      const { primary, secondary } = buildLibraryActions(item, t, {
+        key,
+        canPlay,
+        canInstall,
+        canLocate,
+        canExtract: false,
+        pathStatePending,
+        canDelete: true,
+        playBusyId,
+        installBusyId,
+        installingKeys,
+        handlePlayLibraryItem,
+        requestInstallConfirm,
+        handleExtractItem,
+        handlePickGameInstallFolder,
+        handlePickLaunchExe,
+        handleDeleteLibraryItem,
+        onResumeItem,
+        onOpenLocalPath,
+        setActiveTabDownloads: onGoDownloads,
+        openLibraryDetail,
+      })
+      return {
+        item,
+        statusMeta,
+        primary,
+        secondary,
+        isDeleting:
+          deletingLibraryKey === item.id || deletingLibraryKey === item.destPath,
+        manualRoot,
+        language: currentLanguage,
+      }
+    })
+  }, [
+    currentLanguage,
+    deletingLibraryKey,
+    filteredEntries,
+    handleDeleteLibraryItem,
+    handleExtractItem,
+    handlePickGameInstallFolder,
+    handlePickLaunchExe,
+    handlePlayLibraryItem,
+    hasManualInstallRoot,
+    installBusyId,
+    installingKeys,
+    isPathStateResolved,
+    libraryStatusMeta,
+    onGoDownloads,
+    onOpenLocalPath,
+    onResumeItem,
+    openLibraryDetail,
+    playBusyId,
+    requestInstallConfirm,
+    showInstallAction,
+    showLocateInstallAction,
+    showPlayAction,
+    t,
+  ])
+
   if (libraryDetail) {
     const fallbackGame = {
       id: libraryDetail.item.id,
       title: libraryDetail.item.title,
       genre: '',
       source: 'library',
+      groupKey: libraryDetail.game?.groupKey ?? null,
     }
     const game = libraryDetail.game ?? fallbackGame
+    const detailFavorite = isFavorite(game)
+    const detailFavoriteBusy = isBusy(game)
     return (
       <DiscoverGameDetailPage
         game={game}
@@ -387,16 +403,8 @@ export function LibraryPage() {
         favoriteBusy={detailFavoriteBusy}
         hideDownloads
         onToggleFavorite={() => {
-          if (!libraryDetail.game || detailFavoriteBusy) return
-          setDetailFavoriteBusy(true)
-          void sourcesApi
-            .toggleFavoriteCatalogEntry(
-              libraryDetail.game.title,
-              favoriteCatalogKeyForGame(libraryDetail.game),
-            )
-            .then(setDetailFavorite)
-            .catch(() => {})
-            .finally(() => setDetailFavoriteBusy(false))
+          if (detailFavoriteBusy) return
+          void toggleFavorite(game)
         }}
         onBack={closeLibraryDetail}
         footerSlot={
@@ -434,94 +442,11 @@ export function LibraryPage() {
         </div>
       </header>
 
-      {filteredEntries.length > 0 ? (
-        <ul className="library-grid">
-          {filteredEntries.map((item) => {
-            const statusMeta = libraryStatusMeta(item)
-            const cover = resolveCover(item.title)
-            const key = busyKey(item)
-            const canPlay = showPlayAction(item)
-            const canInstall = showInstallAction(item)
-            const canLocate = showLocateInstallAction(item)
-            const pathStatePending = !isPathStateResolved(item)
-            const canDelete = true
-            const manualRoot = hasManualInstallRoot(item)
-            const canExtract = false
-
-            const { primary, secondary } = buildLibraryActions(item, t, {
-              key,
-              canPlay,
-              canInstall,
-              canLocate,
-              canExtract,
-              pathStatePending,
-              canDelete,
-              playBusyId,
-              installBusyId,
-              installingKeys,
-              handlePlayLibraryItem,
-              requestInstallConfirm,
-              handleExtractItem,
-              handlePickGameInstallFolder,
-              handlePickLaunchExe,
-              handleDeleteLibraryItem,
-              onResumeItem,
-              onOpenLocalPath,
-              setActiveTabDownloads: onGoDownloads,
-              openLibraryDetail,
-            })
-
-            const statusLine = libraryStatusLine(statusMeta, primary, t, currentLanguage)
-            const isDeletingCard =
-              deletingLibraryKey === item.id || deletingLibraryKey === item.destPath
-            const pendingActivity = libraryPendingActivity(statusMeta) || isDeletingCard
-            const hasCover =
-              cover.status !== 'error' &&
-              Boolean(cover.localPath?.trim() || cover.coverUrl?.trim())
-
-            return (
-              <li
-                key={item.id}
-                className={[
-                  'library-grid__item',
-                  isDeletingCard ? 'library-grid__item--deleting' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                <LibraryGameCard
-                  title={cleanTitleForDisplay(item.title)}
-                  titleAttr={[
-                    cleanTitleForDisplay(item.title),
-                    statusMeta.pct != null
-                      ? t(statusMeta.labelKey, { pct: formatStatusPct(statusMeta.pct, currentLanguage) })
-                      : t(statusMeta.labelKey),
-                    manualRoot ? t('library.manualFolder') : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                  showTitle={!hasCover}
-                  metaLine={isDeletingCard ? t('library.deleting') : statusLine}
-                  pendingActivity={pendingActivity}
-                  isDeleting={isDeletingCard}
-                  cover={
-                    <CatalogCover
-                      title={item.title}
-                      coverUrl={cover.coverUrl}
-                      localPath={cover.localPath}
-                      cached={cover.status === 'cached'}
-                      status={cover.status}
-                      priority
-                      onLocalCoverError={() => invalidateLocalCover(item.title, cover.coverUrl)}
-                    />
-                  }
-                  primaryAction={isDeletingCard ? null : primary}
-                  secondaryActions={isDeletingCard ? [] : secondary}
-                />
-              </li>
-            )
-          })}
-        </ul>
+      {gridModels.length > 0 ? (
+        <VirtualizedLibraryGrid
+          models={gridModels}
+          ariaLabel={t('nav.library')}
+        />
       ) : null}
 
       <ConfirmDialog

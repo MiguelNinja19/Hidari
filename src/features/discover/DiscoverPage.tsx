@@ -4,19 +4,12 @@ import { DiscoverNoSources } from './DiscoverNoSources'
 import { DiscoverEmptyCatalog } from './DiscoverEmptyCatalog'
 import { DiscoverNoResults } from './DiscoverNoResults'
 import { DiscoverGameDetailPage } from './DiscoverGameDetailPage'
-import { CatalogCover } from '../../shared/components/CatalogCover'
-import { DiscoverGameCard } from './DiscoverGameCard'
 import { Spinner } from '../../shared/components/Spinner'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
-import { CoverWarmGridItem } from '../covers/CoverWarmGridItem'
-import { useCovers } from '../covers/CoversProvider'
-import { catalogGameDisplayTitle } from '../../shared/utils/normalizeTitleKey'
-import { favoriteCatalogKeyForGame } from '../../shared/utils/favoriteCatalogKey'
-import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import { formatUserError } from '../../shared/utils/formatUserError'
-import { useToast } from '../../shared/components/ToastProvider'
+import { useFavoriteCatalog } from '../favorites/FavoriteCatalogProvider'
 import { useDiscoverController } from './DiscoverController'
-import { resolveDiscoverColumns } from './discoverGridPaging'
+import { VirtualizedCatalogGrid } from './VirtualizedCatalogGrid'
+import type { CatalogGame } from '../../shared/types/contracts'
 
 const SEARCH_SKELETON_COUNT = 12
 
@@ -66,55 +59,49 @@ export function DiscoverPage() {
     handleEnqueueFromDiscover,
   } = useDiscoverController()
 
-  const { showError } = useToast()
-  const { resolveCover, warmCover, invalidateLocalCover, resolveCoversBatch } = useCovers()
-  const [favorite, setFavorite] = useState(false)
-  const [favoriteBusy, setFavoriteBusy] = useState(false)
+  const favoriteCatalog = useFavoriteCatalog()
   const [sourceFilter, setSourceFilter] = useState<string | null>(null)
+
+  const detailFavorite = discoverPickGame ? favoriteCatalog.isFavorite(discoverPickGame) : false
+  const detailFavoriteBusy = discoverPickGame ? favoriteCatalog.isBusy(discoverPickGame) : false
+
+  const handleToggleDetailFavorite = useCallback(async () => {
+    if (!discoverPickGame || detailFavoriteBusy) return
+    await favoriteCatalog.toggleFavorite(discoverPickGame)
+  }, [detailFavoriteBusy, discoverPickGame, favoriteCatalog])
+
+  const handleToggleCardFavorite = useCallback(
+    (game: CatalogGame) => {
+      if (favoriteCatalog.isBusy(game)) return
+      void favoriteCatalog.toggleFavorite(game)
+    },
+    [favoriteCatalog],
+  )
+
+  const handleOpenGame = useCallback(
+    (game: CatalogGame) => {
+      openGameDetail(game)
+    },
+    [openGameDetail],
+  )
+
+  const isFavorite = useCallback(
+    (game: CatalogGame) => favoriteCatalog.isFavorite(game),
+    [favoriteCatalog],
+  )
+
+  const isFavoriteBusy = useCallback(
+    (game: CatalogGame) => favoriteCatalog.isBusy(game),
+    [favoriteCatalog],
+  )
+
+  const query = discoverSearch.trim()
+  const isSearching = query.length >= 2
 
   const enabledSources = useMemo(
     () => sources.filter((source) => isSourceEnabled(source.id)),
     [sources, isSourceEnabled],
   )
-
-  useEffect(() => {
-    if (!discoverPickGame) {
-      setFavorite(false)
-      return
-    }
-    let cancelled = false
-    const key = favoriteCatalogKeyForGame(discoverPickGame)
-    void sourcesApi
-      .isFavoriteCatalogEntry(key)
-      .then((value) => {
-        if (!cancelled) setFavorite(value)
-      })
-      .catch(() => {
-        if (!cancelled) setFavorite(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [discoverPickGame])
-
-  const handleToggleFavorite = useCallback(async () => {
-    if (!discoverPickGame || favoriteBusy) return
-    setFavoriteBusy(true)
-    try {
-      const next = await sourcesApi.toggleFavoriteCatalogEntry(
-        discoverPickGame.title,
-        favoriteCatalogKeyForGame(discoverPickGame),
-      )
-      setFavorite(next)
-    } catch (error) {
-      showError(formatUserError(error, t('discover.favoriteError')))
-    } finally {
-      setFavoriteBusy(false)
-    }
-  }, [discoverPickGame, favoriteBusy, showError, t])
-
-  const query = discoverSearch.trim()
-  const isSearching = query.length >= 2
 
   const filteredSearchGames = useMemo(() => {
     if (!sourceFilter) return displayCatalogSource
@@ -134,31 +121,6 @@ export function DiscoverPage() {
   )
 
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
-  const discoverGridRef = useRef<HTMLUListElement>(null)
-  const discoverPageRef = useRef<HTMLElement>(null)
-
-  useEffect(() => {
-    const target = discoverGridRef.current ?? discoverPageRef.current
-    if (!target) return
-
-    const publish = () => {
-      setDiscoverGridColumns(resolveDiscoverColumns(target))
-    }
-    publish()
-
-    const observer = new ResizeObserver(() => {
-      publish()
-    })
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [setDiscoverGridColumns, resultCount, isSearching])
-
-  const onNeedsCover = useCallback(
-    (title: string) => {
-      resolveCoversBatch([title])
-    },
-    [resolveCoversBatch],
-  )
 
   useEffect(() => {
     if (
@@ -206,9 +168,9 @@ export function DiscoverPage() {
         synopsis={discoverPickSynopsis}
         screenshots={discoverPickScreenshots}
         busyUrl={discoverBusy}
-        favorite={favorite}
-        favoriteBusy={favoriteBusy}
-        onToggleFavorite={() => void handleToggleFavorite()}
+        favorite={detailFavorite}
+        favoriteBusy={detailFavoriteBusy}
+        onToggleFavorite={() => void handleToggleDetailFavorite()}
         onBack={closeDiscoverPicker}
         onDownload={handleEnqueueFromDiscover}
       />
@@ -217,7 +179,6 @@ export function DiscoverPage() {
 
   return (
     <section
-      ref={discoverPageRef}
       className={`browse-page${catalogLoading && resultCount > 0 ? ' browse-page--loading' : ''}`}
     >
       <header className="page-toolbar page-toolbar--discover">
@@ -283,61 +244,15 @@ export function DiscoverPage() {
       ) : null}
 
       {hasActiveSources && isSearching && resultCount > 0 ? (
-        <ul
-          ref={discoverGridRef}
-          className="discover-grid"
-          role="list"
-          aria-label={t('nav.discover')}
-        >
-          {filteredSearchGames.map((game, index) => {
-            const cover = resolveCover(game.title, game.coverUrl, game.localCoverPath)
-            const catalogUrl = game.coverUrl?.trim() || null
-            const itemCoverUrl = catalogUrl || cover.coverUrl
-            const itemLocalPath =
-              (cover.localPath &&
-              (!catalogUrl || cover.coverUrl === catalogUrl)
-                ? cover.localPath
-                : null) ||
-              game.localCoverPath?.trim() ||
-              null
-            const displayTitle = catalogGameDisplayTitle(game.title)
-            const hasCover =
-              cover.status !== 'error' && Boolean(itemLocalPath || itemCoverUrl)
-
-            return (
-              <CoverWarmGridItem
-                key={game.id}
-                title={game.title}
-                coverUrl={itemCoverUrl}
-                warmCover={warmCover}
-                onNeedsCover={onNeedsCover}
-                className="discover-grid__item"
-              >
-                <DiscoverGameCard
-                  title={displayTitle}
-                  titleAttr={game.title}
-                  genre=""
-                  showTitle={!hasCover}
-                  cover={
-                    <CatalogCover
-                      title={game.title}
-                      coverUrl={itemCoverUrl}
-                      localPath={itemLocalPath}
-                      cached={Boolean(itemLocalPath)}
-                      status={cover.status}
-                      priority={index < 8}
-                      onLocalCoverError={() =>
-                        invalidateLocalCover(game.title, itemCoverUrl ?? game.coverUrl)
-                      }
-                    />
-                  }
-                  actionLabel={t('discover.viewSources')}
-                  onOpen={() => openGameDetail(game)}
-                />
-              </CoverWarmGridItem>
-            )
-          })}
-        </ul>
+        <VirtualizedCatalogGrid
+          games={filteredSearchGames}
+          ariaLabel={t('nav.discover')}
+          isFavorite={isFavorite}
+          isFavoriteBusy={isFavoriteBusy}
+          onOpen={handleOpenGame}
+          onToggleFavorite={handleToggleCardFavorite}
+          onColumnsChange={setDiscoverGridColumns}
+        />
       ) : null}
 
       {hasActiveSources &&

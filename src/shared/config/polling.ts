@@ -10,14 +10,17 @@ export const CATALOG_SEARCH_MIN_CHARS = 2
 /** Debounce de capas em falta na biblioteca (ms). */
 export const LIBRARY_COVER_LOOKUP_DEBOUNCE_MS = 250
 
+/** Debounce de rescan da pasta de downloads (watch/eventos em rajada). */
+export const LIBRARY_SCAN_DEBOUNCE_MS = 450
+
 /** Atraso antes de carregar a fila no arranque (deixa a UI respirar). */
 export const STARTUP_JOBS_DEFER_MS = 0
 
 /** Pausa entre lotes de inspeção de pastas da biblioteca (ms). */
-export const LIBRARY_INSPECT_BATCH_PAUSE_MS = 16
+export const LIBRARY_INSPECT_BATCH_PAUSE_MS = 32
 
 /** Tamanho do lote de inspeção de pastas (maior = menos round-trips IPC). */
-export const LIBRARY_INSPECT_BATCH_SIZE = 16
+export const LIBRARY_INSPECT_BATCH_SIZE = 12
 
 /** Intervalo de watch após abrir instalador (ms). */
 export const INSTALL_WATCH_INTERVAL_MS = 2000

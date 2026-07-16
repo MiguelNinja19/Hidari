@@ -2764,15 +2764,15 @@ select.settings-input:focus,
 }
 
 .discover-detail__favorite--on {
-  color: #e85d7a;
-  border-color: rgba(232, 93, 122, 0.45);
-  background: rgba(232, 93, 122, 0.1);
+  color: #e53935;
+  border-color: rgba(229, 57, 53, 0.5);
+  background: rgba(229, 57, 53, 0.12);
 }
 
 .discover-detail__favorite--on:hover:not(:disabled) {
-  color: #ff6b8a;
-  border-color: rgba(255, 107, 138, 0.55);
-  background: rgba(232, 93, 122, 0.16);
+  color: #ef5350;
+  border-color: rgba(239, 83, 80, 0.65);
+  background: rgba(229, 57, 53, 0.2);
 }
 
 .discover-detail__favorite:disabled {
@@ -2803,6 +2803,138 @@ select.settings-input:focus,
 @keyframes discover-favorite-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+.favorite-heart {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.12s ease,
+    opacity 0.15s ease;
+}
+
+.favorite-heart--toolbar {
+  width: 40px;
+  height: 40px;
+}
+
+.favorite-heart--card {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(12, 14, 18, 0.72);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.favorite-heart:hover:not(:disabled) {
+  color: var(--text-main);
+  border-color: var(--text-faint);
+  background: var(--surface-3);
+}
+
+.favorite-heart--card:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(12, 14, 18, 0.88);
+}
+
+.favorite-heart:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.favorite-heart--on {
+  color: #e53935;
+  border-color: rgba(229, 57, 53, 0.5);
+  background: rgba(229, 57, 53, 0.12);
+}
+
+.favorite-heart--card.favorite-heart--on {
+  color: #ef5350;
+  border-color: rgba(239, 83, 80, 0.55);
+  background: rgba(229, 57, 53, 0.28);
+}
+
+.favorite-heart--on:hover:not(:disabled) {
+  color: #ef5350;
+  border-color: rgba(239, 83, 80, 0.65);
+  background: rgba(229, 57, 53, 0.2);
+}
+
+.favorite-heart:disabled,
+.favorite-heart.is-busy {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.favorite-heart__icon {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  transition: transform 0.15s ease;
+}
+
+.favorite-heart--card .favorite-heart__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.favorite-heart--on .favorite-heart__icon {
+  transform: scale(1.05);
+}
+
+.favorite-heart__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-main);
+  border-radius: 50%;
+  animation: discover-favorite-spin 0.7s linear infinite;
+}
+
+.favorite-heart--card .favorite-heart__spinner {
+  width: 14px;
+  height: 14px;
+  border-color: rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+}
+
+.discover-card__favorite-wrap {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.discover-card:hover .discover-card__favorite-wrap,
+.discover-card:focus-within .discover-card__favorite-wrap,
+.discover-card__favorite-wrap--on {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (hover: none) {
+  .discover-card__favorite-wrap {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -2945,6 +3077,7 @@ select.settings-input:focus,
   padding: 0;
   display: grid;
   align-items: stretch;
+  position: relative;
 }
 
 .discover-grid {
@@ -2954,6 +3087,19 @@ select.settings-input:focus,
   width: 100%;
 }
 
+.discover-grid--virtual {
+  display: block;
+  grid-template-columns: none;
+  gap: 0;
+}
+
+.discover-grid__row .discover-grid__item {
+  width: 100%;
+  height: 100%;
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
 .library-grid {
   grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   justify-content: stretch;
@@ -2961,15 +3107,32 @@ select.settings-input:focus,
   width: 100%;
 }
 
+.library-grid--virtual {
+  display: block;
+  grid-template-columns: none;
+  gap: 0;
+}
+
+.library-grid__row .library-grid__item {
+  width: 100%;
+  height: 100%;
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
 .discover-grid__item,
 .library-grid__item {
   list-style: none;
   display: flex;
+  position: relative;
+  z-index: 1;
   min-width: 0;
   height: 100%;
   width: 100%;
   max-width: none;
   justify-self: stretch;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 260px;
 }
 
 .discover-card,
@@ -3060,6 +3223,7 @@ select.settings-input:focus,
 }
 
 .discover-card__panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -3070,16 +3234,15 @@ select.settings-input:focus,
   overflow: hidden;
   box-shadow: var(--shadow-card);
   transition:
-    border-color 0.16s ease,
-    transform 0.16s ease,
-    box-shadow 0.16s ease;
+    transform 200ms ease-out,
+    box-shadow 200ms ease-out;
 }
 
 /* Explorar: poster limpo, sem “caixa” pesada em volta da capa. */
 .discover-card--explore .discover-card__panel {
   background: #0a0a0a;
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 .discover-card--explore .discover-card__title--under {
@@ -3123,6 +3286,13 @@ select.settings-input:focus,
 .discover-card--explore .discover-card__cover {
   display: block;
   width: 100%;
+}
+
+.discover-card--explore .discover-card__cover .game-card__cover,
+.discover-card--explore .discover-card__cover .game-card__media,
+.discover-card--explore .discover-card__cover img {
+  transition: transform 320ms ease-out;
+  transform-origin: center center;
 }
 
 .discover-card__title--fallback {
@@ -3305,17 +3475,43 @@ select.settings-input:focus,
 }
 
 @media (hover: hover) and (pointer: fine) {
+  /* Biblioteca: elevação suave, sem alterar a borda */
   .library-card--actionable:hover .discover-card__panel,
   .library-card--actionable:focus-within .discover-card__panel {
-    border-color: rgba(255, 255, 255, 0.28);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
   }
 
+  /*
+   * Explorar / Favoritos — hover tipo storefront:
+   * lift + zoom na capa, sem reforçar bordas.
+   */
   .discover-card--explore.library-card--actionable:hover .discover-card__panel,
   .discover-card--explore.library-card--actionable:focus-within .discover-card__panel {
-    border-color: rgba(255, 255, 255, 0.32);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.48);
+  }
+
+  .discover-card--explore.library-card--actionable:hover .discover-card__cover .game-card__cover,
+  .discover-card--explore.library-card--actionable:hover .discover-card__cover .game-card__media,
+  .discover-card--explore.library-card--actionable:hover .discover-card__cover img,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__cover .game-card__cover,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__cover .game-card__media,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__cover img {
+    transform: scale(1.045);
+  }
+
+  .discover-card--explore.library-card--actionable:active .discover-card__panel {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transition-duration: 120ms;
+  }
+
+  .discover-card--explore.library-card--actionable:active .discover-card__cover .game-card__cover,
+  .discover-card--explore.library-card--actionable:active .discover-card__cover .game-card__media,
+  .discover-card--explore.library-card--actionable:active .discover-card__cover img {
+    transform: scale(1.02);
+    transition-duration: 120ms;
   }
 }
 
@@ -4064,10 +4260,18 @@ h3 {
   .game-tile:hover .game-tile__cover-wrap,
   .game-card--browse:hover .game-tile__cover-wrap,
   .game-tile:not(.game-tile--library):hover > .game-tile__card,
+  .library-card--actionable:hover .discover-card__panel,
+  .library-card--actionable:focus-within .discover-card__panel,
+  .discover-card--explore.library-card--actionable:hover .discover-card__panel,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__panel,
+  .discover-card--explore .discover-card__cover .game-card__cover,
+  .discover-card--explore .discover-card__cover .game-card__media,
+  .discover-card--explore .discover-card__cover img,
   .app-toast--enter,
   .app-toast--exit {
     animation: none;
     transform: none;
+    filter: none;
     transition: none;
   }
 

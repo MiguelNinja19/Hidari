@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AppDispatch } from '../../app/store'
 import type { DownloadJob } from '../../shared/types/contracts'
@@ -46,17 +46,21 @@ export function LibraryTab({
     invalidateLocalCover,
   })
 
-  useLibraryFolderWatch(() => {
-    if (activeTab !== 'library') return
-    void libraryController.refreshLibraryScan({ background: true })
-  })
+  const refreshScanRef = useRef(libraryController.refreshLibraryScan)
+  refreshScanRef.current = libraryController.refreshLibraryScan
+  const activeTabRef = useRef(activeTab)
+  activeTabRef.current = activeTab
+
+  const requestBackgroundScan = useCallback(() => {
+    if (activeTabRef.current !== 'library') return
+    void refreshScanRef.current({ background: true })
+  }, [])
+
+  useLibraryFolderWatch(requestBackgroundScan)
 
   useEffect(() => {
-    return onLibraryRefreshNeeded(() => {
-      if (activeTab !== 'library') return
-      void libraryController.refreshLibraryScan({ background: true })
-    })
-  }, [activeTab, libraryController.refreshLibraryScan])
+    return onLibraryRefreshNeeded(requestBackgroundScan)
+  }, [requestBackgroundScan])
 
   const pendingDelete = libraryController.pendingDeleteItem
   const isDeleting = libraryController.deletingLibraryKey !== null

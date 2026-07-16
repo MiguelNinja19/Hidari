@@ -9,6 +9,25 @@ type CoverWarmGridItemProps = {
   children: ReactNode
 }
 
+/** Um observer partilhado — evita N IntersectionObservers na grelha. */
+const observedCallbacks = new WeakMap<Element, () => void>()
+let sharedObserver: IntersectionObserver | null = null
+
+function getSharedObserver(): IntersectionObserver {
+  if (!sharedObserver) {
+    sharedObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          observedCallbacks.get(entry.target)?.()
+        }
+      },
+      { rootMargin: '200px', threshold: 0.01 },
+    )
+  }
+  return sharedObserver
+}
+
 export function CoverWarmGridItem({
   title,
   coverUrl,
@@ -17,14 +36,18 @@ export function CoverWarmGridItem({
   className,
   children,
 }: CoverWarmGridItemProps) {
-  const ref = useRef<HTMLLIElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
   const warmedRef = useRef(false)
   const lookupRef = useRef(false)
   const warmCoverRef = useRef(warmCover)
   const onNeedsCoverRef = useRef(onNeedsCover)
+  const titleRef = useRef(title)
+  const coverUrlRef = useRef(coverUrl)
 
   warmCoverRef.current = warmCover
   onNeedsCoverRef.current = onNeedsCover
+  titleRef.current = title
+  coverUrlRef.current = coverUrl
 
   useEffect(() => {
     warmedRef.current = false
@@ -32,35 +55,34 @@ export function CoverWarmGridItem({
   }, [title, coverUrl])
 
   useEffect(() => {
-    const url = coverUrl?.trim()
     const element = ref.current
     if (!element) return
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) return
+    const onIntersect = () => {
+      const url = coverUrlRef.current?.trim()
+      if (url && !warmedRef.current) {
+        warmedRef.current = true
+        warmCoverRef.current(titleRef.current, url)
+        return
+      }
+      if (!url && onNeedsCoverRef.current && !lookupRef.current) {
+        lookupRef.current = true
+        onNeedsCoverRef.current(titleRef.current)
+      }
+    }
 
-        if (url && !warmedRef.current) {
-          warmedRef.current = true
-          warmCoverRef.current(title, url)
-          return
-        }
+    observedCallbacks.set(element, onIntersect)
+    getSharedObserver().observe(element)
 
-        if (!url && onNeedsCoverRef.current && !lookupRef.current) {
-          lookupRef.current = true
-          onNeedsCoverRef.current(title)
-        }
-      },
-      { rootMargin: '200px', threshold: 0.01 },
-    )
-
-    observer.observe(element)
-    return () => observer.disconnect()
+    return () => {
+      observedCallbacks.delete(element)
+      sharedObserver?.unobserve(element)
+    }
   }, [title, coverUrl])
 
   return (
-    <li ref={ref} className={className}>
+    <div ref={ref} className={className} role="listitem">
       {children}
-    </li>
+    </div>
   )
 }

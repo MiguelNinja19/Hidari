@@ -19,6 +19,7 @@ import { PageCenterSpinner } from './shared/components/PageCenterSpinner'
 import { UpdateBanner } from './shared/components/UpdateBanner'
 import { useToast } from './shared/components/ToastProvider'
 import { CoversProvider } from './features/covers/CoversProvider'
+import { FavoriteCatalogProvider } from './features/favorites/FavoriteCatalogProvider'
 import type { DiscoverBridge } from './features/discover/DiscoverTab'
 import { DiscoverTab } from './features/discover/DiscoverTab'
 import { FavoritesTab } from './features/favorites/FavoritesTab'
@@ -134,21 +135,22 @@ function App() {
   const showQueueCovers = mountedTabs.library || mountedTabs.downloads
 
   return (
-    <AppShell
-      activeTab={activeTab}
-      activeDownloadsCount={activeDownloadsCount}
-      onTabChange={setActiveTab}
-      banner={
-        updater.updateAvailable && !updater.dismissed ? (
-          <UpdateBanner
-            version={updater.version}
-            installing={updater.installing}
-            onInstall={() => void updater.installUpdate()}
-            onDismiss={updater.dismiss}
-          />
-        ) : null
-      }
-    >
+    <FavoriteCatalogProvider>
+      <AppShell
+        activeTab={activeTab}
+        activeDownloadsCount={activeDownloadsCount}
+        onTabChange={setActiveTab}
+        banner={
+          updater.updateAvailable && !updater.dismissed ? (
+            <UpdateBanner
+              version={updater.version}
+              installing={updater.installing}
+              onInstall={() => void updater.installUpdate()}
+              onDismiss={updater.dismiss}
+            />
+          ) : null
+        }
+      >
       <div style={tabStyle('discover')}>
         <DiscoverTab
           onGoSettings={() => setActiveTab('settings')}
@@ -203,7 +205,8 @@ function App() {
           </Suspense>
         </div>
       ) : null}
-    </AppShell>
+      </AppShell>
+    </FavoriteCatalogProvider>
   )
 }
 

@@ -31,13 +31,16 @@ export function countDiscoverColumnsFromGrid(container: HTMLElement): number | n
 
 export function resolveDiscoverColumns(container: HTMLElement | null): number {
   if (!container) return 5
+  // Preferir estimativa por largura — evita querySelectorAll + offsetTop em toda a grelha.
+  const width = container.clientWidth
+  if (width > 0) {
+    const minCol = width < 720 ? 136 : width < 1024 ? 152 : 168
+    const gap = width < 720 ? 10 : 12
+    return estimateDiscoverColumns(width, minCol, gap)
+  }
   const fromDom = countDiscoverColumnsFromGrid(container)
   if (fromDom != null) return fromDom
-  // Breakpoints CSS baixam o min — usa 152 como compromisso se a janela for média.
-  const width = container.clientWidth
-  const minCol = width < 720 ? 136 : width < 1024 ? 152 : 168
-  const gap = width < 720 ? 10 : 12
-  return estimateDiscoverColumns(width, minCol, gap)
+  return 5
 }
 
 /** Jogos por pedido inicial: N linhas cheias. */

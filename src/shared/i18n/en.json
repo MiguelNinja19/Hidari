@@ -168,11 +168,11 @@
     "favoriteError": "Could not update favorites.",
     "favoritesFilter": "Favorites",
     "favoritesEmptyTitle": "No favorites",
-    "favoritesEmptyHint": "Star games in the catalog detail. They show up on this page.",
+    "favoritesEmptyHint": "Use the heart on a game card or detail page to save favorites here.",
     "filtersAria": "Catalog filters"
   },
   "favorites": {
-    "pageHint": "Games you starred in the catalog. Details load only when you open one.",
+    "pageHint": "Games you favorited in the catalog. Details load only when you open one.",
     "empty": "No favorites"
   },
   "downloads": {

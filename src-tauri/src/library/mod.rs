@@ -31,7 +31,13 @@ use std::time::UNIX_EPOCH;
 use tokio::time::Duration;
 
 #[tauri::command]
-pub fn scan_default_download_path(app: AppHandle) -> Result<Vec<LocalLibraryItemDto>, String> {
+pub async fn scan_default_download_path(app: AppHandle) -> Result<Vec<LocalLibraryItemDto>, String> {
+  tauri::async_runtime::spawn_blocking(move || scan_default_download_path_blocking(app))
+    .await
+    .map_err(|error| format!("scan_join_error: {error}"))?
+}
+
+fn scan_default_download_path_blocking(app: AppHandle) -> Result<Vec<LocalLibraryItemDto>, String> {
   let default_path = get_default_download_path(&app)?;
   let path = match default_path {
     Some(path) if !path.trim().is_empty() => path,

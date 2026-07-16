@@ -4,20 +4,18 @@ import { useAppDispatch } from '../../app/hooks'
 import { useAppSettings } from '../../app/context/AppSettingsContext'
 import { useNavigation } from '../../app/context/NavigationContext'
 import { CoversProvider, useCovers } from '../covers/CoversProvider'
-import { CoverWarmGridItem } from '../covers/CoverWarmGridItem'
-import { DiscoverGameCard } from '../discover/DiscoverGameCard'
 import { DiscoverGameDetailPage } from '../discover/DiscoverGameDetailPage'
-import { CatalogCover } from '../../shared/components/CatalogCover'
+import { VirtualizedCatalogGrid } from '../discover/VirtualizedCatalogGrid'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { enqueueJob } from '../queue/queueSlice'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { useToast } from '../../shared/components/ToastProvider'
-import { catalogGameDisplayTitle } from '../../shared/utils/normalizeTitleKey'
 import {
   favoriteCatalogKeyForEntry,
   favoriteCatalogKeyForGame,
   isUsableFavoriteCatalogKey,
 } from '../../shared/utils/favoriteCatalogKey'
+import { useFavoriteCatalog } from './FavoriteCatalogProvider'
 import { isAppLanguage } from '../../shared/config/locale'
 import i18n from '../../shared/i18n'
 import type {
@@ -39,6 +37,13 @@ function favoriteToCatalogGame(entry: FavoriteCatalogEntry): CatalogGame {
   }
 }
 
+function sameFavoriteGame(entry: FavoriteCatalogEntry, game: CatalogGame): boolean {
+  const entryKey = favoriteCatalogKeyForEntry(entry.title, entry.catalogKey)
+  const gameKey = favoriteCatalogKeyForGame(game)
+  if (entryKey === gameKey) return true
+  return entry.title.trim().toLowerCase() === game.title.trim().toLowerCase()
+}
+
 type DetailState = {
   game: CatalogGame
   loading: boolean
@@ -55,13 +60,17 @@ function FavoritesPageInner({ active }: { active: boolean }) {
   const { defaultDownloadPath } = useAppSettings()
   const { navigateDownloads } = useNavigation()
   const { showError } = useToast()
-  const { resolveCover, warmCover, invalidateLocalCover, resolveCoversBatch } = useCovers()
+  const { resolveCoversBatch } = useCovers()
+  const {
+    refresh: refreshFavoriteIndex,
+    isFavorite,
+    isBusy,
+    toggleFavorite,
+  } = useFavoriteCatalog()
 
   const [entries, setEntries] = useState<FavoriteCatalogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [detail, setDetail] = useState<DetailState | null>(null)
-  const [favorite, setFavorite] = useState(true)
-  const [favoriteBusy, setFavoriteBusy] = useState(false)
   const requestIdRef = useRef(0)
 
   const refreshList = useCallback(async () => {
@@ -80,7 +89,8 @@ function FavoritesPageInner({ active }: { active: boolean }) {
   useEffect(() => {
     if (!active || detail) return
     void refreshList()
-  }, [active, detail, refreshList])
+    void refreshFavoriteIndex()
+  }, [active, detail, refreshFavoriteIndex, refreshList])
 
   const games = useMemo(() => entries.map(favoriteToCatalogGame), [entries])
 
@@ -88,13 +98,6 @@ function FavoritesPageInner({ active }: { active: boolean }) {
     if (games.length === 0) return
     resolveCoversBatch(games.slice(0, 24).map((game) => game.title))
   }, [games, resolveCoversBatch])
-
-  const onNeedsCover = useCallback(
-    (title: string) => {
-      resolveCoversBatch([title])
-    },
-    [resolveCoversBatch],
-  )
 
   const openDetail = useCallback(
     (entry: FavoriteCatalogEntry) => {
@@ -109,7 +112,6 @@ function FavoritesPageInner({ active }: { active: boolean }) {
         screenshots: [],
         busyUrl: null,
       })
-      setFavorite(true)
 
       const language = isAppLanguage(i18n.language) ? i18n.language : undefined
       const groupKey = favoriteCatalogKeyForEntry(entry.title, entry.catalogKey)
@@ -131,9 +133,6 @@ function FavoritesPageInner({ active }: { active: boolean }) {
             screenshots: payload.screenshots ?? [],
             busyUrl: null,
           })
-          if (payload.game.coverUrl) {
-            warmCover(payload.game.title, payload.game.coverUrl)
-          }
         })
         .catch((error) => {
           if (requestIdRef.current !== requestId) return
@@ -148,7 +147,7 @@ function FavoritesPageInner({ active }: { active: boolean }) {
           })
         })
     },
-    [t, warmCover],
+    [t],
   )
 
   const closeDetail = useCallback(() => {
@@ -156,23 +155,36 @@ function FavoritesPageInner({ active }: { active: boolean }) {
     setDetail(null)
   }, [])
 
-  const handleToggleFavorite = useCallback(async () => {
-    if (!detail?.game || favoriteBusy) return
-    setFavoriteBusy(true)
-    try {
-      const next = await sourcesApi.toggleFavoriteCatalogEntry(
-        detail.game.title,
-        favoriteCatalogKeyForGame(detail.game),
-      )
-      setFavorite(next)
-      await refreshList()
-      if (!next) closeDetail()
-    } catch (error) {
-      showError(formatUserError(error, t('discover.favoriteError')))
-    } finally {
-      setFavoriteBusy(false)
-    }
-  }, [closeDetail, detail?.game, favoriteBusy, refreshList, showError, t])
+  const handleToggleFavorite = useCallback(
+    async (game: CatalogGame, { closeIfRemoved = false } = {}) => {
+      if (isBusy(game)) return
+      const next = await toggleFavorite(game)
+      if (next === null) return
+      if (!next) {
+        setEntries((prev) => prev.filter((entry) => !sameFavoriteGame(entry, game)))
+        if (closeIfRemoved) closeDetail()
+      }
+    },
+    [closeDetail, isBusy, toggleFavorite],
+  )
+
+  const handleOpenGame = useCallback(
+    (game: CatalogGame) => {
+      openDetail({
+        catalogKey: game.id,
+        title: game.title,
+        addedAt: '',
+      })
+    },
+    [openDetail],
+  )
+
+  const handleCardToggleFavorite = useCallback(
+    (game: CatalogGame) => {
+      void handleToggleFavorite(game)
+    },
+    [handleToggleFavorite],
+  )
 
   const handleDownload = useCallback(
     async (title: string, url: string, coverUrl?: string | null) => {
@@ -216,9 +228,9 @@ function FavoritesPageInner({ active }: { active: boolean }) {
         synopsis={detail.synopsis}
         screenshots={detail.screenshots}
         busyUrl={detail.busyUrl}
-        favorite={favorite}
-        favoriteBusy={favoriteBusy}
-        onToggleFavorite={() => void handleToggleFavorite()}
+        favorite={isFavorite(detail.game)}
+        favoriteBusy={isBusy(detail.game)}
+        onToggleFavorite={() => void handleToggleFavorite(detail.game, { closeIfRemoved: true })}
         onBack={closeDetail}
         onDownload={handleDownload}
       />
@@ -248,55 +260,14 @@ function FavoritesPageInner({ active }: { active: boolean }) {
       ) : null}
 
       {!loading && games.length > 0 ? (
-        <ul className="discover-grid" role="list" aria-label={t('nav.favorites')}>
-          {games.map((game, index) => {
-            const cover = resolveCover(game.title, game.coverUrl, game.localCoverPath)
-            const itemCoverUrl = game.coverUrl?.trim() || cover.coverUrl
-            const itemLocalPath = cover.localPath || game.localCoverPath?.trim() || null
-            const displayTitle = catalogGameDisplayTitle(game.title)
-            const hasCover =
-              cover.status !== 'error' && Boolean(itemLocalPath || itemCoverUrl)
-
-            return (
-              <CoverWarmGridItem
-                key={game.id}
-                title={game.title}
-                coverUrl={itemCoverUrl}
-                warmCover={warmCover}
-                onNeedsCover={onNeedsCover}
-                className="discover-grid__item"
-              >
-                <DiscoverGameCard
-                  title={displayTitle}
-                  titleAttr={game.title}
-                  genre=""
-                  showTitle={!hasCover}
-                  cover={
-                    <CatalogCover
-                      title={game.title}
-                      coverUrl={itemCoverUrl}
-                      localPath={itemLocalPath}
-                      cached={Boolean(itemLocalPath)}
-                      status={cover.status}
-                      priority={index < 8}
-                      onLocalCoverError={() =>
-                        invalidateLocalCover(game.title, itemCoverUrl ?? game.coverUrl)
-                      }
-                    />
-                  }
-                  actionLabel={t('discover.viewSources')}
-                  onOpen={() =>
-                    openDetail({
-                      catalogKey: game.id,
-                      title: game.title,
-                      addedAt: '',
-                    })
-                  }
-                />
-              </CoverWarmGridItem>
-            )
-          })}
-        </ul>
+        <VirtualizedCatalogGrid
+          games={games}
+          ariaLabel={t('nav.favorites')}
+          isFavorite={isFavorite}
+          isFavoriteBusy={isBusy}
+          onOpen={handleOpenGame}
+          onToggleFavorite={handleCardToggleFavorite}
+        />
       ) : null}
     </section>
   )

@@ -506,7 +506,13 @@ pub async fn download_and_cache_cover(
 }
 
 #[tauri::command]
-pub fn list_game_covers(app: AppHandle) -> Result<Vec<GameCoverDto>, String> {
+pub async fn list_game_covers(app: AppHandle) -> Result<Vec<GameCoverDto>, String> {
+  tauri::async_runtime::spawn_blocking(move || list_game_covers_blocking(app))
+    .await
+    .map_err(|e| format!("list_game_covers_join_error: {e}"))?
+}
+
+fn list_game_covers_blocking(app: AppHandle) -> Result<Vec<GameCoverDto>, String> {
   let conn = open_database_connection(&app)?;
   let mut stmt = conn
     .prepare("SELECT title_key, cover_url, local_path FROM game_covers ORDER BY updated_at DESC")

@@ -248,7 +248,8 @@ fn stem_of_exe(file_name: &str) -> &str {
 }
 
 const SCAN_DEPTH_FAST: usize = 3;
-const SCAN_DEPTH_FULL: usize = 10;
+const SCAN_DEPTH_FULL: usize = 6;
+const MAX_LAUNCH_CANDIDATES: usize = 8;
 
 fn collect_executable_candidates(
   root: &Path,
@@ -273,6 +274,13 @@ fn collect_executable_candidates(
     };
 
     if metadata.is_dir() {
+      let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+      if is_utility_subfolder(name) {
+        continue;
+      }
       collect_executable_candidates(&path, depth + 1, max_depth, out);
       continue;
     }
@@ -296,7 +304,10 @@ fn is_utility_subfolder(name: &str) -> bool {
     "md5"
       | "_redist"
       | "redist"
+      | "_commonredist"
+      | "commonredist"
       | "directx"
+      | "dx"
       | "dotnet"
       | "support"
       | "tools"
@@ -304,7 +315,10 @@ fn is_utility_subfolder(name: &str) -> bool {
       | "bonus"
       | "optional"
       | "__installer"
-  )
+      | "engine"
+      | "redistributables"
+  ) || lower.contains("redist")
+    || lower.contains("directx")
 }
 
 fn folder_has_install_or_game(title: &str, folder: &Path) -> bool {
@@ -350,14 +364,14 @@ fn folder_has_install_or_game(title: &str, folder: &Path) -> bool {
   false
 }
 
-pub fn folder_has_playable_game_exe(title: &str, folder: &Path) -> bool {
+fn folder_has_playable_game_exe_depth(title: &str, folder: &Path, max_depth: usize) -> bool {
   if !folder.is_dir() {
     return false;
   }
 
   let title_tokens = title::tokenize_title(title);
   let mut local: Vec<(usize, PathBuf)> = Vec::new();
-  collect_executable_candidates(folder, 0, SCAN_DEPTH_FULL, &mut local);
+  collect_executable_candidates(folder, 0, max_depth, &mut local);
 
   for (depth, path) in local {
     if !is_probably_executable(&path) {
@@ -385,64 +399,48 @@ pub fn folder_has_playable_game_exe(title: &str, folder: &Path) -> bool {
   false
 }
 
-fn find_title_matched_install_folder(title: &str, parent: &Path, skip: Option<&Path>) -> Option<PathBuf> {
-  let tokens = title::tokenize_title(title);
-  if tokens.is_empty() {
-    return None;
-  }
-
-  let entries = fs::read_dir(parent).ok()?;
-  let mut best: Option<(usize, PathBuf)> = None;
-
-  for entry in entries.flatten() {
-    let path = entry.path();
-    if !path.is_dir() {
-      continue;
-    }
-    if skip.is_some_and(|value| value == path) {
-      continue;
-    }
-    let name_lower = path
-      .file_name()
-      .and_then(|value| value.to_str())
-      .unwrap_or_default()
-      .to_lowercase();
-    if is_utility_subfolder(&name_lower) {
-      continue;
-    }
-    let matched_tokens = tokens
-      .iter()
-      .filter(|token| name_lower.contains(*token))
-      .count();
-    if matched_tokens == 0 || !folder_has_playable_game_exe(title, &path) {
-      continue;
-    }
-    if best.as_ref().is_none_or(|(score, _)| matched_tokens > *score) {
-      best = Some((matched_tokens, path));
-    }
-  }
-
-  best.map(|(_, path)| path)
+pub fn folder_has_playable_game_exe(title: &str, folder: &Path) -> bool {
+  folder_has_playable_game_exe_depth(title, folder, SCAN_DEPTH_FAST)
+    || folder_has_playable_game_exe_depth(title, folder, SCAN_DEPTH_FULL)
 }
 
-/// Quando o torrent grava em `J:\frangos\` mas o jogo fica em `J:\frangos\Nome [Repack]\`,
-/// resolve a subpasta correta pelo título ou pela presença de setup.exe.
-pub fn resolve_game_content_root(title: &str, dest_path: &str) -> PathBuf {
-  let base = resolve_job_folder(dest_path);
-  if folder_has_playable_game_exe(title, &base) {
-    return base;
+/// FitGirl e similares: instalação em pasta irmã com o nome limpo do jogo.
+/// Só testa caminhos candidatos (O(1)) — não lista nem faz scan de toda a pasta de downloads.
+fn guess_named_sibling_install(title: &str, repack: &Path) -> Option<PathBuf> {
+  let parent = repack.parent().filter(|path| path.is_dir())?;
+  let cleaned = title::clean_title_for_matching(title);
+  let trimmed = title.trim();
+  let mut candidates = Vec::with_capacity(2);
+  if !cleaned.is_empty() {
+    candidates.push(parent.join(&cleaned));
+  }
+  if !trimmed.is_empty() && trimmed != cleaned {
+    candidates.push(parent.join(trimmed));
   }
 
-  if let Some(parent) = base.parent().filter(|path| path.is_dir()) {
-    if let Some(install_dir) = find_title_matched_install_folder(title, parent, Some(&base)) {
-      return install_dir;
+  for candidate in candidates {
+    if !candidate.is_dir() || candidate == *repack {
+      continue;
+    }
+    if folder_has_playable_game_exe_depth(title, &candidate, SCAN_DEPTH_FAST) {
+      return Some(candidate);
     }
   }
+  None
+}
 
-  if folder_has_install_or_game(title, &base) {
+/// Resolve a pasta do próprio job/jogo. Não varre a biblioteca de downloads inteira.
+pub fn resolve_game_content_root(title: &str, dest_path: &str) -> PathBuf {
+  let base = resolve_job_folder(dest_path);
+
+  // Já é a pasta do jogo (exe jogável ou setup na raiz / conteúdo claro).
+  if folder_has_playable_game_exe_depth(title, &base, SCAN_DEPTH_FAST)
+    || folder_has_install_or_game(title, &base)
+  {
     return base;
   }
 
+  // dest_path = pasta pai de downloads: escolher só a subpasta deste título (dentro de base).
   let tokens = title::tokenize_title(title);
   let Ok(entries) = fs::read_dir(&base) else {
     return base;
@@ -504,20 +502,19 @@ fn launch_roots_for_game(title: &str, dest_path: &str) -> Vec<PathBuf> {
   let content = resolve_game_content_root(title, dest_path);
   let mut roots = vec![content.clone()];
 
+  // Extração fica dentro/ao lado imediato da pasta do job — só incluir se existir.
   for org in ["separate-folder", "single-folder"] {
     let extracted = archive::resolve_extract_destination(title, &content, org);
-    if !roots.iter().any(|root| root == &extracted) {
+    if extracted.exists() && !roots.iter().any(|root| root == &extracted) {
       roots.push(extracted);
     }
   }
 
-  // FitGirl: jogo instalado numa pasta irmã (ex. repack em `...\Nome [FitGirl]\`, jogo em `...\Nome\`).
+  // Instalação FitGirl típica: pasta irmã com o nome do jogo (sem varrer os outros jogos).
   if is_usable_setup_file(&content.join("setup.exe")) {
-    if let Some(parent) = content.parent().filter(|path| path.is_dir()) {
-      if let Some(install_dir) = find_title_matched_install_folder(title, parent, Some(&content)) {
-        if !roots.iter().any(|root| root == &install_dir) {
-          roots.push(install_dir);
-        }
+    if let Some(install_dir) = guess_named_sibling_install(title, &content) {
+      if !roots.iter().any(|root| root == &install_dir) {
+        roots.push(install_dir);
       }
     }
   }
@@ -949,7 +946,7 @@ fn escape_powershell_single_quoted(value: &str) -> String {
 pub fn launch_game_candidates(candidates: &[PathBuf]) -> Result<PathBuf, String> {
   let mut last_error = String::from("nenhum executável válido encontrado");
 
-  for path in candidates {
+  for path in candidates.iter().take(MAX_LAUNCH_CANDIDATES) {
     if !is_valid_pe_executable(path) {
       continue;
     }
@@ -987,21 +984,21 @@ pub fn resolve_and_launch_game_with_extra_roots(
   extra_roots: &[PathBuf],
   preferred_exe: Option<&Path>,
 ) -> Result<PathBuf, String> {
-  let title_tokens = title::tokenize_title(title);
+  // Exe em cache: confiar e lançar sem re-scan nem match de título.
   if let Some(preferred) = preferred_exe {
-    if path_matches_title_tokens(preferred, &title_tokens) && try_launch_executable(preferred).is_ok()
-    {
+    if try_launch_executable(preferred).is_ok() {
       return Ok(preferred.to_path_buf());
     }
   }
 
-  if let Ok(candidates) = resolve_launch_candidates_with_extra_roots_depth(
+  let fast = resolve_launch_candidates_with_extra_roots_depth(
     title,
     dest_path,
     extra_roots,
     SCAN_DEPTH_FAST,
-  ) {
-    if let Ok(path) = launch_game_candidates(&candidates) {
+  );
+  if let Ok(ref candidates) = fast {
+    if let Ok(path) = launch_game_candidates(candidates) {
       return Ok(path);
     }
   }
@@ -1332,8 +1329,9 @@ mod tests {
     fs::create_dir_all(&other_game).unwrap();
     fs::write(other_game.join("Launcher.exe"), pe_stub()).unwrap();
 
+    // A pasta do job continua a ser o repack; o exe instalado vem só do irmão com o nome do jogo.
     let resolved = resolve_game_content_root(GAME_LEGACY, &repack_dir.to_string_lossy());
-    assert_eq!(resolved, install_dir);
+    assert_eq!(resolved, repack_dir);
 
     let candidates = resolve_launch_candidates(GAME_LEGACY, &repack_dir.to_string_lossy()).unwrap();
     assert_eq!(candidates[0], install_dir.join("Crystal Quest Legacy.exe"));
