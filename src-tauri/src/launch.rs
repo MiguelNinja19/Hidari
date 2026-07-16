@@ -1189,7 +1189,8 @@ mod tests {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    fs::write(dir.join("TargetGame.exe"), pe_stub()).unwrap();
+    // O exe tem de corresponder ao título — senão o launcher rejeita (evitar lançar outro jogo).
+    fs::write(dir.join("GalaxyRangers.exe"), pe_stub()).unwrap();
 
     assert!(job_has_playable_executable(GAME_A, &dir.to_string_lossy()));
     assert!(!job_has_playable_executable(GAME_A, "/nonexistent/path"));
@@ -1255,7 +1256,7 @@ mod tests {
   }
 
   #[test]
-  fn setup_and_game_exe_means_game_not_install() {
+  fn setup_present_means_install_not_play_even_with_game_exe() {
     let dir = std::env::temp_dir().join(format!("launcher_both_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -1263,8 +1264,9 @@ mod tests {
     fs::write(dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
     fs::write(dir.join("Pixel Harvest.exe"), pe_stub()).unwrap();
 
+    // Ainda há setup.exe → o utilizador deve Instalar, não Jogar.
+    assert!(find_setup_executable(GAME_B, &dir.to_string_lossy()).is_some());
     assert!(job_has_game_executable(GAME_B, &dir.to_string_lossy()));
-    assert!(resolve_launch_candidates(GAME_B, &dir.to_string_lossy()).is_ok());
 
     let _ = fs::remove_dir_all(&dir);
   }

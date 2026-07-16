@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 use tauri::AppHandle;
 
-fn library_entry_key(dest_path: &str, title: &str) -> String {
+pub fn library_entry_key(dest_path: &str, title: &str) -> String {
   let mut hasher = DefaultHasher::new();
   dest_path.trim().to_lowercase().hash(&mut hasher);
   title::normalize_title_key(title).hash(&mut hasher);

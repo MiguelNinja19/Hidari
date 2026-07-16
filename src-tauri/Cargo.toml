@@ -28,6 +28,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
+notify-rust = "4"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.31.0"
@@ -39,3 +40,8 @@ dotenvy = "0.15"
 regex = "1"
 sysinfo = "0.33"
 open = "5"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_Foundation"] }
+tauri-winrt-notification = "0.7"

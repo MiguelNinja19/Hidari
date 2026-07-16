@@ -10,6 +10,7 @@ use crate::dto::{
   SidecarJobWatcher,
 };
 use crate::launch;
+use crate::library::maybe_cleanup_torrent_sidecar_files;
 use crate::library::roots::open_path_in_shell;
 use crate::state::ExtractionState;
 use rusqlite::Connection;
@@ -285,6 +286,11 @@ pub fn finalize_job_if_playable(
   title: &str,
   dest_path: &str,
 ) -> Result<bool, String> {
+  // Com setup.exe o download ainda precisa de instalação — não marcar como jogável.
+  if launch::find_setup_executable(title, dest_path).is_some() {
+    return Ok(false);
+  }
+
   let candidates = match launch::resolve_launch_candidates(title, dest_path) {
     Ok(items) => items,
     Err(_) => return Ok(false),
@@ -343,6 +349,10 @@ pub async fn process_job_post_download(
     prior.as_deref(),
     Some("extracting") | Some("extracted") | Some("skipped") | Some("failed") | Some("verify_failed")
   ) {
+    // Já na biblioteca: limpar .torrent/.aria2 só se não estiver a semear.
+    if matches!(prior.as_deref(), Some("extracted") | Some("skipped")) {
+      maybe_cleanup_torrent_sidecar_files(&app, &dest_path, &title);
+    }
     return Ok(());
   }
   // pending_content: continua — o watcher só chama isto quando já há conteúdo real.
@@ -409,6 +419,7 @@ pub async fn process_job_post_download(
   }
 
   if finalize_job_if_playable(&app, &job_id, &title, &dest_path)? {
+    maybe_cleanup_torrent_sidecar_files(&app, &dest_path, &title);
     return Ok(());
   }
 
@@ -420,17 +431,21 @@ pub async fn process_job_post_download(
   };
 
   if launch::find_setup_executable(&title, &dest_path).is_some() {
-    return mark_skipped(
+    mark_skipped(
       &app,
       "Download concluído — clique em INSTALAR para executar o setup.exe.",
-    );
+    )?;
+    maybe_cleanup_torrent_sidecar_files(&app, &dest_path, &title);
+    return Ok(());
   }
 
   // Repacks/instaladores: não extrair automaticamente. O utilizador instala o que veio no download.
   mark_skipped(
     &app,
     "Download concluído — use INSTALAR se houver setup.exe, ou abra a pasta.",
-  )
+  )?;
+  maybe_cleanup_torrent_sidecar_files(&app, &dest_path, &title);
+  Ok(())
 }
 
 pub async fn process_job_extraction(
@@ -492,6 +507,7 @@ pub async fn process_job_extraction(
     )?;
   }
   emit_extract_status(&app, &job_id, "extracted", None);
+  maybe_cleanup_torrent_sidecar_files(&app, &dest_path, &title);
   run_after_install_action(&app, &title, &dest_path, &extract_dest);
   Ok(())
 }

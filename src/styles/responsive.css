@@ -20,12 +20,18 @@
   }
 
   .sidebar {
-    padding: 12px 10px;
+    padding: 12px 8px;
+  }
+
+  .sidebar__nav {
+    gap: 2px;
   }
 
   .sidebar-link {
     min-height: 34px;
-    padding: 8px 10px;
+    padding: 7px 9px;
+    gap: 8px;
+    border-radius: 0;
   }
 
   .main-panel {
@@ -81,9 +87,13 @@
     justify-content: center;
     align-items: center;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
     padding: 6px 4px;
-    border-radius: var(--radius-md, 2px);
+    border-radius: 0;
+  }
+
+  .sidebar-link:not(:last-child)::after {
+    display: none;
   }
 
   .sidebar-link__label {
@@ -102,8 +112,8 @@
 
   .sidebar-link__badge {
     position: absolute;
-    top: 2px;
-    right: 4px;
+    top: 4px;
+    right: 6px;
     margin-left: 0;
     min-width: 1rem;
     height: 1rem;

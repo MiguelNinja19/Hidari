@@ -10,9 +10,10 @@ use crate::dto::{
 use crate::launch;
 use crate::launch_errors;
 use crate::library::roots::{
-  launch_extra_roots, read_library_game_root, read_library_launch_exe, upsert_library_game_root,
-  upsert_library_launch_exe,
+  clear_library_launch_exe, launch_extra_roots, library_entry_key, read_library_game_root,
+  read_library_launch_exe, upsert_library_game_root, upsert_library_launch_exe,
 };
+use crate::queue::persist::ensure_persisted_queue_table;
 use crate::sidecar::{
   emit_extract_status, ensure_sidecar_running, process_job_extraction, process_job_post_download,
 };
@@ -98,6 +99,19 @@ fn torrent_sidecar_matches_title(stem: &str, title: &str) -> bool {
   title_key.starts_with(&stem_key) || stem_key.starts_with(&title_key)
 }
 
+/// Apaga `.torrent` / `.aria2` só se a sementeira estiver desligada.
+/// Com "Semear após download" ativo, o motor precisa destes ficheiros.
+pub fn maybe_cleanup_torrent_sidecar_files(app: &AppHandle, dest_path: &str, title: &str) {
+  let seed_enabled = open_database_connection(app)
+    .ok()
+    .map(|conn| db::read_app_setting_bool(&conn, "seed_torrents_enabled", true))
+    .unwrap_or(true);
+  if seed_enabled {
+    return;
+  }
+  cleanup_torrent_sidecar_files(dest_path, title);
+}
+
 /// Remove ficheiros `.torrent` / `.aria2` associados a um download (pasta ou título).
 pub fn cleanup_torrent_sidecar_files(dest_path: &str, title: &str) {
   let target = PathBuf::from(dest_path.trim());
@@ -161,6 +175,236 @@ pub fn cleanup_torrent_sidecar_files(dest_path: &str, title: &str) {
   }
 }
 
+fn normalize_library_fs_path(path: &str) -> String {
+  path
+    .trim()
+    .replace('\\', "/")
+    .trim_end_matches('/')
+    .to_ascii_lowercase()
+}
+
+fn library_titles_loose_match(a: &str, b: &str) -> bool {
+  let ka = normalize_title_key(&clean_title_for_matching(a));
+  let kb = normalize_title_key(&clean_title_for_matching(b));
+  if ka.is_empty() || kb.is_empty() {
+    return false;
+  }
+  ka == kb || ka.starts_with(&kb) || kb.starts_with(&ka)
+}
+
+fn path_is_same_or_under(child: &str, parent: &str) -> bool {
+  let child_n = normalize_library_fs_path(child);
+  let parent_n = normalize_library_fs_path(parent);
+  if child_n.is_empty() || parent_n.is_empty() {
+    return false;
+  }
+  child_n == parent_n || child_n.starts_with(&(parent_n + "/"))
+}
+
+fn job_row_matches_library_item(
+  item_path: &str,
+  item_title: &str,
+  job_dest: &str,
+  job_title: &str,
+) -> bool {
+  let item_path_n = normalize_library_fs_path(item_path);
+  let job_dest_n = normalize_library_fs_path(job_dest);
+  let titles = !item_title.trim().is_empty() && library_titles_loose_match(item_title, job_title);
+
+  if !item_path_n.is_empty() && item_path_n == job_dest_n {
+    return item_title.trim().is_empty() || titles;
+  }
+
+  // Job aponta para a raiz de downloads; o item é a pasta do jogo.
+  if !item_path_n.is_empty()
+    && !job_dest_n.is_empty()
+    && item_path_n.starts_with(&(job_dest_n.clone() + "/"))
+  {
+    let folder_name = item_path_n.rsplit('/').next().unwrap_or("");
+    return titles
+      || library_titles_loose_match(folder_name, job_title)
+      || (!item_title.trim().is_empty() && library_titles_loose_match(folder_name, item_title));
+  }
+
+  // Destino do job está dentro da pasta do item.
+  if path_is_same_or_under(job_dest, item_path) {
+    return item_title.trim().is_empty() || titles;
+  }
+
+  titles && (item_path_n.is_empty() || job_dest_n.is_empty())
+}
+
+fn purge_library_item_db(conn: &rusqlite::Connection, path: &str, title: &str) -> Result<(), String> {
+  let path = path.trim();
+  let title = title.trim();
+  if path.is_empty() && title.is_empty() {
+    return Ok(());
+  }
+
+  let path_key = if !path.is_empty() && !title.is_empty() {
+    Some(library_note_path_key(path, title))
+  } else {
+    None
+  };
+  let library_key = if !path.is_empty() && !title.is_empty() {
+    Some(library_entry_key(path, title))
+  } else {
+    None
+  };
+
+  if let Some(key) = path_key.as_deref() {
+    let _ = conn.execute("DELETE FROM library_notes WHERE path_key = ?1", params![key]);
+    let _ = conn.execute(
+      "DELETE FROM library_play_stats WHERE path_key = ?1",
+      params![key],
+    );
+  }
+  if !path.is_empty() {
+    let prefix = format!("{}::%", path.to_lowercase());
+    let _ = conn.execute(
+      "DELETE FROM library_notes WHERE lower(path_key) LIKE ?1",
+      params![prefix],
+    );
+    let _ = conn.execute(
+      "DELETE FROM library_play_stats WHERE lower(path_key) LIKE ?1",
+      params![prefix],
+    );
+  }
+  if let Some(key) = library_key.as_deref() {
+    let _ = conn.execute(
+      "DELETE FROM library_launch_exe WHERE library_key = ?1",
+      params![key],
+    );
+    let _ = conn.execute(
+      "DELETE FROM library_game_roots WHERE library_key = ?1",
+      params![key],
+    );
+  }
+
+  // Metadados guardados com dest_path = raiz de downloads + título do jogo.
+  if !title.is_empty() {
+    if let Ok(mut stmt) = conn.prepare(
+      "SELECT library_key, title, dest_path FROM library_launch_exe",
+    ) {
+      let rows = stmt
+        .query_map([], |row| {
+          Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+          ))
+        })
+        .ok();
+      if let Some(rows) = rows {
+        let mut keys = Vec::new();
+        for row in rows.flatten() {
+          if job_row_matches_library_item(path, title, &row.2, &row.1) {
+            keys.push(row.0);
+          }
+        }
+        for key in keys {
+          let _ = conn.execute(
+            "DELETE FROM library_launch_exe WHERE library_key = ?1",
+            params![key],
+          );
+        }
+      }
+    }
+    if let Ok(mut stmt) = conn.prepare(
+      "SELECT library_key, title, dest_path FROM library_game_roots",
+    ) {
+      let rows = stmt
+        .query_map([], |row| {
+          Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+          ))
+        })
+        .ok();
+      if let Some(rows) = rows {
+        let mut keys = Vec::new();
+        for row in rows.flatten() {
+          if job_row_matches_library_item(path, title, &row.2, &row.1) {
+            keys.push(row.0);
+          }
+        }
+        for key in keys {
+          let _ = conn.execute(
+            "DELETE FROM library_game_roots WHERE library_key = ?1",
+            params![key],
+          );
+        }
+      }
+    }
+  }
+
+  let mut job_ids: Vec<String> = Vec::new();
+
+  let _ = ensure_persisted_queue_table(conn);
+  if let Ok(mut stmt) = conn.prepare("SELECT id, title, dest_path FROM persisted_queue_jobs") {
+    let rows = stmt
+      .query_map([], |row| {
+        Ok((
+          row.get::<_, String>(0)?,
+          row.get::<_, String>(1)?,
+          row.get::<_, String>(2)?,
+        ))
+      })
+      .ok();
+    if let Some(rows) = rows {
+      for row in rows.flatten() {
+        if job_row_matches_library_item(path, title, &row.2, &row.1) {
+          job_ids.push(row.0);
+        }
+      }
+    }
+  }
+
+  if let Ok(mut stmt) = conn.prepare("SELECT CAST(id AS TEXT), title, dest_path FROM download_jobs")
+  {
+    let rows = stmt
+      .query_map([], |row| {
+        Ok((
+          row.get::<_, String>(0)?,
+          row.get::<_, String>(1)?,
+          row.get::<_, String>(2)?,
+        ))
+      })
+      .ok();
+    if let Some(rows) = rows {
+      for row in rows.flatten() {
+        if job_row_matches_library_item(path, title, &row.2, &row.1)
+          && !job_ids.iter().any(|id| id == &row.0)
+        {
+          job_ids.push(row.0);
+        }
+      }
+    }
+  }
+
+  for id in job_ids {
+    let _ = conn.execute("DELETE FROM extraction_log WHERE job_id = ?1", params![id]);
+    let _ = conn.execute("DELETE FROM download_jobs WHERE CAST(id AS TEXT) = ?1", params![id]);
+    let _ = conn.execute("DELETE FROM persisted_queue_jobs WHERE id = ?1", params![id]);
+  }
+
+  Ok(())
+}
+
+fn path_under_download_root(target: &Path, base: &Path) -> Result<bool, String> {
+  if target.exists() && base.exists() {
+    let canonical_base = std::fs::canonicalize(base)
+      .map_err(|error| format!("could_not_resolve_base_path: {error}"))?;
+    let canonical_target = std::fs::canonicalize(target)
+      .map_err(|error| format!("could_not_resolve_target_path: {error}"))?;
+    return Ok(canonical_target.starts_with(&canonical_base));
+  }
+  let target_n = normalize_library_fs_path(&target.to_string_lossy());
+  let base_n = normalize_library_fs_path(&base.to_string_lossy());
+  Ok(!base_n.is_empty() && path_is_same_or_under(&target_n, &base_n))
+}
+
 #[tauri::command]
 pub fn delete_local_library_item(
   app: AppHandle,
@@ -169,46 +413,64 @@ pub fn delete_local_library_item(
   let default_path = get_default_download_path(&app)?
     .ok_or_else(|| "default_download_path_not_configured".to_string())?;
 
-  let base_dir = std::path::PathBuf::from(default_path);
-  let target = std::path::PathBuf::from(payload.path);
+  let base_dir = std::path::PathBuf::from(&default_path);
+  let target = std::path::PathBuf::from(payload.path.trim());
+  let title_hint = payload
+    .title
+    .as_deref()
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+    .map(str::to_string)
+    .unwrap_or_else(|| {
+      target
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("")
+        .to_string()
+    });
 
-  if !target.exists() {
-    return Err("local_item_not_found".to_string());
-  }
-
-  let canonical_base = std::fs::canonicalize(&base_dir)
-    .map_err(|error| format!("could_not_resolve_base_path: {error}"))?;
-  let canonical_target = std::fs::canonicalize(&target)
-    .map_err(|error| format!("could_not_resolve_target_path: {error}"))?;
-
-  if !canonical_target.starts_with(&canonical_base) {
+  if !path_under_download_root(&target, &base_dir)? {
     return Err("path_outside_default_download_path".to_string());
   }
 
-  if canonical_target == canonical_base {
+  let is_download_root = normalize_library_fs_path(&target.to_string_lossy())
+    == normalize_library_fs_path(&default_path)
+    || (target.exists()
+      && base_dir.exists()
+      && std::fs::canonicalize(&target)
+        .ok()
+        .zip(std::fs::canonicalize(&base_dir).ok())
+        .is_some_and(|(a, b)| a == b));
+
+  let parent_for_cleanup = target.parent().map(Path::to_path_buf);
+
+  if target.exists() && !is_download_root {
+    let canonical_target = std::fs::canonicalize(&target)
+      .map_err(|error| format!("could_not_resolve_target_path: {error}"))?;
+    if canonical_target.is_dir() {
+      std::fs::remove_dir_all(&canonical_target)
+        .map_err(|error| format!("could_not_delete_directory: {error}"))?;
+    } else {
+      std::fs::remove_file(&canonical_target)
+        .map_err(|error| format!("could_not_delete_file: {error}"))?;
+    }
+
+    // Apaga .torrent / .aria2 irmãos na pasta de downloads (o aria2 deixa-os fora da pasta do jogo).
+    if !title_hint.is_empty() {
+      if let Some(parent) = parent_for_cleanup {
+        cleanup_torrent_sidecar_files(&parent.to_string_lossy(), &title_hint);
+      }
+    }
+  } else if !target.exists() && title_hint.is_empty() {
+    return Err("local_item_not_found".to_string());
+  } else if is_download_root && title_hint.is_empty() {
     return Err("cannot_delete_default_download_root".to_string());
   }
 
-  let title_hint = target
-    .file_stem()
-    .and_then(|name| name.to_str())
-    .unwrap_or("")
-    .to_string();
-  let parent_for_cleanup = target.parent().map(Path::to_path_buf);
-
-  if canonical_target.is_dir() {
-    std::fs::remove_dir_all(&canonical_target)
-      .map_err(|error| format!("could_not_delete_directory: {error}"))?;
-  } else {
-    std::fs::remove_file(&canonical_target)
-      .map_err(|error| format!("could_not_delete_file: {error}"))?;
-  }
-
-  // Apaga .torrent / .aria2 irmãos na pasta de downloads (o aria2 deixa-os fora da pasta do jogo).
-  if !title_hint.is_empty() {
-    if let Some(parent) = parent_for_cleanup {
-      cleanup_torrent_sidecar_files(&parent.to_string_lossy(), &title_hint);
-    }
+  // Limpa fila persistida, notas, stats e exes mesmo quando a pasta já não existe
+  // (ou quando o dest_path do job é a raiz de downloads).
+  if let Ok(conn) = open_database_connection(&app) {
+    let _ = purge_library_item_db(&conn, payload.path.trim(), &title_hint);
   }
 
   Ok(())
@@ -363,17 +625,39 @@ pub fn inspect_library_path_internal(
     .to_string();
   let candidates_result =
     launch::resolve_launch_candidates_with_extra_roots(title, path, &extra_roots);
-  let has_game = candidates_result.is_ok();
-  if let Ok(ref candidates) = candidates_result {
-    if let Some(first) = candidates.first() {
-      if let Ok(conn) = open_database_connection(app) {
-        let _ = upsert_library_launch_exe(&conn, path, title, first);
+  let install_path = launch::find_setup_executable_with_extra_roots(title, path, &extra_roots)
+    .map(|p| p.to_string_lossy().to_string());
+
+  // FitGirl / repacks: com setup.exe e sem pasta de instalação escolhida,
+  // mostrar Instalar — mesmo que exista algum .exe na pasta do download.
+  let mut has_game = if install_path.is_some() && custom_game_root.is_none() {
+    false
+  } else {
+    candidates_result.is_ok()
+  };
+
+  if let Some(ref root) = custom_game_root {
+    if launch::folder_has_playable_game_exe(title, std::path::Path::new(root)) {
+      has_game = true;
+    }
+  }
+
+  if has_game {
+    if let Ok(ref candidates) = candidates_result {
+      if let Some(first) = candidates.first() {
+        if let Ok(conn) = open_database_connection(app) {
+          let _ = upsert_library_launch_exe(&conn, path, title, first);
+        }
       }
     }
   }
-  let install_path = launch::find_setup_executable_with_extra_roots(title, path, &extra_roots)
-    .map(|p| p.to_string_lossy().to_string());
+
   let needs_install = !has_game && install_path.is_some();
+  if needs_install {
+    if let Ok(conn) = open_database_connection(app) {
+      let _ = clear_library_launch_exe(&conn, path, title);
+    }
+  }
   let has_archive = archive::find_job_archive(&content_path).is_some();
   // FitGirl e similares: setup.exe + .rar na mesma pasta — não forçar extração.
   let needs_extraction = has_archive && !has_game && install_path.is_none();
@@ -532,3 +816,82 @@ pub async fn extract_library_folder(app: AppHandle, payload: LaunchGamePayload) 
   }
   result
 }
+
+#[cfg(test)]
+mod torrent_cleanup_tests {
+  use super::{cleanup_torrent_sidecar_files, torrent_sidecar_matches_title};
+  use std::fs;
+  use std::path::PathBuf;
+
+  fn temp_dir(label: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+      "launcher_torrent_cleanup_{label}_{}",
+      std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    dir
+  }
+
+  #[test]
+  fn matches_title_to_fitgirl_style_torrent_stem() {
+    assert!(torrent_sidecar_matches_title(
+      "Stardew Valley-FitGirl Repack",
+      "Stardew Valley"
+    ));
+  }
+
+  #[test]
+  fn deletes_matching_torrent_and_aria2_beside_game_folder() {
+    let root = temp_dir("match");
+    let game = root.join("Stardew Valley");
+    fs::create_dir_all(&game).unwrap();
+    fs::write(game.join("setup.exe"), b"x").unwrap();
+    let torrent = root.join("Stardew Valley.torrent");
+    let aria2 = root.join("Stardew Valley.aria2");
+    let other = root.join("Other Game.torrent");
+    fs::write(&torrent, b"torrent").unwrap();
+    fs::write(&aria2, b"aria2").unwrap();
+    fs::write(&other, b"keep").unwrap();
+
+    cleanup_torrent_sidecar_files(&game.to_string_lossy(), "Stardew Valley");
+
+    assert!(!torrent.exists(), "torrent do jogo deveria ser apagado");
+    assert!(!aria2.exists(), "aria2 do jogo deveria ser apagado");
+    assert!(other.exists(), "torrent de outro jogo não deve ser apagado");
+
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn deletes_torrent_inside_dest_folder_by_folder_name() {
+    let root = temp_dir("inside");
+    let game = root.join("Pixel Harvest");
+    fs::create_dir_all(&game).unwrap();
+    let torrent = game.join("Pixel Harvest.torrent");
+    fs::write(&torrent, b"torrent").unwrap();
+
+    cleanup_torrent_sidecar_files(&game.to_string_lossy(), "Pixel Harvest");
+
+    assert!(!torrent.exists());
+    let _ = fs::remove_dir_all(&root);
+  }
+
+  #[test]
+  fn does_not_delete_unrelated_hash_named_torrent() {
+    let root = temp_dir("hash");
+    let game = root.join("Galaxy Rangers");
+    fs::create_dir_all(&game).unwrap();
+    let hash_torrent = root.join("a1b2c3d4e5f67890.torrent");
+    fs::write(&hash_torrent, b"hash").unwrap();
+
+    cleanup_torrent_sidecar_files(&game.to_string_lossy(), "Galaxy Rangers");
+
+    assert!(
+      hash_torrent.exists(),
+      "nome por hash sem relação com o título não deve ser apagado"
+    );
+    let _ = fs::remove_dir_all(&root);
+  }
+}
+

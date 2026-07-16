@@ -73,6 +73,7 @@ export function LibraryTab({
             : ''
         }
         confirmLabel={t('common.delete')}
+        busyLabel={t('library.deleting')}
         cancelLabel={t('common.cancel')}
         confirmVariant="danger"
         busy={isDeleting}

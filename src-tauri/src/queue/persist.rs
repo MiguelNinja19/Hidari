@@ -149,6 +149,9 @@ pub fn delete_persisted_queue_job(conn: &Connection, id: &str) -> Result<(), Str
 
 pub fn mark_active_persisted_jobs_paused(conn: &Connection) -> Result<(), String> {
   ensure_persisted_queue_table(conn)?;
+  // Downloads já a 100%: fecham como completed — senão no próximo arranque
+  // o restore recria o magnet e parece “baixar de novo”.
+  let _ = finalize_fully_transferred_persisted_jobs(conn);
   conn
     .execute(
       "UPDATE persisted_queue_jobs \
@@ -160,6 +163,37 @@ pub fn mark_active_persisted_jobs_paused(conn: &Connection) -> Result<(), String
   Ok(())
 }
 
+fn is_fully_transferred(bytes_downloaded: i64, total_bytes: i64) -> bool {
+  const MIN_CONTENT_BYTES: i64 = 5 * 1024 * 1024;
+  // Estrito: só “não restaurar” quando os bytes batem certo.
+  // O 0.995 da UI é outra história (barra/%); aqui um falso positivo
+  // deixaria um download a meio sem retomar.
+  total_bytes >= MIN_CONTENT_BYTES
+    && bytes_downloaded >= MIN_CONTENT_BYTES
+    && bytes_downloaded >= total_bytes
+}
+
+pub fn is_fully_transferred_bytes(bytes_downloaded: i64, total_bytes: i64) -> bool {
+  is_fully_transferred(bytes_downloaded, total_bytes)
+}
+
+/// Jobs com transferência real concluída deixam de ser “resumíveis”.
+pub fn finalize_fully_transferred_persisted_jobs(conn: &Connection) -> Result<usize, String> {
+  ensure_persisted_queue_table(conn)?;
+  let changed = conn
+    .execute(
+      "UPDATE persisted_queue_jobs \
+       SET status = 'completed', updated_at = CURRENT_TIMESTAMP \
+       WHERE status IN ('paused', 'pending', 'downloading', 'retrying', 'seeding') \
+         AND total_bytes >= 5242880 \
+         AND bytes_downloaded >= 5242880 \
+         AND bytes_downloaded >= total_bytes",
+      [],
+    )
+    .map_err(|e| format!("could_not_finalize_persisted_jobs: {e}"))?;
+  Ok(changed)
+}
+
 fn is_resumable_status(status: &str) -> bool {
   matches!(
     status,
@@ -169,6 +203,7 @@ fn is_resumable_status(status: &str) -> bool {
 
 pub fn list_resumable_persisted_jobs(conn: &Connection) -> Result<Vec<PersistedQueueJob>, String> {
   ensure_persisted_queue_table(conn)?;
+  let _ = finalize_fully_transferred_persisted_jobs(conn);
   let mut stmt = conn
     .prepare(
       "SELECT id, title, url, dest_path, status, priority, progress, bytes_downloaded, total_bytes, error_msg \
@@ -195,7 +230,12 @@ pub fn list_resumable_persisted_jobs(conn: &Connection) -> Result<Vec<PersistedQ
     })
     .map_err(|e| format!("could_not_query_persisted_queue: {e}"))?;
 
-  Ok(rows.filter_map(Result::ok).collect())
+  Ok(
+    rows
+      .filter_map(Result::ok)
+      .filter(|job| !is_fully_transferred(job.bytes_downloaded, job.total_bytes))
+      .collect(),
+  )
 }
 
 fn job_identity_key(url: &str, dest_path: &str, title: &str) -> String {
@@ -265,6 +305,19 @@ pub async fn restore_persisted_queue_jobs(app: AppHandle) {
 
   for job in persisted {
     if !is_resumable_status(&job.status) || job.url.trim().is_empty() {
+      continue;
+    }
+    // Já baixado de verdade → Biblioteca; não recriar no motor.
+    if is_fully_transferred(job.bytes_downloaded, job.total_bytes) {
+      if let Ok(conn) = open_database_connection(&app) {
+        let _ = update_persisted_queue_status(&conn, &job.id, "completed", None);
+      }
+      log::info!(
+        "skip restore of finished job '{}' ({} / {} bytes)",
+        job.title,
+        job.bytes_downloaded,
+        job.total_bytes
+      );
       continue;
     }
     let key = job_identity_key(&job.url, &job.dest_path, &job.title);
@@ -371,6 +424,19 @@ async fn resume_paused_sidecar_jobs(client: &reqwest::Client, port: u16) {
     if status != "paused" {
       continue;
     }
+    let done = row
+      .get("bytesDownloaded")
+      .or_else(|| row.get("bytes_downloaded"))
+      .and_then(|v| v.as_i64())
+      .unwrap_or(0);
+    let total = row
+      .get("totalBytes")
+      .or_else(|| row.get("total_bytes"))
+      .and_then(|v| v.as_i64())
+      .unwrap_or(0);
+    if is_fully_transferred(done, total) {
+      continue;
+    }
     let Some(id) = row.get("id").and_then(|v| v.as_str()) else {
       continue;
     };
@@ -390,5 +456,84 @@ async fn resume_paused_sidecar_jobs(client: &reqwest::Client, port: u16) {
       }
       Err(error) => log::warn!("auto-resume failed id={id}: {error}"),
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{finalize_fully_transferred_persisted_jobs, is_fully_transferred_bytes};
+  use rusqlite::Connection;
+
+  #[test]
+  fn fully_transferred_requires_exact_bytes_and_min_size() {
+    let big = 618_035_125_i64;
+    assert!(is_fully_transferred_bytes(big, big));
+    assert!(!is_fully_transferred_bytes(big - 1, big));
+    // 99.6% ainda incompleto — não finaliza
+    assert!(!is_fully_transferred_bytes(((big as f64) * 0.996) as i64, big));
+    // Metadados pequeninos nunca contam
+    assert!(!is_fully_transferred_bytes(32_708, 32_708));
+    assert!(!is_fully_transferred_bytes(0, 0));
+  }
+
+  #[test]
+  fn finalize_marks_complete_seeding_but_keeps_incomplete() {
+    let conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+      "CREATE TABLE persisted_queue_jobs (
+         id TEXT PRIMARY KEY NOT NULL,
+         title TEXT NOT NULL,
+         url TEXT NOT NULL,
+         dest_path TEXT NOT NULL,
+         status TEXT NOT NULL,
+         priority INTEGER NOT NULL DEFAULT 0,
+         progress INTEGER NOT NULL DEFAULT 0,
+         bytes_downloaded INTEGER NOT NULL DEFAULT 0,
+         total_bytes INTEGER NOT NULL DEFAULT 0,
+         error_msg TEXT,
+         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+       );",
+    )
+    .unwrap();
+
+    conn.execute(
+      "INSERT INTO persisted_queue_jobs \
+         (id, title, url, dest_path, status, progress, bytes_downloaded, total_bytes) \
+       VALUES \
+         ('done', 'Terraria', 'magnet:?x', 'J:\\\\dddd', 'seeding', 100, 618035125, 618035125), \
+         ('mid', 'Half', 'magnet:?y', 'J:\\\\dddd', 'paused', 50, 300000000, 618035125), \
+         ('tiny', 'Meta', 'magnet:?z', 'J:\\\\dddd', 'seeding', 100, 32708, 32708)",
+      [],
+    )
+    .unwrap();
+
+    let n = finalize_fully_transferred_persisted_jobs(&conn).unwrap();
+    assert_eq!(n, 1);
+
+    let done_status: String = conn
+      .query_row(
+        "SELECT status FROM persisted_queue_jobs WHERE id='done'",
+        [],
+        |r| r.get(0),
+      )
+      .unwrap();
+    let mid_status: String = conn
+      .query_row(
+        "SELECT status FROM persisted_queue_jobs WHERE id='mid'",
+        [],
+        |r| r.get(0),
+      )
+      .unwrap();
+    let tiny_status: String = conn
+      .query_row(
+        "SELECT status FROM persisted_queue_jobs WHERE id='tiny'",
+        [],
+        |r| r.get(0),
+      )
+      .unwrap();
+
+    assert_eq!(done_status, "completed");
+    assert_eq!(mid_status, "paused");
+    assert_eq!(tiny_status, "seeding");
   }
 }

@@ -26,6 +26,8 @@ pub struct LocalLibraryItemDto {
 #[serde(rename_all = "camelCase")]
 pub struct DeleteLocalLibraryItemPayload {
   pub path: String,
+  #[serde(default)]
+  pub title: Option<String>,
 }
 
 // ── DTOs: Sources ─────────────────────────────────────────────────────────────

@@ -823,42 +823,44 @@ export function useLibraryControllerState({
     }
     removeInstallingKey(busyKey);
 
-    setHiddenLibraryKeys((prev) => new Set([...prev, ...hideKeys]));
-    setLocalLibraryItems((prev) =>
-      prev.filter((folder) => {
-        if (!folder.isDir) return true;
-        if (libraryTitlesMatch(folder.name, item.title)) return false;
-        if (
-          resolveDeletePath(folder.path).toLowerCase() ===
-          deletePath.toLowerCase()
-        )
-          return false;
-        return !relatedJobs.some(
-          (job) =>
-            libraryTitlesMatch(folder.name, job.title) ||
-            normalizeLibraryPath(folder.path) ===
-              normalizeLibraryPath(job.destPath),
-        );
-      }),
-    );
-    for (const job of relatedJobs) {
-      dispatch(removeJobLocally(job.id));
-    }
-    setPathStateByKey((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        const matchesPath = key.includes(deletePath.toLowerCase());
-        const matchesJob = relatedJobs.some((job) => key === `job:${job.id}`);
-        if (matchesPath || matchesJob) delete next[key];
-      }
-      removeLibraryPathStateCacheKeys(
-        (key) =>
-          key.includes(deletePath.toLowerCase()) ||
-          relatedJobs.some((job) => key === `job:${job.id}`),
-        defaultDownloadPathRef.current,
+    const applyDeletedLocalState = () => {
+      setHiddenLibraryKeys((prev) => new Set([...prev, ...hideKeys]));
+      setLocalLibraryItems((prev) =>
+        prev.filter((folder) => {
+          if (!folder.isDir) return true;
+          if (libraryTitlesMatch(folder.name, item.title)) return false;
+          if (
+            resolveDeletePath(folder.path).toLowerCase() ===
+            deletePath.toLowerCase()
+          )
+            return false;
+          return !relatedJobs.some(
+            (job) =>
+              libraryTitlesMatch(folder.name, job.title) ||
+              normalizeLibraryPath(folder.path) ===
+                normalizeLibraryPath(job.destPath),
+          );
+        }),
       );
-      return next;
-    });
+      for (const job of relatedJobs) {
+        dispatch(removeJobLocally(job.id));
+      }
+      setPathStateByKey((prev) => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          const matchesPath = key.includes(deletePath.toLowerCase());
+          const matchesJob = relatedJobs.some((job) => key === `job:${job.id}`);
+          if (matchesPath || matchesJob) delete next[key];
+        }
+        removeLibraryPathStateCacheKeys(
+          (key) =>
+            key.includes(deletePath.toLowerCase()) ||
+            relatedJobs.some((job) => key === `job:${job.id}`),
+          defaultDownloadPathRef.current,
+        );
+        return next;
+      });
+    };
 
     try {
       const scannedFolders =
@@ -887,9 +889,18 @@ export function useLibraryControllerState({
       const deleteErrors: unknown[] = [];
       for (const path of pathsToDelete) {
         try {
-          await sourcesApi.deleteLocalLibraryItem(path);
+          await sourcesApi.deleteLocalLibraryItem(path, item.title);
         } catch (error) {
           if (isBenignDeleteError(error)) continue;
+          deleteErrors.push(error);
+        }
+      }
+
+      // Garante limpeza na BD mesmo se a pasta já não existia / dest era a raiz.
+      try {
+        await sourcesApi.deleteLocalLibraryItem(item.destPath, item.title);
+      } catch (error) {
+        if (!isBenignDeleteError(error)) {
           deleteErrors.push(error);
         }
       }
@@ -904,14 +915,18 @@ export function useLibraryControllerState({
 
       if (deleteErrors.length > 0) {
         if (deleteErrors.some(isFileLockDeleteError)) {
+          applyDeletedLocalState();
           showError(formatLibraryDeleteError(deleteErrors));
+          setPendingDeleteItem(null);
           return;
         }
         throw deleteErrors[0];
       }
+      applyDeletedLocalState();
       setPendingDeleteItem(null);
     } catch (error) {
       if (isFileLockDeleteError(error)) {
+        applyDeletedLocalState();
         showError(formatLibraryDeleteError([error]));
         const scanned = await sourcesApi
           .scanDefaultDownloadPath()
@@ -926,11 +941,6 @@ export function useLibraryControllerState({
         return;
       }
 
-      setHiddenLibraryKeys((prev) => {
-        const next = new Set(prev);
-        for (const key of hideKeys) next.delete(key);
-        return next;
-      });
       showError(formatUserError(error, t("library.deleteError")));
       void dispatch(fetchJobs());
       const scanned = await sourcesApi

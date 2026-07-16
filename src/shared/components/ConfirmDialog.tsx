@@ -9,6 +9,7 @@ type ConfirmDialogProps = {
   cancelLabel: string
   confirmVariant?: 'danger' | 'primary'
   busy?: boolean
+  busyLabel?: string
   onConfirm: () => void
   onCancel: () => void
 }
@@ -21,12 +22,14 @@ export function ConfirmDialog({
   cancelLabel,
   confirmVariant = 'danger',
   busy = false,
+  busyLabel,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const titleId = useId()
   const descId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
+  const actionLabel = busy && busyLabel ? busyLabel : confirmLabel
 
   useEffect(() => {
     if (!open) return
@@ -58,6 +61,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descId}
+        aria-busy={busy || undefined}
         tabIndex={-1}
       >
         <div className="confirm-dialog__body">
@@ -79,13 +83,14 @@ export function ConfirmDialog({
           </button>
           <button
             type="button"
-            className={`btn btn--compact ${
+            className={`btn btn--compact confirm-dialog__confirm ${
               confirmVariant === 'danger' ? 'btn-danger' : 'btn-primary'
-            }`}
+            }${busy ? ' is-busy' : ''}`}
             disabled={busy}
             onClick={onConfirm}
           >
-            {confirmLabel}
+            {busy ? <span className="btn__spinner" aria-hidden /> : null}
+            <span>{actionLabel}</span>
           </button>
         </div>
       </div>

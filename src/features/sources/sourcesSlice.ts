@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
-import { isAppLanguage, localeForLanguage } from '../../shared/config/locale'
+import { isAppLanguage, APP_LOCALE, localeForLanguage } from '../../shared/config/locale'
 import i18n from '../../shared/i18n'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import type {
@@ -90,7 +90,7 @@ const sourcesSlice = createSlice({
         }
         state.notice = action.payload.warning
           ?? `${action.payload.downloadCount.toLocaleString(
-            localeForLanguage(isAppLanguage(i18n.language) ? i18n.language : 'pt-BR'),
+            localeForLanguage(isAppLanguage(i18n.language) ? i18n.language : APP_LOCALE),
           )} jogos atualizados.`
       })
       .addCase(syncSource.rejected, (state, action) => {

@@ -63,8 +63,10 @@ export const sourcesApi = {
     tauriClient.invoke<number | null>('get_disk_free_bytes_for_path', { payload: { path } }),
   scanDefaultDownloadPath: () =>
     tauriClient.invoke<LocalLibraryItem[]>('scan_default_download_path'),
-  deleteLocalLibraryItem: (path: string) =>
-    tauriClient.invoke<void>('delete_local_library_item', { payload: { path } }),
+  deleteLocalLibraryItem: (path: string, title?: string) =>
+    tauriClient.invoke<void>('delete_local_library_item', {
+      payload: { path, title: title?.trim() ? title : null },
+    }),
   openLocalPath: (path: string) => tauriClient.invoke<void>('open_local_path', { path }),
   launchGame: (title: string, path: string, jobId?: string) =>
     tauriClient.invoke<string>('launch_game_from_path', {

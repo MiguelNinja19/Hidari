@@ -2,11 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { listen } from '@tauri-apps/api/event'
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification,
-} from '@tauri-apps/plugin-notification'
+import { sendHidariNotification } from '../../shared/utils/osNotification'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { useAppSettings } from '../../app/context/AppSettingsContext'
 import { APP_LOCALE, isAppLanguage, localeForLanguage } from '../../shared/config/locale'
@@ -23,7 +19,6 @@ import { SettingsPage } from './SettingsPage'
 import { SETTING_KEY, speedKeyToBps } from '../../shared/config/appSettings'
 import { HYDRALINKS_SITE_URL } from '../../shared/config/hydraLinks'
 import { formatUserError } from '../../shared/utils/formatUserError'
-import { notificationSoundOptions } from '../../shared/utils/notificationSound'
 import { useToast } from '../../shared/components/ToastProvider'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { useErrorToast } from '../../shared/hooks/useErrorToast'
@@ -54,8 +49,6 @@ export function SettingsTab() {
     setNotifyReadyToPlay,
     notifyCatalogChanges,
     setNotifyCatalogChanges,
-    notifySound,
-    setNotifySound,
   } = useAppSettings()
   const sources = useAppSelector((state) => state.sources.items)
   const sourcesLoading = useAppSelector((state) => state.sources.loading)
@@ -383,27 +376,22 @@ export function SettingsTab() {
       notifyCatalogChanges,
     )
 
-  const handleToggleNotifySound = (enabled: boolean) =>
-    persistNotifyFlag(SETTING_KEY.notifySound, enabled, setNotifySound, notifySound)
-
   const [notifyTestBusy, setNotifyTestBusy] = useState(false)
 
   const handleTestNotification = async () => {
     setNotifyTestBusy(true)
     try {
-      let granted = await isPermissionGranted()
-      if (!granted) {
-        granted = (await requestPermission()) === 'granted'
-      }
-      if (!granted) {
-        showError(t('settings.notifyTestPermissionError'))
-        return
-      }
-      await sendNotification({
-        title: t('settings.notifyTestTitle'),
-        body: t('settings.notifyTestBody'),
-        ...notificationSoundOptions(notifySound),
+      const title = t('settings.notifyTestTitle')
+      const body = t('settings.notifyTestBody')
+      const sent = await sendHidariNotification({
+        title,
+        body,
       })
+      if (sent) {
+        showSuccess(`${title} · ${body}`)
+      } else {
+        showError(t('settings.notifyTestError'))
+      }
     } catch (error) {
       showError(formatUserError(error, t('settings.notifyTestError')))
     } finally {
@@ -517,11 +505,9 @@ export function SettingsTab() {
         notifyReadyToInstall={notifyReadyToInstall}
         notifyReadyToPlay={notifyReadyToPlay}
         notifyCatalogChanges={notifyCatalogChanges}
-        notifySound={notifySound}
         handleToggleNotifyReadyToInstall={handleToggleNotifyReadyToInstall}
         handleToggleNotifyReadyToPlay={handleToggleNotifyReadyToPlay}
         handleToggleNotifyCatalogChanges={handleToggleNotifyCatalogChanges}
-        handleToggleNotifySound={handleToggleNotifySound}
         handleTestNotification={handleTestNotification}
         notifyTestBusy={notifyTestBusy}
         coverPrecacheStatus={coverPrecacheStatus}

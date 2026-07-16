@@ -82,6 +82,7 @@ dependencies = [
  "dotenvy",
  "log",
  "notify",
+ "notify-rust",
  "open",
  "r2d2",
  "r2d2_sqlite",
@@ -99,8 +100,11 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tauri-winrt-notification",
  "tokio",
  "url",
+ "windows-sys 0.59.0",
+ "winreg",
 ]
 
 [[package]]

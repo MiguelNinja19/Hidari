@@ -15,6 +15,8 @@ type LibraryGameCardProps = {
   metaLine?: string | null
   /** Barra indeterminada (verificar / instalar) para não parecer que a app travou. */
   pendingActivity?: boolean
+  /** Exclusão em curso — fade + barra para feedback imediato. */
+  isDeleting?: boolean
   cover: ReactNode
   /** Só mostrar o título quando a capa não está disponível. */
   showTitle?: boolean
@@ -29,6 +31,7 @@ export function LibraryGameCard({
   titleAttr,
   metaLine,
   pendingActivity = false,
+  isDeleting = false,
   cover,
   showTitle = false,
   primaryAction = null,
@@ -40,6 +43,11 @@ export function LibraryGameCard({
   const menuId = useId()
   const hasMenu = secondaryActions.length > 0
   const label = titleAttr ?? title
+  const showProgress = pendingActivity || isDeleting
+
+  useEffect(() => {
+    if (isDeleting) setMenuOpen(false)
+  }, [isDeleting])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -87,7 +95,7 @@ export function LibraryGameCard({
   }, [menuOpen, menuPos])
 
   const openContextMenu = (event: ReactMouseEvent) => {
-    if (!hasMenu) return
+    if (!hasMenu || isDeleting) return
     event.preventDefault()
     event.stopPropagation()
     setMenuPos({ left: event.clientX, top: event.clientY })
@@ -102,12 +110,13 @@ export function LibraryGameCard({
         primaryAction ? 'library-card--actionable' : '',
         menuOpen ? 'library-card--menu-open' : '',
         pendingActivity ? 'library-card--pending' : '',
+        isDeleting ? 'library-card--deleting' : '',
       ]
         .filter(Boolean)
         .join(' ')}
       aria-label={label}
       title={label}
-      aria-busy={pendingActivity || undefined}
+      aria-busy={showProgress || undefined}
       onContextMenu={openContextMenu}
     >
       <div className="discover-card__panel">
@@ -116,7 +125,7 @@ export function LibraryGameCard({
             type="button"
             className="discover-card__cover-hitbox"
             title={primaryAction.title}
-            disabled={primaryAction.disabled}
+            disabled={primaryAction.disabled || isDeleting}
             onClick={primaryAction.onClick}
             onContextMenu={openContextMenu}
             aria-label={primaryAction.label}
@@ -127,7 +136,7 @@ export function LibraryGameCard({
                 <h3 className="discover-card__title discover-card__title--fallback">{title}</h3>
               ) : null}
               {metaLine ? <span className="discover-card__badge">{metaLine}</span> : null}
-              {pendingActivity ? (
+              {showProgress ? (
                 <div className="library-card__progress" aria-hidden>
                   <span className="library-card__progress-fill" />
                 </div>
@@ -141,7 +150,7 @@ export function LibraryGameCard({
               <h3 className="discover-card__title discover-card__title--fallback">{title}</h3>
             ) : null}
             {metaLine ? <span className="discover-card__badge">{metaLine}</span> : null}
-            {pendingActivity ? (
+            {showProgress ? (
               <div className="library-card__progress" aria-hidden>
                 <span className="library-card__progress-fill" />
               </div>
@@ -182,7 +191,7 @@ export function LibraryGameCard({
                     .filter(Boolean)
                     .join(' ')}
                   title={action.title ?? action.label}
-                  disabled={action.disabled}
+                  disabled={action.disabled || isDeleting}
                   onClick={(event) => {
                     event.preventDefault()
                     event.stopPropagation()

@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { localeForLanguage, isAppLanguage, type AppLanguage } from '../../shared/config/locale'
+import { localeForLanguage, isAppLanguage, APP_LOCALE, type AppLanguage } from '../../shared/config/locale'
 import type { LibraryStatusMeta } from './libraryItemState'
 import { itemPathCtx, pathStateKey } from './libraryItemState'
 import { CatalogCover } from '../../shared/components/CatalogCover'
@@ -295,7 +295,7 @@ function buildLibraryActions(
 
 export function LibraryPage() {
   const { t, i18n } = useTranslation()
-  const currentLanguage: AppLanguage = isAppLanguage(i18n.language) ? i18n.language : 'pt-BR'
+  const currentLanguage: AppLanguage = isAppLanguage(i18n.language) ? i18n.language : APP_LOCALE
   const {
     filteredEntries,
     libraryFilter,
@@ -314,6 +314,7 @@ export function LibraryPage() {
     handlePickGameInstallFolder,
     handlePickLaunchExe,
     handleDeleteLibraryItem,
+    deletingLibraryKey,
     pathStateByKey,
     libraryDetail,
     openLibraryDetail,
@@ -470,13 +471,23 @@ export function LibraryPage() {
             })
 
             const statusLine = libraryStatusLine(statusMeta, primary, t, currentLanguage)
-            const pendingActivity = libraryPendingActivity(statusMeta)
+            const isDeletingCard =
+              deletingLibraryKey === item.id || deletingLibraryKey === item.destPath
+            const pendingActivity = libraryPendingActivity(statusMeta) || isDeletingCard
             const hasCover =
               cover.status !== 'error' &&
               Boolean(cover.localPath?.trim() || cover.coverUrl?.trim())
 
             return (
-              <li key={item.id} className="library-grid__item">
+              <li
+                key={item.id}
+                className={[
+                  'library-grid__item',
+                  isDeletingCard ? 'library-grid__item--deleting' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
                 <LibraryGameCard
                   title={cleanTitleForDisplay(item.title)}
                   titleAttr={[
@@ -489,8 +500,9 @@ export function LibraryPage() {
                     .filter(Boolean)
                     .join(' · ')}
                   showTitle={!hasCover}
-                  metaLine={statusLine}
+                  metaLine={isDeletingCard ? t('library.deleting') : statusLine}
                   pendingActivity={pendingActivity}
+                  isDeleting={isDeletingCard}
                   cover={
                     <CatalogCover
                       title={item.title}
@@ -502,8 +514,8 @@ export function LibraryPage() {
                       onLocalCoverError={() => invalidateLocalCover(item.title, cover.coverUrl)}
                     />
                   }
-                  primaryAction={primary}
-                  secondaryActions={secondary}
+                  primaryAction={isDeletingCard ? null : primary}
+                  secondaryActions={isDeletingCard ? [] : secondary}
                 />
               </li>
             )

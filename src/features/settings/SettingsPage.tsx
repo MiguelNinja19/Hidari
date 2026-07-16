@@ -2,6 +2,7 @@ import { useState, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type
 import { useTranslation } from 'react-i18next'
 import {
   APP_LANGUAGES,
+  APP_LOCALE,
   isAppLanguage,
   type AppLanguage,
 } from '../../shared/config/locale'
@@ -51,11 +52,9 @@ type SettingsPageProps = {
   notifyReadyToInstall: boolean
   notifyReadyToPlay: boolean
   notifyCatalogChanges: boolean
-  notifySound: boolean
   handleToggleNotifyReadyToInstall: (enabled: boolean) => Promise<void>
   handleToggleNotifyReadyToPlay: (enabled: boolean) => Promise<void>
   handleToggleNotifyCatalogChanges: (enabled: boolean) => Promise<void>
-  handleToggleNotifySound: (enabled: boolean) => Promise<void>
   handleTestNotification: () => Promise<void>
   notifyTestBusy?: boolean
   coverPrecacheStatus: {
@@ -154,11 +153,9 @@ export function SettingsPage({
   notifyReadyToInstall,
   notifyReadyToPlay,
   notifyCatalogChanges,
-  notifySound,
   handleToggleNotifyReadyToInstall,
   handleToggleNotifyReadyToPlay,
   handleToggleNotifyCatalogChanges,
-  handleToggleNotifySound,
   handleTestNotification,
   notifyTestBusy,
   coverPrecacheStatus,
@@ -169,7 +166,7 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const { t, i18n } = useTranslation()
   const [addMethod, setAddMethod] = useState<AddMethod>('url')
-  const currentLanguage: AppLanguage = isAppLanguage(i18n.language) ? i18n.language : 'pt-BR'
+  const currentLanguage: AppLanguage = isAppLanguage(i18n.language) ? i18n.language : APP_LOCALE
   const isSyncingAll = syncingAllSources
   const canAddUrl = sourceUrlInput.trim().length > 0
   const freeSpaceLabel =
@@ -379,25 +376,17 @@ export function SettingsPage({
           </div>
           <div className="set-switch">
             <div className="set-switch__copy">
-              <span className="set-switch__label">{t('settings.notifySound')}</span>
-              <span className="set-switch__hint">{t('settings.notifySoundHint')}</span>
+              <span className="set-switch__label">{t('settings.notifyTest')}</span>
+              <span className="set-switch__hint">{t('settings.notifyTestHint')}</span>
             </div>
-            <div className="set-switch__controls">
-              <button
-                type="button"
-                className="set-btn set-btn--secondary set-btn--compact"
-                disabled={notifyTestBusy}
-                onClick={() => void handleTestNotification()}
-              >
-                {notifyTestBusy ? t('settings.notifyTestBusy') : t('settings.notifyTest')}
-              </button>
-              <button
-                type="button"
-                className={notifySound ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                aria-label={t('settings.notifySound')}
-                onClick={() => void handleToggleNotifySound(!notifySound)}
-              />
-            </div>
+            <button
+              type="button"
+              className="set-btn set-btn--secondary set-btn--compact"
+              disabled={notifyTestBusy}
+              onClick={() => void handleTestNotification()}
+            >
+              {notifyTestBusy ? t('settings.notifyTestBusy') : t('settings.notifyTest')}
+            </button>
           </div>
         </SettingsSection>
 

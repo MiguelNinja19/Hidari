@@ -1,14 +1,14 @@
 export const APP_LANGUAGES = [
-  { code: 'pt-BR', label: 'Português', nativeLabel: 'Português (Brasil)' },
   { code: 'en', label: 'English', nativeLabel: 'English' },
+  { code: 'pt-BR', label: 'Português', nativeLabel: 'Português (Brasil)' },
   { code: 'es', label: 'Español', nativeLabel: 'Español' },
   { code: 'ru', label: 'Русский', nativeLabel: 'Русский' },
 ] as const
 
 export type AppLanguage = (typeof APP_LANGUAGES)[number]['code']
 
-/** Locale padrão da interface (português do Brasil). */
-export const APP_LOCALE: AppLanguage = 'pt-BR'
+/** Locale padrão da interface (inglês). */
+export const APP_LOCALE: AppLanguage = 'en'
 
 export const LANGUAGE_STORAGE_KEY = 'hidari.language'
 

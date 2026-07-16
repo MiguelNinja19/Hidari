@@ -36,8 +36,6 @@ export type AppSettingsContextValue = {
   setNotifyReadyToPlay: Dispatch<SetStateAction<boolean>>
   notifyCatalogChanges: boolean
   setNotifyCatalogChanges: Dispatch<SetStateAction<boolean>>
-  notifySound: boolean
-  setNotifySound: Dispatch<SetStateAction<boolean>>
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -53,8 +51,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [disabledSourcesReady, setDisabledSourcesReady] = useState(false)
   const [notifyReadyToInstall, setNotifyReadyToInstall] = useState(true)
   const [notifyReadyToPlay, setNotifyReadyToPlay] = useState(true)
-  const [notifyCatalogChanges, setNotifyCatalogChanges] = useState(true)
-  const [notifySound, setNotifySound] = useState(true)
+  const [notifyCatalogChanges, setNotifyCatalogChanges] = useState(false)
 
   useAppBootstrap({
     setDefaultDownloadPath,
@@ -68,7 +65,6 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     setNotifyReadyToInstall,
     setNotifyReadyToPlay,
     setNotifyCatalogChanges,
-    setNotifySound,
   })
 
   const value = useMemo(
@@ -94,8 +90,6 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       setNotifyReadyToPlay,
       notifyCatalogChanges,
       setNotifyCatalogChanges,
-      notifySound,
-      setNotifySound,
     }),
     [
       afterInstallAction,
@@ -107,7 +101,6 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       notifyCatalogChanges,
       notifyReadyToInstall,
       notifyReadyToPlay,
-      notifySound,
       removeTemporaryFiles,
       seedTorrentsEnabled,
     ],

@@ -9,6 +9,7 @@ mod favorites;
 mod launch;
 mod launch_errors;
 mod library;
+mod notifications;
 mod path_security;
 mod queue;
 mod sidecar;
@@ -65,6 +66,7 @@ pub fn run() {
         )?;
       }
       app.handle().plugin(tauri_plugin_notification::init())?;
+      notifications::setup_desktop_notifications(app.handle());
       app.handle().plugin(tauri_plugin_dialog::init())?;
       #[cfg(desktop)]
       {
@@ -212,6 +214,7 @@ pub fn run() {
       get_disk_free_bytes_for_path,
       scan_default_download_path,
       delete_local_library_item,
+      send_desktop_notification,
       sync_download_sources,
       clear_completed_jobs,
       sidecar_enqueue_job,

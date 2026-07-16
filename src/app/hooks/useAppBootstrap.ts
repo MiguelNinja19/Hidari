@@ -11,7 +11,7 @@ import {
   parseSettingFlag,
   SETTING_KEY,
 } from '../../shared/config/appSettings'
-import { isAppLanguage } from '../../shared/config/locale'
+import { isAppLanguage, APP_LOCALE } from '../../shared/config/locale'
 import { setAppLanguage, default as i18n } from '../../shared/i18n'
 import { scheduleDeferred } from '../../shared/utils/scheduleDeferred'
 type BootstrapSettings = {
@@ -26,7 +26,6 @@ type BootstrapSettings = {
   setNotifyReadyToInstall: (v: boolean) => void
   setNotifyReadyToPlay: (v: boolean) => void
   setNotifyCatalogChanges: (v: boolean) => void
-  setNotifySound: (v: boolean) => void
 }
 
 function parseDisabledSourceIds(raw: string | null): string[] {
@@ -57,7 +56,6 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     setNotifyReadyToInstall,
     setNotifyReadyToPlay,
     setNotifyCatalogChanges,
-    setNotifySound,
   } = settings
 
   useEffect(() => {
@@ -97,12 +95,12 @@ export function useAppBootstrap(settings: BootstrapSettings) {
         try {
           // UI (localStorage/i18n) é a fonte de verdade; sincroniza para o SQLite
           // para sinopses Steam usarem o mesmo idioma (en/es/ru/pt-BR).
-          const uiLang = isAppLanguage(i18n.language) ? i18n.language : 'pt-BR'
+          const uiLang = isAppLanguage(i18n.language) ? i18n.language : APP_LOCALE
           await setAppLanguage(uiLang)
 
           const enabled = await sourcesApi.getSeedTorrentsEnabled()
           setSeedTorrentsEnabled(enabled)
-          const [org, after, rem, speed, nInstall, nPlay, nCatalog, nSound] =
+          const [org, after, rem, speed, nInstall, nPlay, nCatalog] =
             await Promise.all([
               sourcesApi.getAppSetting(SETTING_KEY.installOrganization),
               sourcesApi.getAppSetting(SETTING_KEY.afterInstallAction),
@@ -111,7 +109,6 @@ export function useAppBootstrap(settings: BootstrapSettings) {
               sourcesApi.getAppSetting(SETTING_KEY.notifyReadyToInstall),
               sourcesApi.getAppSetting(SETTING_KEY.notifyReadyToPlay),
               sourcesApi.getAppSetting(SETTING_KEY.notifyCatalogChanges),
-              sourcesApi.getAppSetting(SETTING_KEY.notifySound),
             ])
           if (org) setInstallOrganization(org)
           if (after) setAfterInstallAction(after)
@@ -119,8 +116,7 @@ export function useAppBootstrap(settings: BootstrapSettings) {
           if (speed !== null) setDownloadSpeedLimit(bpsToSpeedKey(speed))
           setNotifyReadyToInstall(parseSettingFlag(nInstall))
           setNotifyReadyToPlay(parseSettingFlag(nPlay))
-          setNotifyCatalogChanges(parseSettingFlag(nCatalog))
-          setNotifySound(parseSettingFlag(nSound))
+          setNotifyCatalogChanges(parseSettingFlag(nCatalog, false))
         } catch {
           // Tauri indisponível (ex.: dev no browser)
         }
@@ -175,7 +171,6 @@ export function useAppBootstrap(settings: BootstrapSettings) {
     setNotifyCatalogChanges,
     setNotifyReadyToInstall,
     setNotifyReadyToPlay,
-    setNotifySound,
     setRemoveTemporaryFiles,
     setSeedTorrentsEnabled,
   ])

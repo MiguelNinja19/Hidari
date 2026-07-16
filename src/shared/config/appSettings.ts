@@ -9,7 +9,6 @@ export const SETTING_KEY = {
   notifyReadyToInstall: 'notify_ready_to_install',
   notifyReadyToPlay: 'notify_ready_to_play',
   notifyCatalogChanges: 'notify_catalog_changes',
-  notifySound: 'notify_sound',
 } as const
 
 /** Preferências booleanas guardadas como `'1'` / `'0'` (default ligado). */

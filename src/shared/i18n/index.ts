@@ -28,7 +28,7 @@ void i18n.use(initReactI18next).init({
     ru: { translation: ru },
   },
   lng: readStoredLanguage(),
-  fallbackLng: 'pt-BR',
+  fallbackLng: 'en',
   supportedLngs: [...supportedLngs],
   nonExplicitSupportedLngs: false,
   interpolation: {

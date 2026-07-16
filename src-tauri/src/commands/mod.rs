@@ -24,6 +24,7 @@ pub use crate::library::{
   launch_setup_from_path, scan_default_download_path, set_library_game_root,
   set_library_launch_exe, set_library_note,
 };
+pub use crate::notifications::send_desktop_notification;
 pub use crate::queue::clear_completed_jobs;
 pub use crate::sidecar::{
   extract_job_archive, open_deep_link, open_local_path, remove_job_from_library, sidecar_cancel_job,

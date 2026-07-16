@@ -2,7 +2,7 @@ use crate::config::{self, ARIA2_BINARY};
 use crate::db::open_database_connection;
 use crate::dto::{JobProgressEvent, QUEUE_EVENT_JOB_PROGRESS, SidecarJobForLaunch, SidecarJobProgressRow};
 use crate::queue::persist::{
-  mark_active_persisted_jobs_paused, update_persisted_queue_progress,
+  is_fully_transferred_bytes, mark_active_persisted_jobs_paused, update_persisted_queue_progress,
 };
 use crate::state::SidecarState;
 use rusqlite::params;
@@ -433,10 +433,16 @@ pub fn spawn_sidecar_progress_watcher(app: AppHandle) {
                updated_at = CURRENT_TIMESTAMP WHERE id = ?6",
               params![status, progress, bytes, total, error_msg, id.parse::<i64>().unwrap_or(0)],
             );
+            let persist_status =
+              if is_fully_transferred_bytes(bytes, total) && status == "seeding" {
+                "completed".to_string()
+              } else {
+                status
+              };
             let _ = update_persisted_queue_progress(
               &conn,
               &id,
-              &status,
+              &persist_status,
               progress,
               bytes,
               total,
