@@ -161,7 +161,12 @@ pub async fn get_game_detail(
     .group_key
     .as_ref()
     .map(|value| value.trim().to_string())
-    .filter(|value| !value.is_empty());
+    .filter(|value| {
+      let lower = value.to_ascii_lowercase();
+      !value.is_empty()
+        && !lower.starts_with("source:")
+        && !(lower.starts_with("emb_") && !value.contains(' '))
+    });
   let payload_title = payload
     .title
     .as_ref()
@@ -178,6 +183,11 @@ pub async fn get_game_detail(
 
   let game = if let Some(group_key) = payload_group_key.as_deref() {
     find_catalog_game_by_group_key(&app, &active_sources, group_key)
+      .or_else(|| {
+        payload_title
+          .as_deref()
+          .and_then(|title| find_catalog_game_by_title(&app, &active_sources, title))
+      })
   } else if let Some(title) = payload_title.as_deref() {
     find_catalog_game_by_title(&app, &active_sources, title)
   } else {
@@ -185,7 +195,10 @@ pub async fn get_game_detail(
   }
   .ok_or_else(|| "Jogo não encontrado no catálogo.".to_string())?;
 
-  let resolved_group_key = payload_group_key.or_else(|| game.group_key.clone());
+  let resolved_group_key = game
+    .group_key
+    .clone()
+    .or(payload_group_key);
 
   let downloads = if let Some(group_key) = resolved_group_key.as_deref() {
     let options = list_download_options_for_group_key(&app, &active_sources, group_key);

@@ -2726,6 +2726,86 @@ select.settings-input:focus,
   color: var(--text-faint);
 }
 
+.discover-detail__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.discover-detail__favorite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+
+.discover-detail__favorite:hover:not(:disabled) {
+  color: var(--text-main);
+  border-color: var(--text-faint);
+  background: var(--surface-3);
+}
+
+.discover-detail__favorite:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.discover-detail__favorite--on {
+  color: #e85d7a;
+  border-color: rgba(232, 93, 122, 0.45);
+  background: rgba(232, 93, 122, 0.1);
+}
+
+.discover-detail__favorite--on:hover:not(:disabled) {
+  color: #ff6b8a;
+  border-color: rgba(255, 107, 138, 0.55);
+  background: rgba(232, 93, 122, 0.16);
+}
+
+.discover-detail__favorite:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.discover-detail__favorite-icon {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  transition: transform 0.15s ease;
+}
+
+.discover-detail__favorite--on .discover-detail__favorite-icon {
+  transform: scale(1.05);
+}
+
+.discover-detail__favorite-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-main);
+  border-radius: 50%;
+  animation: discover-favorite-spin 0.7s linear infinite;
+}
+
+@keyframes discover-favorite-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .discover-detail__back:hover {
   color: var(--text-main);
 }

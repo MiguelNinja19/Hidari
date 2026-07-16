@@ -11,6 +11,7 @@ import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { CoverWarmGridItem } from '../covers/CoverWarmGridItem'
 import { useCovers } from '../covers/CoversProvider'
 import { catalogGameDisplayTitle } from '../../shared/utils/normalizeTitleKey'
+import { favoriteCatalogKeyForGame } from '../../shared/utils/favoriteCatalogKey'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { useToast } from '../../shared/components/ToastProvider'
@@ -82,7 +83,7 @@ export function DiscoverPage() {
       return
     }
     let cancelled = false
-    const key = discoverPickGame.id || discoverPickGame.title
+    const key = favoriteCatalogKeyForGame(discoverPickGame)
     void sourcesApi
       .isFavoriteCatalogEntry(key)
       .then((value) => {
@@ -102,7 +103,7 @@ export function DiscoverPage() {
     try {
       const next = await sourcesApi.toggleFavoriteCatalogEntry(
         discoverPickGame.title,
-        discoverPickGame.id || undefined,
+        favoriteCatalogKeyForGame(discoverPickGame),
       )
       setFavorite(next)
     } catch (error) {

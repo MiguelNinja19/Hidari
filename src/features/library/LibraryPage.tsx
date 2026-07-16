@@ -10,6 +10,7 @@ import { LibraryGameCard } from './LibraryGameCard'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
 import { LibrarySortToggle } from './LibrarySortToggle'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
+import { favoriteCatalogKeyForGame } from '../../shared/utils/favoriteCatalogKey'
 import type { LibraryEntry } from './types'
 import {
   useLibraryController,
@@ -342,7 +343,7 @@ export function LibraryPage() {
       return
     }
     let cancelled = false
-    const key = libraryDetail.game.id || libraryDetail.game.title
+    const key = favoriteCatalogKeyForGame(libraryDetail.game)
     void sourcesApi
       .isFavoriteCatalogEntry(key)
       .then((value) => {
@@ -391,7 +392,7 @@ export function LibraryPage() {
           void sourcesApi
             .toggleFavoriteCatalogEntry(
               libraryDetail.game.title,
-              libraryDetail.game.id || undefined,
+              favoriteCatalogKeyForGame(libraryDetail.game),
             )
             .then(setDetailFavorite)
             .catch(() => {})

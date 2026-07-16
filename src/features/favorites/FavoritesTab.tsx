@@ -13,6 +13,11 @@ import { enqueueJob } from '../queue/queueSlice'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { useToast } from '../../shared/components/ToastProvider'
 import { catalogGameDisplayTitle } from '../../shared/utils/normalizeTitleKey'
+import {
+  favoriteCatalogKeyForEntry,
+  favoriteCatalogKeyForGame,
+  isUsableFavoriteCatalogKey,
+} from '../../shared/utils/favoriteCatalogKey'
 import { isAppLanguage } from '../../shared/config/locale'
 import i18n from '../../shared/i18n'
 import type {
@@ -24,12 +29,13 @@ import type {
 const SKELETON_COUNT = 12
 
 function favoriteToCatalogGame(entry: FavoriteCatalogEntry): CatalogGame {
+  const catalogKey = favoriteCatalogKeyForEntry(entry.title, entry.catalogKey)
   return {
-    id: entry.catalogKey,
+    id: catalogKey,
     title: entry.title,
     genre: '',
     source: 'favorite',
-    groupKey: entry.catalogKey,
+    groupKey: isUsableFavoriteCatalogKey(catalogKey) ? catalogKey : null,
   }
 }
 
@@ -106,10 +112,11 @@ function FavoritesPageInner({ active }: { active: boolean }) {
       setFavorite(true)
 
       const language = isAppLanguage(i18n.language) ? i18n.language : undefined
+      const groupKey = favoriteCatalogKeyForEntry(entry.title, entry.catalogKey)
       void sourcesApi
         .getGameDetail({
           title: entry.title,
-          groupKey: entry.catalogKey || undefined,
+          groupKey: isUsableFavoriteCatalogKey(groupKey) ? groupKey : undefined,
           includeSteam: true,
           language,
         })
@@ -155,7 +162,7 @@ function FavoritesPageInner({ active }: { active: boolean }) {
     try {
       const next = await sourcesApi.toggleFavoriteCatalogEntry(
         detail.game.title,
-        detail.game.id || undefined,
+        favoriteCatalogKeyForGame(detail.game),
       )
       setFavorite(next)
       await refreshList()
