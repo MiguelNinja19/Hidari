@@ -94,4 +94,28 @@ describe('dedupeLibraryEntries', () => {
     expect(result).toHaveLength(1)
     expect(result[0]?.kind).toBe('job')
   })
+
+  it('não mistura atalho externo .url com pasta/job do mesmo título', () => {
+    const external: LibraryEntry = {
+      id: 'folder-url',
+      title: 'Terraria',
+      status: 'installed',
+      destPath: 'C:\\Users\\me\\AppData\\external_library\\Terraria.url',
+      kind: 'folder',
+      external: true,
+    }
+    const folder: LibraryEntry = {
+      id: 'folder-1',
+      title: 'Terraria - v1.4.5.0',
+      status: 'installed',
+      destPath: 'D:\\Games\\Terraria - v1.4.5.0',
+      kind: 'folder',
+    }
+    const result = dedupeLibraryEntries([external, folder], (item) =>
+      item.external ? 40 : 100,
+    )
+    expect(result).toHaveLength(2)
+    expect(result.some((item) => item.external)).toBe(true)
+    expect(result.some((item) => !item.external)).toBe(true)
+  })
 })

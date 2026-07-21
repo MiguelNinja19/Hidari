@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { open } from '@tauri-apps/plugin-dialog'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { useConfirmDialog } from '../../shared/components/useConfirmDialog'
 
 type LibraryAddGameModalProps = {
@@ -9,11 +9,21 @@ type LibraryAddGameModalProps = {
   busy: boolean
   defaultPath?: string
   onClose: () => void
-  onSubmit: (path: string, title?: string) => Promise<void>
+  onSubmit: (path: string) => Promise<void>
 }
 
 function pathLeaf(value: string) {
   return value.split(/[/\\]/).filter(Boolean).pop() ?? value
+}
+
+function normalizeDialogPath(selected: string | string[] | null): string | null {
+  if (selected == null) return null
+  if (typeof selected === 'string') {
+    const trimmed = selected.trim()
+    return trimmed || null
+  }
+  const first = selected[0]?.trim()
+  return first || null
 }
 
 export function LibraryAddGameModal({
@@ -25,58 +35,62 @@ export function LibraryAddGameModal({
 }: LibraryAddGameModalProps) {
   const { t } = useTranslation()
   const { titleId, descId, dialogRef } = useConfirmDialog(open, busy, onClose)
-  const pathInputRef = useRef<HTMLInputElement>(null)
-  const [path, setPath] = useState('')
-  const [title, setTitle] = useState('')
+  const pickingRef = useRef(false)
+  const [picking, setPicking] = useState(false)
+  const [pendingName, setPendingName] = useState('')
 
   useEffect(() => {
     if (!open) return
-    setPath('')
-    setTitle('')
-    const timer = window.setTimeout(() => pathInputRef.current?.focus(), 0)
-    return () => window.clearTimeout(timer)
+    setPendingName('')
+    setPicking(false)
+    pickingRef.current = false
   }, [open])
 
-  const applySelection = useCallback((selected: string) => {
-    setPath(selected)
-    setTitle((current) => {
-      if (current.trim()) return current
-      const leaf = pathLeaf(selected)
-      return leaf.replace(/\.(exe|url|lnk)$/i, '') || leaf
-    })
-  }, [])
-
-  const browseShortcut = useCallback(async () => {
-    const selected = await open({
-      multiple: false,
-      title: t('library.addGameBrowseShortcut'),
-      defaultPath: path.trim() || defaultPath || undefined,
-      filters: [{ name: t('library.addGameFilter'), extensions: ['exe', 'url', 'lnk'] }],
-    })
-    if (typeof selected === 'string') applySelection(selected)
-  }, [applySelection, defaultPath, path, t])
-
-  const browseFolder = useCallback(async () => {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: t('library.addGameBrowseFolder'),
-      defaultPath: path.trim() || defaultPath || undefined,
-    })
-    if (typeof selected === 'string') applySelection(selected)
-  }, [applySelection, defaultPath, path, t])
-
-  const handleSubmit = useCallback(
-    async (event: FormEvent) => {
-      event.preventDefault()
-      const trimmedPath = path.trim()
-      if (!trimmedPath || busy) return
-      await onSubmit(trimmedPath, title.trim() || undefined)
+  const pickAndAdd = useCallback(
+    async (mode: 'shortcut' | 'folder') => {
+      if (busy || pickingRef.current) return
+      pickingRef.current = true
+      setPicking(true)
+      try {
+        const selected = normalizeDialogPath(
+          await openDialog(
+            mode === 'folder'
+              ? {
+                  directory: true,
+                  multiple: false,
+                  title: t('library.addGameBrowseFolder'),
+                  defaultPath: defaultPath || undefined,
+                }
+              : {
+                  multiple: false,
+                  title: t('library.addGameBrowseShortcut'),
+                  defaultPath: defaultPath || undefined,
+                  filters: [
+                    { name: t('library.addGameFilter'), extensions: ['exe', 'url', 'lnk'] },
+                    { name: t('library.addGameFilterAll'), extensions: ['*'] },
+                  ],
+                },
+          ),
+        )
+        if (!selected) return
+        setPendingName(pathLeaf(selected))
+        await onSubmit(selected)
+      } finally {
+        pickingRef.current = false
+        setPicking(false)
+      }
     },
-    [busy, onSubmit, path, title],
+    [busy, defaultPath, onSubmit, t],
   )
 
-  const canSubmit = Boolean(path.trim()) && !busy
+  const locked = busy || picking
+  const statusText = busy
+    ? t('library.addGameAdding')
+    : picking
+      ? t('library.addGamePicking')
+      : pendingName
+        ? t('library.addGameAddingName', { name: pendingName })
+        : t('library.addGamePickHint')
 
   if (!open) return null
 
@@ -85,7 +99,7 @@ export function LibraryAddGameModal({
       className="pick-modal-backdrop confirm-dialog-backdrop"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose()
+        if (event.target === event.currentTarget && !locked) onClose()
       }}
     >
       <div
@@ -95,10 +109,11 @@ export function LibraryAddGameModal({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descId}
-        aria-busy={busy || undefined}
+        aria-busy={locked || undefined}
         tabIndex={-1}
+        onMouseDown={(event) => event.stopPropagation()}
       >
-        <form className="library-add-game-dialog__form" onSubmit={(event) => void handleSubmit(event)}>
+        <div className="library-add-game-dialog__form">
           <div className="confirm-dialog__body">
             <h2 id={titleId} className="confirm-dialog__title">
               {t('library.addGameModalTitle')}
@@ -107,74 +122,59 @@ export function LibraryAddGameModal({
               {t('library.addGameModalDesc')}
             </p>
 
-            <div className="library-add-game-dialog__fields">
-              <label className="library-add-game-dialog__label" htmlFor="library-add-game-path">
-                {t('library.addGamePathLabel')}
-              </label>
-              <div className="library-add-game-dialog__path-row">
-                <input
-                  ref={pathInputRef}
-                  id="library-add-game-path"
-                  className="library-add-game-dialog__input"
-                  value={path}
-                  disabled={busy}
-                  placeholder={t('library.addGamePathPlaceholder')}
-                  onChange={(event) => setPath(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  className="btn btn-outline btn--compact"
-                  disabled={busy}
-                  onClick={() => void browseShortcut()}
-                >
+            <div
+              className="library-add-game-dialog__choices"
+              role="group"
+              aria-label={t('library.addGameChooseSource')}
+            >
+              <button
+                type="button"
+                className="library-add-game-dialog__choice"
+                disabled={locked}
+                onClick={() => void pickAndAdd('shortcut')}
+              >
+                <span className="library-add-game-dialog__choice-label">
                   {t('library.addGameBrowseShortcut')}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline btn--compact"
-                  disabled={busy}
-                  onClick={() => void browseFolder()}
-                >
+                </span>
+                <span className="library-add-game-dialog__choice-hint">
+                  {t('library.addGameBrowseShortcutHint')}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="library-add-game-dialog__choice"
+                disabled={locked}
+                onClick={() => void pickAndAdd('folder')}
+              >
+                <span className="library-add-game-dialog__choice-label">
                   {t('library.addGameBrowseFolder')}
-                </button>
-              </div>
-
-              <label className="library-add-game-dialog__label" htmlFor="library-add-game-title">
-                {t('library.addGameTitleLabel')}
-              </label>
-              <input
-                id="library-add-game-title"
-                className="library-add-game-dialog__input"
-                value={title}
-                disabled={busy}
-                placeholder={t('library.addGameTitlePlaceholder')}
-                onChange={(event) => setTitle(event.target.value)}
-                autoComplete="off"
-              />
+                </span>
+                <span className="library-add-game-dialog__choice-hint">
+                  {t('library.addGameBrowseFolderHint')}
+                </span>
+              </button>
             </div>
+
+            <p
+              className={`library-add-game-dialog__hint${locked ? ' library-add-game-dialog__hint--busy' : ''}`}
+              aria-live="polite"
+            >
+              {locked ? <span className="btn__spinner" aria-hidden /> : null}
+              <span>{statusText}</span>
+            </p>
           </div>
 
           <div className="confirm-dialog__actions">
             <button
               type="button"
               className="btn btn-outline btn--compact"
-              disabled={busy}
+              disabled={locked}
               onClick={onClose}
             >
               {t('common.cancel')}
             </button>
-            <button
-              type="submit"
-              className={`btn btn-primary btn--compact confirm-dialog__confirm${busy ? ' is-busy' : ''}`}
-              disabled={!canSubmit}
-            >
-              {busy ? <span className="btn__spinner" aria-hidden /> : null}
-              <span>{busy ? t('library.addGameAdding') : t('library.sidebarAdd')}</span>
-            </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>,
     document.body,

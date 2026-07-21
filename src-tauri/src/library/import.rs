@@ -52,6 +52,61 @@ fn modified_at(path: &Path) -> u64 {
     .unwrap_or(0)
 }
 
+fn is_shortcut_path(path: &Path) -> bool {
+  extension_eq(path, "url") || extension_eq(path, "lnk") || extension_eq(path, "exe")
+}
+
+fn sanitize_shortcut_file_stem(title: &str) -> String {
+  let cleaned: String = title
+    .chars()
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '_' {
+        c
+      } else {
+        '_'
+      }
+    })
+    .collect();
+  let trimmed = cleaned.trim();
+  if trimmed.is_empty() {
+    "game".to_string()
+  } else {
+    trimmed.chars().take(80).collect()
+  }
+}
+
+/// Copia o atalho para app_data para não depender do Desktop / pasta original.
+fn persist_shortcut_copy(
+  app: &AppHandle,
+  source: &Path,
+  title: &str,
+) -> Result<PathBuf, String> {
+  use tauri::Manager;
+
+  let ext = source
+    .extension()
+    .and_then(|value| value.to_str())
+    .unwrap_or("url");
+  let dir = app
+    .path()
+    .app_data_dir()
+    .map_err(|error| format!("could_not_get_app_data_dir: {error}"))?
+    .join("external_library");
+  std::fs::create_dir_all(&dir)
+    .map_err(|error| format!("could_not_create_external_library_dir: {error}"))?;
+
+  let key = crate::library::roots::library_entry_key(&source.to_string_lossy(), title);
+  let dest = dir.join(format!(
+    "{}_{}.{}",
+    sanitize_shortcut_file_stem(title),
+    &key[..8.min(key.len())],
+    ext
+  ));
+  std::fs::copy(source, &dest)
+    .map_err(|error| format!("could_not_copy_shortcut: {error}"))?;
+  Ok(dest)
+}
+
 fn add_folder(
   app: &AppHandle,
   folder: PathBuf,
@@ -105,11 +160,12 @@ fn add_url_shortcut(
     return Err("O atalho .url não existe.".to_string());
   }
   let title = display_title(&url_file, title_override);
-  // game_root = o próprio ficheiro → só este path fica managed (não o Desktop inteiro).
-  let dest_path = url_file.to_string_lossy().to_string();
+  // Cópia em app_data: sobrevive a reinícios mesmo se o atalho original sumir do Desktop.
+  let stored = persist_shortcut_copy(app, &url_file, &title).unwrap_or(url_file);
+  let dest_path = stored.to_string_lossy().to_string();
   let conn = open_database_connection(app)?;
-  remember_library_game_root(&conn, &dest_path, &title, &url_file)?;
-  upsert_library_launch_exe(&conn, &dest_path, &title, &url_file)?;
+  remember_library_game_root(&conn, &dest_path, &title, &stored)?;
+  upsert_library_launch_exe(&conn, &dest_path, &title, &stored)?;
   Ok(AddExternalLibraryGameResult {
     title,
     path: dest_path,
@@ -163,9 +219,8 @@ fn path_under_root(path: &Path, root: &Path) -> bool {
 
 /// Só imports do utilizador (atalho/pasta via «Adicionar jogo»), não roots FitGirl/locate.
 fn is_user_imported_external(dest: &Path, root: &Path, download_root: Option<&Path>) -> bool {
-  if dest.is_file()
-    && (extension_eq(dest, "url") || extension_eq(dest, "lnk") || extension_eq(dest, "exe"))
-  {
+  // Atalhos: pela extensão do path (mesmo se o ficheiro foi apagado entretanto).
+  if is_shortcut_path(dest) || is_shortcut_path(root) {
     return true;
   }
   // add_external grava dest_path == game_root
@@ -216,20 +271,23 @@ pub(crate) fn list_external_library_items(app: &AppHandle) -> Vec<LocalLibraryIt
       continue;
     }
 
-    let display = if dest.exists() {
-      dest
-    } else if root.exists() {
-      root
-    } else {
-      continue;
-    };
+    let (title, display) =
+      if let Some(migrated) = migrate_shortcut_into_app_data(app, &title, &dest, &root) {
+        migrated
+      } else if dest.exists() {
+        (title, dest)
+      } else if root.exists() {
+        (title, root)
+      } else if is_shortcut_path(&dest) {
+        (title, dest)
+      } else if is_shortcut_path(&root) {
+        (title, root)
+      } else {
+        continue;
+      };
 
     let is_dir = display.is_dir();
-    if !is_dir
-      && !extension_eq(&display, "url")
-      && !extension_eq(&display, "lnk")
-      && !extension_eq(&display, "exe")
-    {
+    if !is_dir && !is_shortcut_path(&display) {
       continue;
     }
 
@@ -258,6 +316,48 @@ pub(crate) fn list_external_library_items(app: &AppHandle) -> Vec<LocalLibraryIt
     });
   }
   items
+}
+
+fn is_under_app_external_dir(app: &AppHandle, path: &Path) -> bool {
+  use tauri::Manager;
+  let Ok(data) = app.path().app_data_dir() else {
+    return false;
+  };
+  path_under_root(path, &data.join("external_library"))
+}
+
+/// Se o atalho ainda está fora de app_data, copia e actualiza a DB.
+fn migrate_shortcut_into_app_data(
+  app: &AppHandle,
+  title: &str,
+  dest: &Path,
+  root: &Path,
+) -> Option<(String, PathBuf)> {
+  let source = if dest.is_file() && is_shortcut_path(dest) {
+    dest
+  } else if root.is_file() && is_shortcut_path(root) {
+    root
+  } else {
+    return None;
+  };
+  if is_under_app_external_dir(app, source) {
+    return None;
+  }
+  let stored = persist_shortcut_copy(app, source, title).ok()?;
+  let dest_path = stored.to_string_lossy().to_string();
+  let conn = open_database_connection(app).ok()?;
+  // Remove chave antiga (path Desktop) e grava a cópia estável.
+  let _ = conn.execute(
+    "DELETE FROM library_game_roots WHERE lower(dest_path) = lower(?1) OR lower(game_root) = lower(?1)",
+    rusqlite::params![source.to_string_lossy().to_string()],
+  );
+  let _ = conn.execute(
+    "DELETE FROM library_launch_exe WHERE lower(dest_path) = lower(?1)",
+    rusqlite::params![source.to_string_lossy().to_string()],
+  );
+  remember_library_game_root(&conn, &dest_path, title, &stored).ok()?;
+  let _ = upsert_library_launch_exe(&conn, &dest_path, title, &stored);
+  Some((title.to_string(), stored))
 }
 
 fn read_internet_shortcut_url(path: &Path) -> Option<String> {

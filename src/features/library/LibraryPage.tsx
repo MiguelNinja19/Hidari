@@ -37,10 +37,10 @@ export function LibraryPage() {
     setAddGameOpen(false)
   }, [addGameBusy])
   const submitAddGame = useCallback(
-    async (path: string, title?: string) => {
+    async (path: string) => {
       setAddGameBusy(true)
       try {
-        await controller.handleAddExternalGame(path, title)
+        await controller.handleAddExternalGame(path)
         setAddGameOpen(false)
       } catch {
         // Erro já mostrado via toast no handler.

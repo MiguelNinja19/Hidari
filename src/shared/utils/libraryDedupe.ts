@@ -10,7 +10,12 @@ export function dedupeLibraryEntries(
   const groups: LibraryEntry[][] = []
 
   for (const item of entries) {
-    const existing = groups.find((group) => libraryTitlesMatch(item.title, group[0]!.title))
+    const existing = groups.find((group) => {
+      const head = group[0]!
+      // Imports externos (Steam .url, etc.) não competem com pastas/jobs do mesmo título.
+      if (Boolean(item.external) !== Boolean(head.external)) return false
+      return libraryTitlesMatch(item.title, head.title)
+    })
     if (existing) {
       existing.push(item)
     } else {

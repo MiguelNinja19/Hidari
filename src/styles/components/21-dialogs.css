@@ -32,7 +32,7 @@
 
 /* Add external game — mesmo layout do ConfirmDialog */
 .library-add-game-dialog {
-  width: min(460px, 100%);
+  width: min(420px, 100%);
 }
 
 .library-add-game-dialog__form {
@@ -44,55 +44,106 @@
   flex: 1;
 }
 
-.library-add-game-dialog__fields {
+.library-add-game-dialog__choices {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-  min-width: 0;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.library-add-game-dialog__label {
-  margin: 6px 0 0;
+.library-add-game-dialog__choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: var(--border-thin) solid var(--divider-strong);
+  border-radius: var(--radius-sm);
+  background: #0a0a0a;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.library-add-game-dialog__choice:hover:not(:disabled) {
+  border-color: #3d3d3d;
+  background: #141414;
+}
+
+.library-add-game-dialog__choice:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+
+.library-add-game-dialog__choice:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.library-add-game-dialog__choice-label {
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.library-add-game-dialog__choice-hint {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+.library-add-game-dialog__hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}
+
+.library-add-game-dialog__hint--busy {
   color: var(--text-muted);
 }
 
-.library-add-game-dialog__label:first-child {
-  margin-top: 0;
+.library-add-game-dialog__hint .btn__spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: confirm-dialog-spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 
-.library-add-game-dialog__path-row {
+.library-add-game-dialog__selected {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-.library-add-game-dialog__path-row .library-add-game-dialog__input {
-  flex: 1 1 12rem;
-  min-width: 0;
-}
-
-.library-add-game-dialog__input {
-  width: 100%;
-  min-height: 36px;
-  padding: 8px 10px;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
   border: var(--border-thin) solid var(--divider-strong);
   border-radius: var(--radius-sm);
-  background: var(--bg-app);
-  color: var(--text-main);
-  font-family: var(--font-body);
+  background: #0a0a0a;
+  min-width: 0;
+}
+
+.library-add-game-dialog__selected-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.library-add-game-dialog__selected-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--text-sm);
-  box-sizing: border-box;
-}
-
-.library-add-game-dialog__input:focus {
-  outline: none;
-  border-color: var(--text-muted);
-}
-
-.library-add-game-dialog__input:disabled {
-  opacity: 0.65;
+  font-weight: 600;
+  color: var(--text-main);
 }
