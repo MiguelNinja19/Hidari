@@ -1,0 +1,59 @@
+
+.nova-shell {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  background: var(--bg-main);
+  color: var(--text-main);
+}
+
+.sidebar {
+  padding: var(--space-4) var(--space-2);
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-right: var(--border-width) solid var(--sidebar-edge);
+  min-height: 100%;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: var(--border-width) solid transparent;
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  padding: 8px var(--space-2);
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color var(--hover-dur) ease,
+    border-color var(--hover-dur) ease,
+    background var(--hover-dur) ease;
+}
+
+.sidebar-link:hover:not(.sidebar-link--active) {
+  color: var(--accent-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-link--active {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: transparent;
+}

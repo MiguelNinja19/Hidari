@@ -1,0 +1,41 @@
+/* ── Loader (premium sweep, not stepped) ────────────────────────────────── */
+
+.loader__bar {
+  animation: loader-sweep-smooth 0.85s ease-in-out infinite;
+}
+
+@keyframes loader-sweep-smooth {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader__bar,
+  .game-tile:hover .game-tile__cover-wrap,
+  .game-card--browse:hover .game-tile__cover-wrap,
+  .game-tile:not(.game-tile--library):hover > .game-tile__card,
+  .library-card--actionable:hover .discover-card__panel,
+  .library-card--actionable:focus-within .discover-card__panel,
+  .discover-card--explore.library-card--actionable:hover .discover-card__panel,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__panel,
+  .discover-card--explore .discover-card__cover .game-card__cover,
+  .discover-card--explore .discover-card__cover .game-card__media,
+  .discover-card--explore .discover-card__cover img,
+  .app-toast--enter,
+  .app-toast--exit {
+    animation: none;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+
+  .settings-page .btn__spinner {
+    animation: none;
+    border-top-color: rgba(255, 255, 255, 0.7);
+  }
+}
+

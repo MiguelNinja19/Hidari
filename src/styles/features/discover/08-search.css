@@ -1,0 +1,94 @@
+/* Pesquisa suave (Explorar / Biblioteca) */
+.browse-search--soft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0 8px 0 14px;
+  min-height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: none;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.page-toolbar--discover .browse-search--soft,
+.library-toolbar .browse-search--soft {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.browse-search--soft:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.browse-search--soft:focus-within {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.browse-search--soft .browse-search__icon {
+  position: static;
+  flex: 0 0 auto;
+  display: inline-flex;
+  transform: none;
+  top: auto;
+  left: auto;
+  color: rgba(255, 255, 255, 0.4);
+  transition: color 0.16s ease;
+}
+
+.browse-search--soft:focus-within .browse-search__icon {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.browse-search--soft .browse-search__icon svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+}
+
+.browse-search--soft .browse-search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 4px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+.browse-search--soft .browse-search__input::placeholder {
+  color: rgba(255, 255, 255, 0.34);
+  font-weight: 400;
+}
+
+.browse-search--soft .browse-search__input:hover:not(:disabled),
+.browse-search--soft .browse-search__input:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.browse-search--soft .browse-search__input:disabled {
+  opacity: 0.45;
+}
+

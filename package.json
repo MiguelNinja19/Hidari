@@ -14,10 +14,12 @@
     "test:watch": "node scripts/vitest-run.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:all": "npm test && npm run test:rust",
+    "check:file-size": "node scripts/check-file-size.mjs",
     "preview": "vite preview",
     "setup:binaries": "node scripts/setup-binaries.mjs",
-    "build:download-engine": "cargo build --release --manifest-path ../download-engine/Cargo.toml && node -e \"const fs=require('fs');const p=require('path');const src=p.resolve('../download-engine/target/release/download-engine.exe');for (const d of ['src-tauri','src-tauri/binaries']){fs.mkdirSync(d,{recursive:true});fs.copyFileSync(src,p.join(d,'download-engine.exe'));console.log('copied ->',p.join(d,'download-engine.exe'))}\"",
+    "build:download-engine": "node scripts/build-download-engine.mjs",
     "icon:build": "python scripts/build_hidari_icon.py && tauri icon hidari-icon-1024.png",
+    "installer:assets": "python scripts/build_nsis_assets.py",
     "postinstall": "node scripts/setup-binaries.mjs"
   },
   "dependencies": {

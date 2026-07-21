@@ -1,0 +1,99 @@
+.favorite-heart {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.12s ease,
+    opacity 0.15s ease;
+}
+
+.favorite-heart--toolbar {
+  width: 40px;
+  height: 40px;
+}
+
+.favorite-heart--card {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(12, 14, 18, 0.72);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.favorite-heart:hover:not(:disabled) {
+  color: var(--text-main);
+  border-color: var(--text-faint);
+  background: var(--surface-3);
+}
+
+.favorite-heart--card:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(12, 14, 18, 0.88);
+}
+
+.favorite-heart:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.favorite-heart--on {
+  color: #e53935;
+  border-color: rgba(229, 57, 53, 0.5);
+  background: rgba(229, 57, 53, 0.12);
+}
+
+.favorite-heart--card.favorite-heart--on {
+  color: #ef5350;
+  border-color: rgba(239, 83, 80, 0.55);
+  background: rgba(229, 57, 53, 0.28);
+}
+
+.favorite-heart--on:hover:not(:disabled) {
+  color: #ef5350;
+  border-color: rgba(239, 83, 80, 0.65);
+  background: rgba(229, 57, 53, 0.2);
+}
+
+.favorite-heart:disabled,
+.favorite-heart.is-busy {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.favorite-heart__icon {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  transition: transform 0.15s ease;
+}
+
+.favorite-heart--card .favorite-heart__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.favorite-heart--on .favorite-heart__icon {
+  transform: scale(1.05);
+}
+
+.favorite-heart__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-main);
+  border-radius: 50%;
+  animation: discover-favorite-spin 0.7s linear infinite;
+}
+

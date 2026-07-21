@@ -39,24 +39,34 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
       Ok(job) => job,
       Err(_) => continue,
     };
+    // Nunca limpar seeding — o utilizador precisa de ver quem está a semear.
+    if job.status == "seeding" {
+      continue;
+    }
     let extracted = get_extraction_status(&conn, &job.id);
-    let mut should_remove = matches!(
+    // verified = passo intermédio do pós-download — não apagar.
+    if matches!(extracted.as_deref(), Some("verified") | Some("extracting")) {
+      continue;
+    }
+    let should_remove = matches!(
       job.status.as_str(),
-      "completed" | "cancelled" | "failed" | "seeding" | "skipped"
-    ) || matches!(
-      extracted.as_deref(),
-      Some("extracted") | Some("skipped") | Some("verified")
-    );
-    // Job a 100% ainda em downloading/paused: também limpar.
-    if !should_remove && matches!(job.status.as_str(), "downloading" | "pending" | "paused") {
+      "completed" | "cancelled" | "failed" | "skipped" | "extracted"
+    ) || matches!(extracted.as_deref(), Some("extracted") | Some("skipped"))
+      && matches!(
+        job.status.as_str(),
+        "completed" | "paused" | "skipped" | "extracted" | "failed" | "cancelled"
+      );
+    // Job a 100% ainda em downloading/paused (não seeding), já com extract estável.
+    let fully_done = {
       let reported = job.total_bytes.max(job.bytes_downloaded);
-      if reported >= 5 * 1024 * 1024
+      reported >= 5 * 1024 * 1024
         && job.total_bytes > 0
         && job.bytes_downloaded >= (job.total_bytes as f64 * 0.995) as i64
-      {
-        should_remove = true;
-      }
-    }
+    };
+    let should_remove = should_remove
+      || (fully_done
+        && matches!(job.status.as_str(), "downloading" | "pending" | "paused")
+        && matches!(extracted.as_deref(), Some("extracted") | Some("skipped")));
     if !should_remove {
       continue;
     }
@@ -74,7 +84,7 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
 
   conn
     .execute(
-      "DELETE FROM download_jobs WHERE status IN ('completed', 'cancelled', 'failed', 'seeding', 'skipped')",
+      "DELETE FROM download_jobs WHERE status IN ('completed', 'cancelled', 'failed', 'skipped', 'extracted')",
       [],
     )
     .map_err(|e| format!("could_not_clear_jobs: {e}"))?;

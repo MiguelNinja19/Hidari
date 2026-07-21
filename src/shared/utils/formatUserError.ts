@@ -1,4 +1,5 @@
 import { formatLaunchError } from './launchErrors'
+import { APP_ERROR_PATTERNS, looksTechnical, stripUserErrorNoise } from './userErrorPatterns'
 
 const FALLBACK = 'Ocorreu um erro inesperado. Tente novamente.'
 
@@ -24,46 +25,6 @@ export function isTransientQueueError(error: unknown): boolean {
   )
 }
 
-type ErrorPattern = {
-  match: (message: string) => boolean
-  message: string
-}
-
-const APP_ERROR_PATTERNS: ErrorPattern[] = [
-  {
-    match: (m) => m.includes('path_outside_default_download_path'),
-    message: 'A pasta está fora do diretório de downloads configurado em Configurações.',
-  },
-  {
-    match: (m) => m.includes('local_item_not_found'),
-    message: 'Não encontrámos essa pasta na biblioteca.',
-  },
-  {
-    match: (m) => m.includes('inspect_library_path'),
-    message: 'Não foi possível verificar a instalação do jogo.',
-  },
-  {
-    match: (m) => m.includes('scan_default_download_path') || m.includes('default_download_path'),
-    message: 'Não foi possível ler a pasta de downloads. Verifique o caminho em Configurações.',
-  },
-  {
-    match: (m) => m.includes('game_not_found') || m.includes('catalog_game_not_found'),
-    message: 'Jogo não encontrado no catálogo.',
-  },
-  {
-    match: (m) => m.includes('search') && m.includes('failed'),
-    message: 'Não foi possível pesquisar o catálogo. Tente outra vez.',
-  },
-  {
-    match: (m) => m.includes('enqueue') || m.includes('add_job'),
-    message: 'Não foi possível adicionar o download à fila.',
-  },
-  {
-    match: (m) => m.includes('network') || m.includes('fetch') || m.includes('timeout'),
-    message: 'Falha de ligação. Verifique a internet e tente novamente.',
-  },
-]
-
 /** "Exit 1", "exit code: 1", "powershell_process: exit code 1" — ruído técnico sem valor para o utilizador. */
 export function isExitCodeNoise(message: string): boolean {
   const trimmed = message.trim()
@@ -83,24 +44,6 @@ export function isExitCodeNoise(message: string): boolean {
     .trim()
 
   return remainder.length < 4
-}
-
-function looksTechnical(message: string): boolean {
-  const trimmed = message.trim()
-  if (!trimmed) return true
-  if (isExitCodeNoise(trimmed)) return true
-  if (trimmed.length > 160) return true
-  if (/^[a-z0-9_]+$/i.test(trimmed)) return true
-  if (/^(error|failed|panic):/i.test(trimmed)) return true
-  if (trimmed.includes(' at ') && trimmed.includes('.rs:')) return true
-  return false
-}
-
-function stripNoise(message: string): string {
-  return message
-    .replace(/^[a-z0-9_]+_failed:\s*/i, '')
-    .replace(/^[a-z0-9_]+:\s*/i, '')
-    .trim()
 }
 
 /**
@@ -126,8 +69,8 @@ export function formatUserError(error: unknown, fallback = FALLBACK): string {
     if (pattern.match(trimmed)) return pattern.message
   }
 
-  const cleaned = stripNoise(trimmed)
-  if (!cleaned || looksTechnical(cleaned)) return fallback
+  const cleaned = stripUserErrorNoise(trimmed)
+  if (!cleaned || looksTechnical(cleaned, isExitCodeNoise)) return fallback
   if (isExitCodeNoise(cleaned)) return ''
 
   if (cleaned.endsWith('.') || cleaned.endsWith('!') || cleaned.endsWith('?')) {

@@ -1,0 +1,99 @@
+.pick-modal__option-action {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: #ffffff;
+  background: #1b7f12;
+  border: var(--border-thin) solid #1b7f12;
+  border-radius: var(--radius-sm);
+  min-width: 88px;
+  padding: 10px 14px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background var(--hover-dur) ease,
+    border-color var(--hover-dur) ease;
+}
+
+.pick-modal__option-action:hover:not(:disabled) {
+  background: #23a317;
+  border-color: #23a317;
+  color: #ffffff;
+}
+
+.pick-modal__option-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.confirm-dialog .btn-outline {
+  color: #f2f2f2;
+  background: #1a1a1a;
+  border-color: #3d3d3d;
+  box-shadow: none;
+}
+
+.confirm-dialog .btn-outline:hover:not(:disabled) {
+  background: #262626;
+  border-color: #5a5a5a;
+  color: #ffffff;
+}
+
+.confirm-dialog .btn-primary {
+  color: #0a0a0a;
+  background: #f2f2f2;
+  border-color: #f2f2f2;
+  box-shadow: none;
+}
+
+.confirm-dialog .btn-primary:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0a0a0a;
+}
+
+.confirm-dialog .btn-danger {
+  color: #ffffff;
+  background: #d32f2f;
+  border-color: #d32f2f;
+  box-shadow: none;
+}
+
+.confirm-dialog .btn-danger:hover:not(:disabled) {
+  background: #ef5350;
+  border-color: #ef5350;
+  color: #ffffff;
+}
+
+/* ── Modals ─────────────────────────────────────────────────────────────── */
+
+.pick-modal-backdrop {
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+}
+
+.pick-modal {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+  border: var(--border-thin) solid var(--border-subtle);
+  background: var(--bg-panel);
+}
+
+.pick-modal--detail {
+  width: min(960px, 100%);
+  max-height: min(90vh, 820px);
+  padding: 0;
+}
+
+.pick-modal--detail.pick-modal--single,
+.pick-modal--detail.pick-modal--loading {
+  width: min(440px, 100%);
+}
+
+.pick-modal--detail.pick-modal--single:has(.pick-modal__synopsis--aside) {
+  width: min(520px, 100%);
+}
+

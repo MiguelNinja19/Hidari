@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "resources": [
+      "binaries/README.txt",
+      "binaries/aria2c.exe",
+      "binaries/download-engine.exe",
+      "binaries/7za.exe",
+      "binaries/7za.dll"
+    ]
+  }
+}

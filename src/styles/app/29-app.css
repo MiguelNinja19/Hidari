@@ -1,0 +1,95 @@
+
+.game-detail__empty {
+  margin: 0;
+  padding: var(--space-4);
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--text-soft);
+  border: var(--border-width) solid var(--divider);
+  background: var(--bg-app);
+}
+
+.game-detail__options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.game-detail__option {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+  padding: 12px 14px;
+  border: var(--border-width) solid var(--divider);
+  background: transparent;
+  color: var(--text-main);
+  font-family: var(--sans);
+  text-align: left;
+}
+
+.game-detail__option-variant {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: var(--text-main);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.game-detail__option-meta {
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+.game-detail__option-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.game-detail__option-action {
+  flex-shrink: 0;
+  align-self: center;
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  padding: 8px 12px;
+  border: var(--border-width) solid var(--accent-primary);
+  background: var(--accent-primary);
+  min-width: 68px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background var(--hover-dur) ease,
+    border-color var(--hover-dur) ease;
+}
+
+.game-detail__option-action:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.game-detail__option-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}

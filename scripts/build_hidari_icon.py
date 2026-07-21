@@ -34,16 +34,10 @@ def square_from_logo(size: int = 1024) -> Image.Image:
 
 
 def export_docs_logo() -> None:
-  """Copia a logo oficial para a documentação."""
+  """Copia a logo oficial para a documentação (mantém transparência)."""
   DOCS_OUT.parent.mkdir(parents=True, exist_ok=True)
   src = load_logo_rgba()
-  # Mantém webp; se tiver alpha, coloca em fundo branco para docs.
-  if src.mode == "RGBA" and any(px[3] < 255 for px in src.getdata()):
-    web = Image.new("RGBA", src.size, (*BG_RGB, 255))
-    web.paste(src, (0, 0), src)
-    web.convert("RGB").save(DOCS_OUT, "WEBP", quality=92, method=6)
-  else:
-    src.convert("RGB").save(DOCS_OUT, "WEBP", quality=92, method=6)
+  src.save(DOCS_OUT, "WEBP", quality=95, method=6)
   print("saved", DOCS_OUT)
 
 

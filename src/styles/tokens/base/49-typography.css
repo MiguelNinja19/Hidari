@@ -1,0 +1,100 @@
+.downloads-page__tag,
+.downloads-section__title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.downloads-page__summary {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.download-row__title {
+  font-size: var(--text-base);
+}
+
+.download-row__meta {
+  font-size: var(--text-sm);
+}
+
+.download-row__btn,
+.download-row__primary {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.download-row__percent {
+  font-size: var(--text-lg);
+  letter-spacing: -0.03em;
+}
+
+.download-row__verify-badge {
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.browse-section__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.browse-section__meta {
+  font-size: var(--text-sm);
+}
+
+.browse-section__hint,
+.browse-note,
+.page-hint {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.browse-empty__title,
+.library-empty__title,
+.empty-state__title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.browse-empty__text,
+.library-empty__text,
+.empty-state__desc {
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+}
+
+.discover-card__title,
+.library-card .discover-card__title {
+  font-size: var(--text-sm);
+}
+
+.discover-card--explore .discover-card__title {
+  font-size: var(--text-base);
+}
+
+.discover-card__meta,
+.library-card__status {
+  font-size: var(--text-sm);
+}
+
+.discover-card__cta {
+  font-size: var(--text-sm);
+}
+
+.game-tile__title--above,
+.game-tile--library .game-tile__title--above {
+  font-size: var(--text-sm);
+}
+
+.settings-toast,
+.app-toast {
+  font-size: var(--text-sm);
+}
+
+.settings-page .settings-block__title {
+  font-size: 0.9375rem;
+}
+

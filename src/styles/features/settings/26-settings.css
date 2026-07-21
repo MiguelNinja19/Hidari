@@ -1,0 +1,96 @@
+.settings-block__desc {
+  display: block;
+  margin: 6px 0 0;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-soft);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.settings-block__body {
+  gap: 12px;
+}
+
+.settings-block--catalog {
+  padding: 16px 16px 18px;
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 42%),
+    var(--bg-panel);
+}
+
+.settings-block__head--catalog {
+  align-items: flex-start;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: var(--border-thin) solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-block__lede {
+  margin: 8px 0 0;
+  color: var(--text-faint);
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+}
+
+.settings-block__body--catalog {
+  gap: 12px;
+}
+
+.settings-catalog-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px 16px;
+  border-radius: 0;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.settings-catalog-empty__title {
+  margin: 0;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.settings-catalog-empty__hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.settings-source-table-wrap--catalog {
+  border-radius: 0;
+  max-height: min(22rem, 48vh);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.settings-block--catalog .settings-source-table--simple .settings-source-row {
+  min-height: 58px;
+  padding: 12px 14px;
+  column-gap: 14px;
+}
+
+.settings-block--catalog .settings-source-row__name {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.settings-block--catalog .settings-source-row__count-inline {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+

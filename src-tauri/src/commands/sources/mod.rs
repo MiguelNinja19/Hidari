@@ -1,0 +1,20 @@
+mod add;
+mod add_local;
+mod add_remote;
+mod list;
+mod open_cache;
+mod remove;
+mod search;
+mod sync_all;
+mod sync_download;
+mod sync_helpers;
+mod sync_local;
+
+pub use add::add_download_source;
+pub use list::get_download_sources;
+pub use open_cache::open_catalogs_cache_folder;
+pub use remove::remove_download_source;
+pub use search::search_download_options;
+pub use sync_all::sync_all_local_source_catalogs;
+pub use sync_download::sync_download_sources;
+pub use sync_local::sync_local_source_catalog;

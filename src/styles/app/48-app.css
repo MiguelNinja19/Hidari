@@ -1,0 +1,97 @@
+.browse-alert,
+.library-alert {
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--radius-sm);
+}
+
+.error.browse-alert,
+.error.library-alert {
+  background: var(--danger-soft);
+}
+
+@media (max-width: 1024px) {
+  .page-hero {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .browse-toolbar__controls {
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .downloads-page__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .downloads-page__actions {
+    justify-content: flex-end;
+  }
+
+  .downloads-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .downloads-toolbar__actions {
+    justify-content: flex-end;
+  }
+
+  .page-toolbar {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+
+  .page-toolbar__filters {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .page-toolbar__filters .chip {
+    flex: 1;
+    text-align: center;
+  }
+
+  .library-grid {
+    grid-template-columns: repeat(auto-fill, 148px);
+    gap: 12px;
+  }
+
+  .library-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .library-toolbar__filters {
+    width: 100%;
+  }
+
+  .library-toolbar__filters .chip {
+    flex: 1;
+    text-align: center;
+  }
+
+  .settings-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-block--wide {
+    grid-column: auto;
+  }
+
+  .settings-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-sources {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-sources--cards {
+    grid-template-columns: 1fr;
+  }
+}

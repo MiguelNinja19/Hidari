@@ -1,19 +1,14 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppDispatch, useAppSelector } from '../../app/hooks'
 import { useAppSettings } from '../../app/context/AppSettingsContext'
-import { enqueueJob } from '../queue/queueSlice'
-import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import { formatUserError } from '../../shared/utils/formatUserError'
 import { useToast } from '../../shared/components/ToastProvider'
 import type { CatalogGame, GetGameDetailInput } from '../../shared/types/contracts'
 import { useDiscoverCatalog } from './useDiscoverCatalog'
 import type { DiscoverControllerValue } from './DiscoverController'
-
-type UseDiscoverControllerStateArgs = {
-  onGoSettings: () => void
-  onGoDownloads: () => void
-}
+import { useDiscoverEnqueue } from './useDiscoverEnqueue'
+import { useDiscoverSources } from './useDiscoverSources'
+import type { UseDiscoverControllerStateArgs } from './discoverControllerStateTypes'
 
 export function useDiscoverControllerState({
   onGoSettings,
@@ -35,28 +30,8 @@ export function useDiscoverControllerState({
     setDiscoverGridColumnsState((prev) => (prev === next ? prev : next))
   }, [])
 
-  const enabledSourcesCount = useMemo(
-    () =>
-      disabledSourcesReady
-        ? sources.filter((source) => !disabledSourceIds.includes(source.id)).length
-        : 0,
-    [sources, disabledSourceIds, disabledSourcesReady],
-  )
-
-  const enabledSourcesKey = useMemo(
-    () =>
-      sources
-        .filter((source) => !disabledSourceIds.includes(source.id))
-        .map((source) => source.id)
-        .sort()
-        .join('|'),
-    [sources, disabledSourceIds],
-  )
-
-  const isSourceEnabled = useCallback(
-    (sourceId: string) => !disabledSourceIds.includes(sourceId),
-    [disabledSourceIds],
-  )
+  const { enabledSourcesCount, enabledSourcesKey, isSourceEnabled } =
+    useDiscoverSources(sources, disabledSourceIds, disabledSourcesReady)
 
   const submitDiscoverSearch = useCallback(() => {
     setDiscoverSearch(discoverSearchDraft.trim())
@@ -76,35 +51,13 @@ export function useDiscoverControllerState({
     gridColumns: discoverGridColumns,
   })
 
-  const handleEnqueueFromDiscover = useCallback(
-    async (title: string, url: string, coverUrl?: string | null) => {
-      discover.setDiscoverBusy(url)
-      try {
-        const hasPath = defaultDownloadPath.trim().length > 0
-        const fromDb = await sourcesApi.getDefaultDownloadPath()
-        if (!hasPath && !fromDb) {
-          showError(t('discover.noDownloadPath'))
-          return
-        }
-        const destPath = defaultDownloadPath.trim() || fromDb || undefined
-        const resolvedCover = coverUrl ?? discover.discoverPickGame?.coverUrl ?? null
-        await dispatch(
-          enqueueJob({
-            title,
-            url,
-            destPath: destPath ?? undefined,
-            coverUrl: resolvedCover ?? undefined,
-          }),
-        ).unwrap()
-        discover.closeDiscoverPicker()
-        onGoDownloads()
-      } catch (error) {
-        showError(formatUserError(error, t('discover.enqueueError')))
-      } finally {
-        discover.setDiscoverBusy(null)
-      }
-    },
-    [defaultDownloadPath, discover, dispatch, onGoDownloads, showError, t],
+  const handleEnqueueFromDiscover = useDiscoverEnqueue(
+    discover,
+    defaultDownloadPath,
+    dispatch,
+    onGoDownloads,
+    showError,
+    t,
   )
 
   const openGameDetail = useCallback(

@@ -1,0 +1,100 @@
+.game-detail__back-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--accent-primary);
+}
+
+.game-detail__back-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.game-detail__hero {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-5);
+  background: var(--bg-panel);
+}
+
+.game-detail__cover {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.game-detail__title {
+  font-family: var(--font-body);
+  font-weight: 700;
+  text-transform: none;
+  font-size: clamp(1.25rem, 2.5vw, 1.625rem);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.game-detail__eyebrow {
+  color: var(--accent-primary);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.game-detail__synopsis {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--text-soft);
+}
+
+.game-detail__option-variant,
+.game-detail__option-meta,
+.pick-modal__title,
+.pick-modal__option-text,
+.pick-modal__hint,
+.pick-modal__empty,
+.download-row__title,
+.download-row__meta,
+.download-row__btn,
+.download-row__primary,
+.settings-block__title,
+.settings-block__desc,
+.settings-label,
+.discover-setup__title,
+.discover-setup__text {
+  font-family: var(--font-body);
+}
+
+.game-detail__option-variant {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.download-row__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.download-row__meta,
+.game-detail__option-meta,
+.pick-modal__hint {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.game-detail__section-title {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+

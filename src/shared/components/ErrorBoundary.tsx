@@ -9,6 +9,11 @@ type ErrorBoundaryState = {
   error: Error | null
 }
 
+function isProviderContextError(error: Error | null): boolean {
+  const message = error?.message ?? ''
+  return message.includes('must be used within')
+}
+
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null }
 
@@ -20,6 +25,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     console.error('app_render_error', error, info.componentStack)
   }
 
+  handleRetry = () => {
+    // Erros de Context após HMR ficam inconsistentes sem reload completo.
+    if (isProviderContextError(this.state.error)) {
+      window.location.reload()
+      return
+    }
+    this.setState({ error: null })
+  }
+
   render() {
     if (this.state.error) {
       return (
@@ -29,7 +43,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => this.setState({ error: null })}
+            onClick={this.handleRetry}
           >
             {i18n.t('common.retry')}
           </button>

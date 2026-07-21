@@ -31,6 +31,9 @@ dist-ssr
 src-tauri/binaries/*.exe
 src-tauri/binaries/*.dll
 src-tauri/target/
+src-tauri/target-launch-test/
+*.exe.bak
+**/*.exe.bak
 scripts/__pycache__/
 **/__pycache__/
 

@@ -1,0 +1,72 @@
+.switch-btn--on {
+  background: var(--toggle-on);
+  border-color: var(--toggle-on);
+}
+
+.switch-btn--on:hover:not(:disabled) {
+  background: var(--toggle-on-hover);
+  border-color: var(--toggle-on-hover);
+}
+
+.settings-cover-progress {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.settings-cover-progress__bar {
+  background: linear-gradient(
+    90deg,
+    var(--accent-primary),
+    var(--accent-hover)
+  );
+}
+
+.settings-cover-progress__label {
+  margin: 4px 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-soft);
+}
+
+.settings-cover-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.settings-cover-overview__item {
+  padding: 8px 10px;
+  border: var(--border-thin) solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+  display: grid;
+  gap: 2px;
+}
+
+.settings-cover-overview__label {
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}
+
+.settings-cover-overview__value {
+  font-size: var(--text-base);
+  color: var(--text-main);
+}
+
+.settings-details summary {
+  padding: 4px 0;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--text-soft);
+}
+
+.settings-details__body {
+  padding-top: 8px;
+  gap: 8px;
+}
+
+.settings-block__hint {
+  display: none;
+}
+

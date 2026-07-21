@@ -1,0 +1,96 @@
+.game-tile:not(.game-tile--library):hover > .game-tile__card {
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    var(--shadow-card),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+  transform: translateY(-2px);
+}
+
+.game-tile:not(.game-tile--library) .game-tile__cover-wrap {
+  border: none;
+  background: transparent;
+}
+
+.game-tile:not(.game-tile--library) .game-tile__actions {
+  padding: 10px 12px 12px;
+  margin-top: auto;
+}
+
+.game-tile--library > .game-tile__title--above {
+  padding: 0 2px;
+}
+
+.game-tile--library .game-tile__card {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--hover-dur) ease;
+}
+
+.game-tile--library:hover .game-tile__card {
+  box-shadow:
+    var(--shadow-card),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.game-tile--library .game-tile__title--above {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.game-tile--library .game-tile__body {
+  gap: 10px;
+}
+
+.game-tile--library .game-tile__status {
+  font-size: var(--text-xs);
+  color: var(--text-soft);
+}
+
+.game-tile--library .game-tile__dock-primary {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  min-height: 44px;
+  letter-spacing: 0;
+  text-transform: none;
+  background: var(--accent-primary);
+  color: var(--accent-on);
+}
+
+.game-tile--library .game-tile__dock-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--accent-on);
+}
+
+/* ── Game detail ────────────────────────────────────────────────────────── */
+
+.game-detail__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+}
+
+.game-detail__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px 14px 6px 8px;
+  border: var(--border-thin) solid transparent;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+.game-detail__back:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+

@@ -1,0 +1,39 @@
+.download-row {
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 14px 12px;
+  background: transparent;
+  border-bottom: var(--border-thin) solid var(--divider);
+}
+
+.download-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
+}
+
+.download-row__thumb {
+  width: 64px;
+  height: 64px;
+}
+
+.download-row__title {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-transform: none;
+}
+
+.download-row__percent {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.progress-bar {
+  height: 3px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  margin-top: 8px;
+}
+

@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useConfirmDialog } from './useConfirmDialog'
 
 type ConfirmDialogProps = {
   open: boolean
@@ -26,23 +27,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const titleId = useId()
-  const descId = useId()
-  const dialogRef = useRef<HTMLDivElement>(null)
+  const { titleId, descId, dialogRef } = useConfirmDialog(open, busy, onCancel)
   const actionLabel = busy && busyLabel ? busyLabel : confirmLabel
-
-  useEffect(() => {
-    if (!open) return
-    dialogRef.current?.focus()
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) {
-        event.preventDefault()
-        onCancel()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, busy, onCancel])
 
   if (!open) return null
 
@@ -68,9 +54,9 @@ export function ConfirmDialog({
           <h2 id={titleId} className="confirm-dialog__title">
             {title}
           </h2>
-          <p id={descId} className="confirm-dialog__desc">
+          <div id={descId} className="confirm-dialog__desc">
             {description}
-          </p>
+          </div>
         </div>
         <div className="confirm-dialog__actions">
           <button

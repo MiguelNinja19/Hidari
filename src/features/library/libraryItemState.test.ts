@@ -5,6 +5,7 @@ import {
   isJobFinished,
   isPlayableLibraryItem,
   itemAwaitingInstall,
+  itemNeedsExtraction,
   showInstallAction,
   showLocateInstallAction,
   showPlayAction,
@@ -23,6 +24,20 @@ function jobEntry(job: DownloadJob): LibraryEntry {
   }
 }
 
+function baseJob(overrides: Partial<DownloadJob> & Pick<DownloadJob, 'id' | 'title' | 'destPath' | 'status'>): DownloadJob {
+  return {
+    url: 'magnet:?xt=urn:btih:abc',
+    priority: 0,
+    progress: 100,
+    bytesDownloaded: 100_000_000,
+    totalBytes: 100_000_000,
+    errorMsg: null,
+    createdAt: '',
+    updatedAt: '',
+    ...overrides,
+  }
+}
+
 describe('libraryItemState', () => {
   it('isJobFinished reconhece extracted e completed', () => {
     expect(isJobFinished({ status: 'extracted' } as DownloadJob)).toBe(true)
@@ -32,20 +47,12 @@ describe('libraryItemState', () => {
   })
 
   it('showInstallAction quando needsInstall', () => {
-    const job: DownloadJob = {
+    const job = baseJob({
       id: '1',
       title: 'Sample Game',
-      url: 'magnet:?',
       destPath: 'C:\\Games\\sample',
       status: 'extracted',
-      priority: 0,
-      progress: 100,
-      bytesDownloaded: 0,
-      totalBytes: 0,
-      errorMsg: null,
-      createdAt: '',
-      updatedAt: '',
-    }
+    })
     const pathState: Record<string, LibraryPathState> = {
       'job:1': {
         playable: false,
@@ -62,20 +69,12 @@ describe('libraryItemState', () => {
   })
 
   it('showPlayAction quando hasGame', () => {
-    const job: DownloadJob = {
+    const job = baseJob({
       id: '2',
       title: 'Ready Game',
-      url: 'magnet:?',
       destPath: 'C:\\Games\\ready',
       status: 'extracted',
-      priority: 0,
-      progress: 100,
-      bytesDownloaded: 0,
-      totalBytes: 0,
-      errorMsg: null,
-      createdAt: '',
-      updatedAt: '',
-    }
+    })
     const pathState: Record<string, LibraryPathState> = {
       'job:2': {
         playable: true,
@@ -103,101 +102,103 @@ describe('libraryItemState', () => {
   })
 
   it('não mostra instalar durante download activo', () => {
-    const job: DownloadJob = {
+    const job = baseJob({
       id: '3',
       title: 'Downloading Game',
-      url: 'magnet:?',
       destPath: 'C:\\Games\\dl',
       status: 'downloading',
-      priority: 0,
       progress: 40,
       bytesDownloaded: 0,
       totalBytes: 0,
-      errorMsg: null,
-      createdAt: '',
-      updatedAt: '',
-    }
+    })
     const item = jobEntry(job)
     expect(showInstallAction(item, [job], emptyPathState)).toBe(false)
     expect(itemAwaitingInstall(item, [job], emptyPathState)).toBe(false)
   })
 
-  it('jobBelongsInLibrary só aceita download concluído', async () => {
-    const { jobBelongsInLibrary, isActiveQueueJob } = await import('./libraryItemState')
-    const active = { status: 'paused', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob
-    const done = {
+  it('job concluído sem path state NÃO mostra Instalar', () => {
+    const job = baseJob({
+      id: '4',
+      title: 'Done No State',
+      destPath: 'C:\\Games\\done',
       status: 'completed',
-      url: 'https://example/setup.exe',
-      totalBytes: 80_000_000,
-      bytesDownloaded: 80_000_000,
-      errorMsg: null,
-    } as DownloadJob
-    const stickyDone = {
-      ...done,
-      url: 'magnet:?xt=urn:btih:abc',
-      errorMsg: 'A obter o conteúdo do torrent…',
-    } as DownloadJob
-    expect(isActiveQueueJob(active)).toBe(true)
-    expect(jobBelongsInLibrary(active)).toBe(false)
-    expect(jobBelongsInLibrary({ status: 'downloading', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob)).toBe(false)
-    expect(jobBelongsInLibrary({ status: 'failed', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob)).toBe(false)
-    expect(jobBelongsInLibrary({ status: 'verify_failed', url: '', totalBytes: 80_000_000, bytesDownloaded: 80_000_000 } as DownloadJob)).toBe(true)
-    expect(jobBelongsInLibrary(done)).toBe(true)
-    expect(jobBelongsInLibrary(stickyDone)).toBe(true)
-    expect(jobBelongsInLibrary({ status: 'extracted', url: '', totalBytes: 80_000_000, bytesDownloaded: 80_000_000 } as DownloadJob)).toBe(true)
-    expect(jobBelongsInLibrary({ status: 'seeding', url: 'magnet:?xt=urn:btih:x', totalBytes: 80_000_000, bytesDownloaded: 80_000_000 } as DownloadJob)).toBe(true)
-    expect(jobBelongsInLibrary({ status: 'cancelled', url: '', totalBytes: 0, bytesDownloaded: 0 } as DownloadJob)).toBe(false)
+    })
+    const item = jobEntry(job)
+    expect(itemAwaitingInstall(item, [job], emptyPathState)).toBe(false)
+    expect(showInstallAction(item, [job], emptyPathState)).toBe(false)
   })
 
-  it('jobBelongsInLibrary aceita paused com transferência 100%', async () => {
-    const { jobBelongsInLibrary } = await import('./libraryItemState')
-    const pausedDone = {
-      status: 'paused',
-      url: 'magnet:?xt=urn:btih:abc',
-      totalBytes: 618_035_125,
-      bytesDownloaded: 618_035_125,
-      progress: 100,
-      errorMsg: null,
-    } as DownloadJob
-    expect(jobBelongsInLibrary(pausedDone)).toBe(true)
-    expect(
-      jobBelongsInLibrary({
-        ...pausedDone,
-        bytesDownloaded: 100_000_000,
-      } as DownloadJob),
-    ).toBe(false)
+  it('com archive mostra Extrair e não Instalar', () => {
+    const job = baseJob({
+      id: '5',
+      title: 'Archive Game',
+      destPath: 'C:\\Games\\archive',
+      status: 'seeding',
+    })
+    const pathState: Record<string, LibraryPathState> = {
+      'job:5': {
+        playable: false,
+        hasGame: false,
+        needsInstall: false,
+        needsExtraction: true,
+        installPath: null,
+      },
+    }
+    const item = jobEntry(job)
+    expect(itemNeedsExtraction(item, pathState)).toBe(true)
+    expect(itemAwaitingInstall(item, [job], pathState)).toBe(false)
+    expect(showInstallAction(item, [job], pathState)).toBe(false)
+    expect(showPlayAction(item, [job], pathState)).toBe(false)
   })
 
-  it('jobBelongsInLibrary aceita 100% ainda em downloading (aria2 a semear)', async () => {
-    const { jobBelongsInLibrary } = await import('./libraryItemState')
-    const stuck = {
+  it('job concluído sem archive e sem setup → Localizar, não Instalar', () => {
+    const job = baseJob({
+      id: '6',
+      title: 'Odd Payload',
+      destPath: 'C:\\Games\\odd',
+      status: 'completed',
+    })
+    const pathState: Record<string, LibraryPathState> = {
+      'job:6': {
+        playable: false,
+        hasGame: false,
+        needsInstall: false,
+        needsExtraction: false,
+        installPath: null,
+      },
+    }
+    const item = jobEntry(job)
+    expect(showInstallAction(item, [job], pathState)).toBe(false)
+    expect(itemNeedsExtraction(item, pathState)).toBe(false)
+    expect(showLocateInstallAction(item, [job], pathState)).toBe(true)
+  })
+
+  it('pasta jogável sob raiz de downloads não é bloqueada com defaultDownloadPath', () => {
+    const folder: LibraryEntry = {
+      id: 'folder-game',
+      title: 'Installed Game',
+      status: 'installed',
+      destPath: 'C:\\Downloads\\Installed Game',
+      kind: 'folder',
+    }
+    const activeJob = baseJob({
+      id: 'job-root',
+      title: 'Other',
+      destPath: 'C:\\Downloads',
       status: 'downloading',
-      url: 'magnet:?xt=urn:btih:abc',
-      totalBytes: 2_010_000_000,
-      bytesDownloaded: 2_010_000_000,
-      progress: 100,
-      errorMsg: 'download_stalled_recovering: Sem atividade',
-    } as DownloadJob
-    expect(jobBelongsInLibrary(stuck)).toBe(true)
-  })
-
-  it('jobBelongsInLibrary rejeita completed/skipped a meio do download', async () => {
-    const { jobBelongsInLibrary } = await import('./libraryItemState')
-    const mid = {
-      status: 'completed',
-      url: 'magnet:?xt=urn:btih:abc',
-      totalBytes: 2_010_000_000,
-      bytesDownloaded: 1_070_000_000,
-      progress: 100,
-      extractionStatus: 'skipped',
-      errorMsg: null,
-    } as DownloadJob
-    expect(jobBelongsInLibrary(mid)).toBe(false)
-    expect(
-      jobBelongsInLibrary({
-        ...mid,
-        status: 'skipped',
-      } as DownloadJob),
-    ).toBe(false)
+      progress: 10,
+      bytesDownloaded: 1_000_000,
+      totalBytes: 50_000_000,
+    })
+    const pathState: Record<string, LibraryPathState> = {
+      'c:\\downloads\\installed game::installed game': {
+        playable: true,
+        hasGame: true,
+        needsInstall: false,
+        needsExtraction: false,
+      },
+    }
+    expect(showPlayAction(folder, [activeJob], pathState, 'C:\\Downloads')).toBe(true)
+    expect(showPlayAction(folder, [activeJob], pathState, '')).toBe(false)
   })
 })

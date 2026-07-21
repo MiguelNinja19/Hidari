@@ -1,0 +1,53 @@
+
+.page-hero__title {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  color: var(--text-main);
+}
+
+.page-hero__desc,
+.page-hero__count {
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  color: var(--text-soft);
+  text-transform: none;
+  font-family: var(--sans);
+  letter-spacing: -0.01em;
+}
+
+.page-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-hint {
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  letter-spacing: -0.01em;
+}
+
+.loader__track {
+  display: block;
+  position: relative;
+  width: 28px;
+  height: 4px;
+  background: var(--divider);
+  overflow: hidden;
+  border: var(--border-width) solid var(--divider);
+}
+
+.loader__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 50%;
+  height: 100%;
+  background: var(--accent-primary);
+  animation: loader-sweep 0.9s steps(4) infinite;
+}
+
+.loader--sm .loader__track {
+  width: 22px;
+  height: 2px;
+}

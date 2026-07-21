@@ -1,0 +1,15 @@
+.favorites-empty {
+  display: grid;
+  place-items: center;
+  min-height: min(48vh, 360px);
+  padding: 24px;
+}
+
+.favorites-empty__label {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  opacity: 0.45;
+}
+

@@ -1,0 +1,53 @@
+
+.discover-detail__lightbox-nav--prev {
+  left: 10px;
+}
+
+.discover-detail__lightbox-nav--next {
+  right: 10px;
+}
+
+.discover-detail__lightbox-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+}
+
+.discover-detail__lightbox-count {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.discover-detail__lightbox-thumbs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: thin;
+}
+
+.discover-detail__lightbox-thumb {
+  flex: 0 0 auto;
+  width: 56px;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  background: #0a0b0e;
+  cursor: pointer;
+  opacity: 0.42;
+  transition:
+    opacity 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+

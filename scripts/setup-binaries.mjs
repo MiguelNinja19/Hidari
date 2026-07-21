@@ -1,5 +1,8 @@
 /**
- * Baixa 7-Zip (7za.exe + 7za.dll) e sincroniza binários locais para src-tauri/binaries/.
+ * Prepara binários nativos em src-tauri/binaries/ para o OS atual.
+ * Windows: baixa 7-Zip extra + sync aria2c.exe / download-engine.exe
+ * Linux/macOS: sync download-engine; usa aria2c/7z do PATH se disponível
+ *
  * Executar: npm run setup:binaries
  */
 import { access, copyFile, mkdir, writeFile } from 'node:fs/promises'
@@ -13,9 +16,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const srcTauri = path.join(root, 'src-tauri')
 const binariesDir = path.join(srcTauri, 'binaries')
 const tmpDir = path.join(root, '.tmp-7z-setup')
+const isWindows = process.platform === 'win32'
 
 const SEVEN_ZIP_EXTRA_URL = 'https://www.7-zip.org/a/7z2301-extra.7z'
 const SEVEN_ZIP_MINI_URL = 'https://www.7-zip.org/a/7zr.exe'
+
+const ENGINE_NAME = isWindows ? 'download-engine.exe' : 'download-engine'
+const ARIA2_NAME = isWindows ? 'aria2c.exe' : 'aria2c'
 
 async function exists(filePath) {
   try {
@@ -34,9 +41,13 @@ async function download(url, dest) {
   await pipeline(response.body, createWriteStream(dest))
 }
 
-function runCommand(command, args) {
+function runCommand(command, args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit', windowsHide: true })
+    const child = spawn(command, args, {
+      stdio: 'inherit',
+      windowsHide: true,
+      shell: opts.shell ?? false,
+    })
     child.on('error', reject)
     child.on('close', (code) => {
       if (code === 0) resolve()
@@ -45,7 +56,20 @@ function runCommand(command, args) {
   })
 }
 
-async function ensure7Zip() {
+function commandExists(command) {
+  return new Promise((resolve) => {
+    const checker = isWindows ? 'where' : 'which'
+    const child = spawn(checker, [command], {
+      stdio: 'ignore',
+      windowsHide: true,
+      shell: isWindows,
+    })
+    child.on('error', () => resolve(false))
+    child.on('close', (code) => resolve(code === 0))
+  })
+}
+
+async function ensure7ZipWindows() {
   const sevenZa = path.join(binariesDir, '7za.exe')
   const sevenDll = path.join(binariesDir, '7za.dll')
   if ((await exists(sevenZa)) && (await exists(sevenDll))) {
@@ -77,28 +101,69 @@ async function ensure7Zip() {
   console.log('7za.exe e 7za.dll instalados em src-tauri/binaries/')
 }
 
-async function syncBundledTools() {
-  await mkdir(binariesDir, { recursive: true })
-
-  const pairs = [
-    ['aria2c.exe', 'aria2c.exe'],
-    ['download-engine.exe', 'download-engine.exe'],
-  ]
-
-  for (const [fileName, destName] of pairs) {
-    const from = path.join(srcTauri, fileName)
-    const to = path.join(binariesDir, destName)
-    if (!(await exists(from))) {
-      console.warn(`Aviso: ${fileName} não encontrado em src-tauri/ — ignorado`)
-      continue
+async function checkUnixExtractTools() {
+  for (const name of ['7zz', '7z', '7za']) {
+    if (await commandExists(name)) {
+      console.log(`7-Zip/p7zip encontrado no PATH: ${name}`)
+      return
     }
-    await copyFile(from, to)
-    console.log(`Sincronizado ${fileName} → binaries/${destName}`)
+  }
+  console.warn(
+    'Aviso: 7z/7zz não encontrado. Instale p7zip ou 7zip (apt install p7zip-full / brew install sevenzip).',
+  )
+}
+
+async function syncEngineFromSibling() {
+  const releaseCandidates = [
+    path.join(srcTauri, ENGINE_NAME),
+    path.join(root, '..', 'download-engine', 'target', 'release', ENGINE_NAME),
+    path.join(root, '..', 'download-engine', 'target', 'debug', ENGINE_NAME),
+  ]
+  const dest = path.join(binariesDir, ENGINE_NAME)
+  for (const from of releaseCandidates) {
+    if (!(await exists(from))) continue
+    await mkdir(binariesDir, { recursive: true })
+    await copyFile(from, dest)
+    console.log(`Sincronizado download-engine → binaries/${ENGINE_NAME}`)
+    return true
+  }
+  console.warn(
+    `Aviso: ${ENGINE_NAME} não encontrado. Compile com: npm run build:download-engine`,
+  )
+  return false
+}
+
+async function syncAria2() {
+  await mkdir(binariesDir, { recursive: true })
+  const fromLocal = path.join(srcTauri, ARIA2_NAME)
+  const to = path.join(binariesDir, ARIA2_NAME)
+  if (await exists(fromLocal)) {
+    await copyFile(fromLocal, to)
+    console.log(`Sincronizado ${ARIA2_NAME} → binaries/${ARIA2_NAME}`)
+    return
+  }
+  if (await exists(to)) {
+    console.log(`${ARIA2_NAME} já presente em binaries/`)
+    return
+  }
+  if (await commandExists(isWindows ? 'aria2c' : 'aria2c')) {
+    console.log('aria2c encontrado no PATH (será usado em runtime).')
+    return
+  }
+  if (isWindows) {
+    console.warn(
+      'Aviso: aria2c.exe não encontrado em src-tauri/ — coloque-o em src-tauri/binaries/',
+    )
+  } else {
+    console.warn(
+      'Aviso: aria2c não encontrado. Instale com: apt install aria2 / brew install aria2',
+    )
   }
 }
 
 async function writeReadme() {
-  const readme = `Binários do Hidari (gerados por npm run setup:binaries)
+  const readme = isWindows
+    ? `Binários do Hidari (gerados por npm run setup:binaries)
 
 - 7za.exe / 7za.dll — extração de ZIP, 7Z, RAR (7-Zip extra, licença LGPL)
 - aria2c.exe — motor de download
@@ -106,22 +171,32 @@ async function writeReadme() {
 
 Em desenvolvimento, o launcher também procura estes ficheiros em src-tauri/.
 `
+    : `Binários do Hidari (Linux / macOS)
+
+- download-engine — sidecar da fila (compile: npm run build:download-engine)
+- aria2c — no PATH (apt install aria2 / brew install aria2) ou em binaries/
+- 7zz / 7z — no PATH (apt install p7zip-full / brew install sevenzip) ou em binaries/
+
+O fluxo de downloads (HTTP → download-engine → aria2 → extract) é o mesmo que no Windows;
+só muda a resolução dos binários nativos.
+`
   await writeFile(path.join(binariesDir, 'README.txt'), readme, 'utf8')
 }
 
 async function main() {
-  console.log('Configurando binários do launcher...')
-  if (process.platform !== 'win32') {
-    console.log(
-      `Plataforma ${process.platform}: a saltar download de binários Windows (.exe).`,
-    )
-    await mkdir(binariesDir, { recursive: true })
-    await writeReadme()
-    console.log('Setup concluído (sem sidecars Windows).')
-    return
+  console.log(`Configurando binários do launcher (${process.platform})...`)
+  await mkdir(binariesDir, { recursive: true })
+
+  if (isWindows) {
+    await ensure7ZipWindows()
+    await syncAria2()
+    await syncEngineFromSibling()
+  } else {
+    await checkUnixExtractTools()
+    await syncAria2()
+    await syncEngineFromSibling()
   }
-  await ensure7Zip()
-  await syncBundledTools()
+
   await writeReadme()
   console.log('Setup concluído.')
 }

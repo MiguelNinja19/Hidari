@@ -1,0 +1,97 @@
+
+.dl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  border: none;
+}
+
+.dl-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 16px 18px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 14px 0;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.dl-row:last-child {
+  border-bottom: none;
+}
+
+.dl-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+  box-shadow: none;
+}
+
+.dl-row__thumb {
+  position: relative;
+  width: 56px;
+  height: 84px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--radius-md, 2px);
+  background: #18181b;
+}
+
+.dl-row__thumb .game-card__media,
+.dl-row__thumb .game-card__cover-empty {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+}
+
+.dl-row__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.dl-row__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dl-row__title {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  color: #fafafa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+}
+
+.dl-row__top-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.dl-row__percent {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #a1a1aa;
+}

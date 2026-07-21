@@ -1,0 +1,97 @@
+/* ── Cards compartilhados (Explorar / Biblioteca) ────────────── */
+
+.discover-grid,
+.library-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  align-items: stretch;
+  position: relative;
+}
+
+.discover-grid {
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  justify-content: stretch;
+  gap: 14px 12px;
+  width: 100%;
+}
+
+.discover-grid--virtual {
+  display: block;
+  grid-template-columns: none;
+  gap: 0;
+}
+
+.discover-grid__row .discover-grid__item {
+  width: 100%;
+  height: 100%;
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
+.library-grid {
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  justify-content: stretch;
+  gap: 14px 12px;
+  width: 100%;
+}
+
+.library-grid--virtual {
+  display: block;
+  grid-template-columns: none;
+  gap: 0;
+}
+
+.library-grid__row .library-grid__item {
+  width: 100%;
+  height: 100%;
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
+.discover-grid__item,
+.library-grid__item {
+  list-style: none;
+  display: flex;
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  height: 100%;
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 260px;
+}
+
+.discover-card,
+.library-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  height: 100%;
+}
+
+.library-card {
+  gap: 2px;
+}
+
+.discover-card__title-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0 2px 2px;
+  border: none;
+  background: transparent;
+  text-align: center;
+  cursor: pointer;
+}
+
+.discover-card--explore .discover-card__title-btn {
+  padding-bottom: 1px;
+}
+

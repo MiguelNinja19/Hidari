@@ -1,0 +1,97 @@
+
+.game-card {
+  position: relative;
+  background: #080808;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+.game-card__media {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #060810;
+}
+
+.game-card__cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.game-card__cover--loaded {
+  opacity: 1;
+}
+
+.game-card__cover-skeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+.page-center-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: min(52vh, 420px);
+  padding: 2.5rem 1.5rem;
+}
+
+.page-center-spinner__icon {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.game-card__cover-empty {
+  position: absolute;
+  inset: 0;
+  background: #0a0a0e;
+}
+
+.game-card__cover-empty--error {
+  display: grid;
+  place-items: center;
+}
+
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.spinner__icon {
+  display: block;
+  animation: spinner-rotate 0.75s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner__icon {
+    animation-duration: 1.4s;
+  }
+}
+
+.game-card__cover-empty-mark {
+  font-family: var(--display);
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-muted, #6b7280);
+}

@@ -1,0 +1,98 @@
+.discover-card__overlay-cta--install {
+  background: rgba(196, 132, 15, 0.82);
+  border-color: rgba(255, 190, 80, 0.28);
+  color: #fff;
+}
+
+@media (hover: none) {
+  .discover-card--has-overlay .discover-card__overlay {
+    opacity: 1;
+  }
+}
+
+.discover-card__cta {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 0;
+  background: var(--accent-primary);
+  color: var(--accent-on);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.discover-card__cta > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discover-card__cta:focus-visible {
+  outline: 2px solid var(--text-main);
+  outline-offset: -2px;
+}
+
+.discover-card__cta:disabled {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--text-soft);
+  cursor: wait;
+}
+
+.discover-card__cta-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.library-card .discover-card__panel {
+  position: relative;
+}
+
+.library-card--menu-open .discover-card__panel,
+.library-card .discover-card__panel:has(+ .library-card__menu-panel--context) {
+  z-index: 5;
+}
+
+.library-card .discover-card__overlay {
+  padding: 0 12px 12px;
+}
+
+.library-card__menu-panel--context {
+  position: fixed;
+  z-index: 80;
+  bottom: auto;
+  right: auto;
+  min-width: 210px;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 6px;
+  background: #050505;
+  border: 1px solid #1a1a1a;
+  border-radius: var(--radius-md, 2px);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.library-card__menu-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+

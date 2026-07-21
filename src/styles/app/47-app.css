@@ -1,0 +1,95 @@
+
+.settings-source__meta--warn {
+  color: var(--status-warning, #c9a227);
+}
+
+.settings-source__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.settings-source__sync {
+  min-width: 0;
+  white-space: nowrap;
+  padding-inline: 8px;
+  font-size: 0.5625rem;
+}
+
+.settings-source__remove {
+  min-width: 0;
+  white-space: nowrap;
+  padding-inline: 8px;
+  font-size: 0.5625rem;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: var(--border-width) solid var(--divider);
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.settings-toggle:last-child {
+  border-bottom: none;
+}
+
+.settings-toggle--select {
+  padding: var(--space-2) 0;
+}
+
+.settings-toggle__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-toggle__hint {
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--text-faint);
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: inherit;
+  font-weight: 400;
+}
+
+.switch-btn {
+  width: 44px;
+  height: 22px;
+  border: var(--border-width) solid var(--divider-strong);
+  background: var(--bg-app);
+  cursor: pointer;
+  position: relative;
+}
+
+.switch-btn::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--text-soft);
+}
+
+.switch-btn--on {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.switch-btn--on::after {
+  left: calc(100% - 16px);
+  background: var(--accent-text);
+}
+

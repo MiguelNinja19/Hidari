@@ -1,0 +1,88 @@
+.discover-empty__desc {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.5);
+  max-width: 36ch;
+}
+
+/* legado minimal (se ainda existir) */
+.browse-search--minimal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  width: 100%;
+  max-width: 42rem;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 0 12px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  box-shadow: none;
+}
+
+.browse-search--minimal:focus-within {
+  border-bottom-color: rgba(255, 255, 255, 0.42);
+}
+
+.browse-search--minimal .browse-search__icon {
+  position: static;
+  flex: 0 0 auto;
+  display: inline-flex;
+  transform: none;
+  top: auto;
+  left: auto;
+  color: rgba(255, 255, 255, 0.38);
+  transition: color 0.16s ease;
+}
+
+.browse-search--minimal:focus-within .browse-search__icon {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.browse-search--minimal .browse-search__icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+}
+
+.browse-search--minimal .browse-search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+.browse-search--minimal .browse-search__input::placeholder {
+  color: rgba(255, 255, 255, 0.32);
+  font-weight: 400;
+}
+
+.browse-search--minimal .browse-search__input:hover:not(:disabled),
+.browse-search--minimal .browse-search__input:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.browse-search--minimal .browse-search__input:disabled {
+  opacity: 0.45;
+}
+

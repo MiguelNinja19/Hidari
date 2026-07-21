@@ -1,0 +1,95 @@
+/* ── Configurações — organização em cards, estilo do detalhe ─────────────── */
+
+.set-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  max-width: min(1320px, 100%);
+  min-width: 0;
+  padding: 2px 2px 24px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: 500;
+  line-height: var(--leading-normal);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Só o .main-panel faz scroll — overflow aqui cria setas empilhadas no WebView2. */
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.set-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  align-content: start;
+  overflow-x: hidden;
+}
+
+.set-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  gap: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  box-shadow: none;
+  overflow-x: hidden;
+}
+
+.set-card:last-child {
+  border-bottom: none;
+}
+
+.set-card--wide {
+  grid-column: auto;
+}
+
+.set-card__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 14px;
+  padding: 18px 0;
+  list-style: none;
+  cursor: pointer;
+  min-width: 0;
+  max-width: 100%;
+  user-select: none;
+  overflow-x: hidden;
+}
+
+.set-card__summary::-webkit-details-marker {
+  display: none;
+}
+
+.set-card__summary::marker {
+  content: "";
+}
+
+.set-card__titles {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.set-card__label {
+  margin: 0;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+

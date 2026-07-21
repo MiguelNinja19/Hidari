@@ -1,0 +1,95 @@
+:root {
+  font-family: var(--sans);
+  color-scheme: dark;
+  --display: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --sans: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+  --bg-base: #000000;
+  --bg-app: #000000;
+  --bg-panel: #0a0a0a;
+  --bg-elevated: #111111;
+  --bg-card: #0d0d0d;
+  --bg-surface: #0a0a0a;
+  --bg-sidebar: #000000;
+  --bg-main: #070707;
+  --accent: #ffffff;
+  --accent-primary: #e8e8e8;
+  --accent-lime: #e8e8e8;
+  --accent-soft: rgba(255, 255, 255, 0.08);
+  --accent-muted: #666666;
+  --accent-glow: transparent;
+  --accent-on: #0a0a0a;
+  --accent-text: #f2f2f2;
+  --link: #e8e8e8;
+  --magenta: #e8e8e8;
+  --divider: rgba(255, 255, 255, 0.14);
+  --divider-strong: rgba(255, 255, 255, 0.32);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --text-main: #ececec;
+  --text-soft: #8a8a8a;
+  --text-faint: #505050;
+  --danger: #ff4444;
+  --danger-soft: rgba(255, 68, 68, 0.08);
+  --success: #5ee89a;
+  --success-soft: rgba(94, 232, 154, 0.1);
+  --warning: #ffaa00;
+  --warning-soft: rgba(255, 170, 0, 0.08);
+  --sidebar-edge: rgba(255, 255, 255, 0.22);
+  --shadow-card: none;
+  --shadow-modal: none;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --border-width: 2px;
+  --hover-dur: 0.14s;
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 14px;
+  --space-5: 16px;
+  --space-6: 20px;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  line-height: 1.45;
+  font-size: 0.8125rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+
+strong {
+  font-weight: 600;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}

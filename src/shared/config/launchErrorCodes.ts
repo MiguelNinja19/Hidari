@@ -15,10 +15,12 @@ export const LAUNCH_ERROR_MESSAGES: Record<string, string> = {
   file_corrupt:
     'O Windows bloqueou o arquivo. Abra a pasta do jogo, execute setup.exe manualmente ou mova o jogo para outro disco (ex.: C:).',
   no_valid_executable: 'Nenhum executável válido encontrado na pasta do jogo.',
+  mac_windows_repack_only:
+    'Este download é um repack Windows (.exe). No Mac, abra a pasta do jogo manualmente. Jogar funciona para jogos nativos (.app).',
   archive_not_found:
     'Instalador não encontrado na pasta. Verifique se o download terminou e se há setup.exe.',
   seven_zip_missing:
-    '7-Zip não encontrado. Instale o 7-Zip ou coloque 7z.exe em src-tauri/binaries/.',
+    '7-Zip não encontrado. No Windows: npm run setup:binaries. No Linux/macOS: apt install p7zip-full ou brew install sevenzip.',
 }
 
 const LAUNCH_ERROR_PREFIX = /^launch_error:([a-z_]+)\|/

@@ -2,9 +2,6 @@ import { createContext, useContext, type ReactNode } from 'react'
 import { useAppDispatch } from '../../app/hooks'
 import { resumeJob } from '../queue/queueSlice'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import type { DownloadJob, CatalogGame, DownloadOption, LibraryPathState } from '../../shared/types/contracts'
-import type { LibrarySort } from '../../shared/config/appSettings'
-import type { ResolvedCover } from '../covers/useGameCovers'
 import {
   hasManualInstallRoot,
   isPathStateResolved,
@@ -15,64 +12,9 @@ import {
   showPlayAction,
 } from './libraryItemState'
 import type { LibraryEntry } from './types'
+import type { LibraryControllerValue } from './libraryControllerValue'
 
-export type LibraryControllerValue = {
-  libraryItems: LibraryEntry[]
-  filteredEntries: LibraryEntry[]
-  libraryReady: boolean
-  refreshLibraryScan: (options?: { background?: boolean }) => Promise<void>
-  defaultDownloadPath: string
-  jobs: DownloadJob[]
-  pathStateByKey: Record<string, LibraryPathState>
-  libraryFilter: string
-  librarySort: LibrarySort
-  playBusyId: string | null
-  installBusyId: string | null
-  installingKeys: ReadonlySet<string>
-  setLibraryFilter: (value: string) => void
-  setLibrarySort: (value: LibrarySort) => void
-  onGoDownloads: () => void
-  onGoDiscover: () => void
-  resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
-  invalidateLocalCover: (title: string, coverUrl?: string | null) => void
-  handlePlayLibraryItem: (item: LibraryEntry) => Promise<void>
-  handleInstallItem: (item: LibraryEntry) => Promise<void>
-  handleExtractItem: (item: LibraryEntry) => Promise<void>
-  handlePickGameInstallFolder: (
-    title: string,
-    destPath: string,
-    busyKey: string,
-    jobId?: string,
-  ) => Promise<void>
-  handlePickLaunchExe: (item: LibraryEntry) => Promise<void>
-  handleDeleteLibraryItem: (item: LibraryEntry) => void
-  handleConfirmDeleteLibraryItem: () => Promise<void>
-  handleCancelDeleteLibraryItem: () => void
-  pendingDeleteItem: LibraryEntry | null
-  deletingLibraryKey: string | null
-  /** Detalhe do catálogo aberto a partir da biblioteca (um de cada vez). */
-  libraryDetail: {
-    item: LibraryEntry
-    game: CatalogGame | null
-    loading: boolean
-    error: string | null
-    options: DownloadOption[]
-    synopsis: string | null
-    screenshots: string[]
-    note: string
-    noteSaving: boolean
-    busyUrl: string | null
-  } | null
-  openLibraryDetail: (item: LibraryEntry) => void
-  closeLibraryDetail: () => void
-  setLibraryDetailNote: (note: string) => void
-  saveLibraryDetailNote: () => Promise<void>
-  handleEnqueueFromLibraryDetail: (
-    title: string,
-    url: string,
-    coverUrl?: string | null,
-  ) => Promise<void>
-}
+export type { LibraryControllerValue } from './libraryControllerValue'
 
 const LibraryControllerContext = createContext<LibraryControllerValue | null>(null)
 
@@ -106,11 +48,14 @@ export function useLibraryItemHelpers() {
     libraryStatusMeta: (item: LibraryEntry) =>
       libraryStatusMeta(item, jobs, pathStateByKey, {
         installing: installingKeys.has(itemBusyKey(item)),
+        defaultDownloadPath,
       }),
-    showPlayAction: (item: LibraryEntry) => showPlayAction(item, jobs, pathStateByKey),
-    showInstallAction: (item: LibraryEntry) => showInstallAction(item, jobs, pathStateByKey),
+    showPlayAction: (item: LibraryEntry) =>
+      showPlayAction(item, jobs, pathStateByKey, defaultDownloadPath),
+    showInstallAction: (item: LibraryEntry) =>
+      showInstallAction(item, jobs, pathStateByKey, defaultDownloadPath),
     showLocateInstallAction: (item: LibraryEntry) =>
-      showLocateInstallAction(item, jobs, pathStateByKey),
+      showLocateInstallAction(item, jobs, pathStateByKey, defaultDownloadPath),
     hasManualInstallRoot: (item: LibraryEntry) => hasManualInstallRoot(item, pathStateByKey),
     isPathStateResolved: (item: LibraryEntry) => isPathStateResolved(item, pathStateByKey),
     isLibraryInstalled: (item: LibraryEntry) =>

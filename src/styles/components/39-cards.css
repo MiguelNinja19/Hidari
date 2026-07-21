@@ -1,0 +1,100 @@
+.library-card .discover-card__title-btn {
+  padding-bottom: 0;
+  margin-bottom: -1px;
+}
+
+.discover-card__title,
+.library-card .discover-card__title {
+  display: -webkit-box;
+  margin: 0;
+  padding: 0 2px;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.45em;
+  max-height: 2.45em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--text-main);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.discover-card--explore .discover-card__title {
+  display: block;
+  min-height: 1.35em;
+  max-height: 1.35em;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.library-card .discover-card__title {
+  display: block;
+  min-height: 1.35em;
+  max-height: 1.35em;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discover-card__title-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.discover-card__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-card);
+  border: var(--border-thin) solid var(--border-subtle);
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  transition:
+    transform 200ms ease-out,
+    box-shadow 200ms ease-out;
+}
+
+/* Explorar: poster limpo, sem “caixa” pesada em volta da capa. */
+.discover-card--explore .discover-card__panel {
+  background: #0a0a0a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.discover-card--explore .discover-card__title--under {
+  min-height: 2.35em;
+  max-height: 2.35em;
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  font-weight: 560;
+  color: var(--text-soft);
+}
+
+.discover-card__cover-hitbox {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+

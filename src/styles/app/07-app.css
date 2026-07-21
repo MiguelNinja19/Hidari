@@ -1,0 +1,96 @@
+
+.discover-detail__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: -4px;
+}
+
+.discover-detail__back {
+  margin: 0;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color var(--hover-dur) ease;
+}
+
+.discover-detail__back-arrow {
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--text-soft);
+  transition: transform var(--hover-dur) ease;
+}
+
+.discover-detail__back:hover {
+  color: var(--text-main);
+}
+
+.discover-detail__back:hover .discover-detail__back-arrow {
+  color: var(--text-main);
+  transform: translateX(-2px);
+}
+
+.discover-detail__hero {
+  display: block;
+  min-width: 0;
+}
+
+.discover-detail__title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  color: var(--text-main);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Imagem + descrição lado a lado; categorias/downloads abaixo */
+.discover-detail__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 16px 20px;
+  align-items: start;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.discover-detail__main:has(> :only-child) {
+  grid-template-columns: 1fr;
+  max-width: none;
+}
+
+.discover-detail__media {
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+}
+
+.discover-detail__about {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  padding-top: 0;
+  align-self: stretch;
+}

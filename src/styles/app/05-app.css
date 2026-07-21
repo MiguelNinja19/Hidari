@@ -1,0 +1,99 @@
+
+.section-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.section-row h2 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.small-note {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text-soft);
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.78rem;
+}
+
+.empty-message {
+  color: var(--text-faint);
+  font-family: var(--sans);
+  font-size: 0.875rem;
+  padding: 20px 0;
+  letter-spacing: -0.01em;
+}
+
+.btn {
+  border: var(--border-width) solid var(--divider-strong);
+  background: transparent;
+  color: var(--text-main);
+  padding: 6px 12px;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--hover-dur) ease,
+    color var(--hover-dur) ease,
+    border-color var(--hover-dur) ease;
+}
+
+.btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background: #1a1a1a;
+  color: var(--text-main);
+  border-color: #3d3d3d;
+}
+
+.btn-outline:hover:not(:disabled) {
+  color: #ffffff;
+  background: #262626;
+  border-color: #5a5a5a;
+}
+
+.btn-primary {
+  background: #f2f2f2;
+  color: #0a0a0a;
+  border-color: #f2f2f2;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0a0a0a;
+}
+
+.btn-flat.btn-primary,
+.game-tile__cta.btn-primary {
+  background: #f2f2f2;
+  color: #0a0a0a;
+  border: var(--border-width) solid #f2f2f2;
+}
+
+.btn-danger {
+  background: #d32f2f;
+  color: #ffffff;
+  border-color: #d32f2f;
+}
+
+.btn-danger:hover:not(:disabled) {
+  color: #ffffff;
+  background: #ef5350;
+  border-color: #ef5350;
+}

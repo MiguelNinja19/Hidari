@@ -1,0 +1,7 @@
+.titlebar {
+  min-height: 36px;
+  border-bottom: var(--border-thin) solid var(--divider);
+  position: relative;
+  z-index: 200;
+}
+

@@ -1,0 +1,95 @@
+
+.download-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-bottom: var(--border-width) solid var(--divider);
+  background: var(--bg-app);
+  align-items: center;
+  transition: background var(--hover-dur) ease;
+}
+
+.download-row:last-child {
+  border-bottom: none;
+}
+
+.download-row:hover {
+  background: #0c0c0c;
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+.download-row__title {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.download-row__percent {
+  font-family: var(--display);
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+  letter-spacing: -0.04em;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--bg-elevated);
+  margin-top: var(--space-2);
+  overflow: hidden;
+  border: var(--border-width) solid var(--divider);
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  transition: width 0.08s linear;
+}
+
+.progress-bar--pulse .progress-fill {
+  background: var(--text-soft);
+}
+
+.progress-fill--indeterminate {
+  width: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--divider) 0,
+    var(--divider) 8px,
+    var(--accent-primary) 8px,
+    var(--accent-primary) 16px
+  );
+  background-size: 32px 100%;
+  animation: brutal-stripe 0.6s linear infinite;
+}
+
+@keyframes brutal-stripe {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 32px 0;
+  }
+}
+
+.download-row__thumb {
+  width: 48px;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  position: relative;
+  background: #060606;
+}
+
+.download-row__thumb .game-card__media,
+.download-row__thumb .game-card__cover-empty {
+  position: absolute;
+  inset: 0;
+}

@@ -1,0 +1,95 @@
+
+.set-switch__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.set-switch__label {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+  color: var(--text-main);
+}
+
+.set-switch__hint {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--text-soft);
+}
+
+/* Botões — minimalistas estilo shadcn */
+.set-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 2px);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.set-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.set-btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 2px;
+}
+
+.set-btn--compact {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 0.8125rem;
+  border-radius: var(--radius-md, 2px);
+}
+
+/* Primary — sólido claro */
+.set-btn--primary {
+  color: #0a0a0a;
+  background: #fafafa;
+  border-color: #fafafa;
+}
+
+.set-btn--primary:hover:not(:disabled) {
+  color: #0a0a0a;
+  background: #e4e4e7;
+  border-color: #e4e4e7;
+}
+
+.set-btn--primary:active:not(:disabled) {
+  background: #d4d4d8;
+  border-color: #d4d4d8;
+}
+
+/* Secondary — muted / outline suave */
+.set-btn--secondary {
+  color: #fafafa;
+  background: #27272a;
+  border-color: #3f3f46;
+}
+

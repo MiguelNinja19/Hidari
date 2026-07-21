@@ -2,45 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import {
-  favoriteCatalogKeyForEntry,
   favoriteCatalogKeyForGame,
 } from '../../shared/utils/favoriteCatalogKey'
-import type { CatalogGame, FavoriteCatalogEntry } from '../../shared/types/contracts'
+import type { CatalogGame } from '../../shared/types/contracts'
+import { buildFavoriteIndex, gameIsFavorite } from './favoriteCatalogIndex'
+import type { FavoriteCatalogApi, UseFavoriteCatalogOptions } from './favoriteCatalogTypes'
 
-function normalizeTitle(title: string): string {
-  return title.trim().toLowerCase()
-}
-
-function buildFavoriteIndex(entries: FavoriteCatalogEntry[]) {
-  const keys = new Set<string>()
-  const titles = new Set<string>()
-  for (const entry of entries) {
-    keys.add(favoriteCatalogKeyForEntry(entry.title, entry.catalogKey))
-    const title = normalizeTitle(entry.title)
-    if (title) titles.add(title)
-  }
-  return { keys, titles }
-}
-
-export type UseFavoriteCatalogOptions = {
-  onError?: (message: string) => void
-}
+export type { FavoriteCatalogApi, UseFavoriteCatalogOptions } from './favoriteCatalogTypes'
 
 function resolveOnError(
   arg?: ((message: string) => void) | UseFavoriteCatalogOptions,
 ): ((message: string) => void) | undefined {
   if (typeof arg === 'function') return arg
   return arg?.onError
-}
-
-export type FavoriteCatalogApi = {
-  loading: boolean
-  refresh: () => Promise<void>
-  isFavorite: (game: Pick<CatalogGame, 'title' | 'groupKey' | 'id'>) => boolean
-  isBusy: (game: Pick<CatalogGame, 'title' | 'groupKey' | 'id'>) => boolean
-  toggleFavorite: (
-    game: Pick<CatalogGame, 'title' | 'groupKey' | 'id'>,
-  ) => Promise<boolean | null>
 }
 
 /** Estado interno — usar via FavoriteCatalogProvider. */
@@ -78,10 +52,7 @@ export function useFavoriteCatalogState(
 
   const isFavorite = useCallback(
     (game: Pick<CatalogGame, 'title' | 'groupKey' | 'id'>) => {
-      const key = favoriteCatalogKeyForGame(game)
-      if (keys.has(key)) return true
-      const title = normalizeTitle(game.title)
-      return title.length > 0 && titles.has(title)
+      return gameIsFavorite(game, keys, titles)
     },
     [keys, titles],
   )
@@ -99,20 +70,11 @@ export function useFavoriteCatalogState(
       setBusyKey(key)
       try {
         const next = await sourcesApi.toggleFavoriteCatalogEntry(game.title, key)
-        setKeys((prev) => {
-          const updated = new Set(prev)
-          if (next) updated.add(key)
-          else updated.delete(key)
-          return updated
-        })
-        setTitles((prev) => {
-          const updated = new Set(prev)
-          const title = normalizeTitle(game.title)
-          if (!title) return updated
-          if (next) updated.add(title)
-          else updated.delete(title)
-          return updated
-        })
+        // Re-read DB so legacy/duplicate rows cannot leave a stale index.
+        const entries = await sourcesApi.listFavoriteCatalogEntries()
+        const index = buildFavoriteIndex(entries)
+        setKeys(index.keys)
+        setTitles(index.titles)
         return next
       } catch (error) {
         onErrorRef.current?.(formatUserError(error, 'Could not update favorite.'))

@@ -58,31 +58,31 @@ describe('DownloadsPage', () => {
     invalidateLocalCover: () => {},
   }
 
-  it('mostra Instalar como atalho para a Biblioteca quando o download terminou de verdade', () => {
+  it('mostra Install como atalho para a Biblioteca quando o download terminou de verdade', () => {
     const onGoLibrary = vi.fn()
 
     render(
       <DownloadsPage jobs={[finishedJob]} onGoLibrary={onGoLibrary} {...commonProps} />,
     )
 
-    const installBtn = screen.getByRole('button', { name: 'Instalar' })
+    const installBtn = screen.getByRole('button', { name: 'Install' })
     expect(installBtn).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Pasta' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Folder' })).toBeTruthy()
 
     fireEvent.click(installBtn)
     expect(onGoLibrary).toHaveBeenCalledTimes(1)
   })
 
-  it('não mostra Instalar enquanto ainda está a obter o conteúdo / metadados', () => {
+  it('não mostra Install enquanto ainda está a obter o conteúdo / metadados', () => {
     render(
       <DownloadsPage jobs={[awaitingJob]} onGoLibrary={() => {}} {...commonProps} />,
     )
 
-    expect(screen.queryByRole('button', { name: 'Instalar' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Pausar' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy()
   })
 
-  it('mostra Instalar e secção concluídos quando 100% ainda está em downloading', () => {
+  it('mostra Install e secção concluídos quando 100% ainda está em downloading', () => {
     const stuck: DownloadJob = {
       id: 'job-3',
       title: 'Mega Man',
@@ -100,9 +100,9 @@ describe('DownloadsPage', () => {
     render(
       <DownloadsPage jobs={[stuck]} onGoLibrary={() => {}} {...commonProps} />,
     )
-    expect(screen.getByRole('button', { name: 'Instalar' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Pausar' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Limpar concluídos' })).toBeTruthy()
-    expect(screen.getByText('1 concluído(s)')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Install' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Pause' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Clear completed' })).toBeTruthy()
+    expect(screen.getByText('1 completed')).toBeTruthy()
   })
 })

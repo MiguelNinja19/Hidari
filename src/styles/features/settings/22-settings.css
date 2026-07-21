@@ -1,0 +1,90 @@
+/* ── Settings headers ───────────────────────────────────────── */
+
+/* Settings page: cantos retos */
+.settings-page .settings-block,
+.settings-page .settings-block__meta,
+.settings-page .settings-summary,
+.settings-page .settings-import-panel,
+.settings-page .settings-import-panel__selected,
+.settings-page .settings-file-slot,
+.settings-page .settings-empty,
+.settings-page .settings-source-table-wrap,
+.settings-page .settings-source-row__badge,
+.settings-page .settings-input,
+.settings-page .settings-catalog-empty,
+.settings-page .btn,
+.settings-page .btn--compact,
+.settings-page .settings-source-actions__btn,
+.settings-page select.settings-input,
+.settings-page .settings-panel,
+.settings-page .settings-cover-progress,
+.settings-page .settings-cover-progress__bar,
+.settings-page .settings-toast {
+  border-radius: 0;
+}
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+
+.settings-page__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding-bottom: 4px;
+}
+
+.settings-page__intro {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-page__title {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+.settings-page__subtitle {
+  margin: 6px 0 0;
+  max-width: 42ch;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.settings-page__lang {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 160px;
+}
+
+.settings-page__lang-label {
+  font-family: var(--font-body);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+}
+
+.settings-page__lang .settings-input {
+  min-width: 160px;
+  width: 100%;
+}
+

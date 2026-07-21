@@ -1,0 +1,96 @@
+
+.game-tile--library .game-tile__dock-primary:hover:not(:disabled) {
+  background: #fff;
+}
+
+.game-tile--library .game-tile__dock-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.game-tile--library .game-tile__dock-primary--install {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.game-tile--library .game-tile__dock-primary--install:hover:not(:disabled) {
+  background: rgba(255, 170, 0, 0.2);
+  color: var(--warning);
+}
+
+.game-tile--library .game-tile__dock-primary--muted {
+  background: var(--bg-elevated);
+  color: var(--text-main);
+}
+
+.game-tile--library .game-tile__dock-primary--muted:hover:not(:disabled) {
+  background: var(--accent-primary);
+  color: var(--accent-text);
+}
+
+.game-tile--library
+  .game-tile__dock:not(:has(.game-tile__dock-tools))
+  .game-tile__dock-primary {
+  border-bottom: none;
+}
+
+.game-tile--library .game-tile__dock-tools {
+  display: grid;
+  grid-template-columns: repeat(var(--tool-count, 2), minmax(0, 1fr));
+}
+
+.game-tile--library .game-tile__dock-tools[data-tool-count="1"] {
+  --tool-count: 1;
+}
+
+.game-tile--library .game-tile__dock-tools[data-tool-count="2"] {
+  --tool-count: 2;
+}
+
+.game-tile--library .game-tile__dock-tools[data-tool-count="3"] {
+  --tool-count: 3;
+}
+
+.game-tile--library .game-tile__dock-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: none;
+  border-right: var(--border-width) solid var(--divider);
+  background: var(--bg-elevated);
+  color: var(--text-soft);
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background var(--hover-dur) ease,
+    color var(--hover-dur) ease;
+}
+
+.game-tile--library .game-tile__dock-tool:last-child {
+  border-right: none;
+}
+
+.game-tile--library .game-tile__dock-tool:hover:not(:disabled) {
+  background: var(--accent-primary);
+  color: var(--accent-text);
+}
+
+.game-tile--library .game-tile__dock-tool:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.game-tile--library .game-tile__dock-tool--danger {
+  color: var(--danger);
+}
+
+.game-tile--library .game-tile__dock-tool--danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: #fff;
+}

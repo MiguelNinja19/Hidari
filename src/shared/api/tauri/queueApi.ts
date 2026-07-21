@@ -1,81 +1,12 @@
 import { tauriClient } from './client'
-import type { DownloadJob, EnqueueJobInput } from '../../types/contracts'
+import type { EnqueueJobInput } from '../../types/contracts'
+import {
+  normalizeDownloadJob,
+  parseJobsPayload,
+  type LooseJob,
+} from './queueJobPayload'
 
-type LooseJob = Record<string, unknown>
-
-const optFinite = (a: unknown, b?: unknown): number | undefined => {
-  const v = a ?? b
-  if (v == null) return undefined
-  const n = typeof v === 'number' ? v : Number(v)
-  return Number.isFinite(n) ? n : undefined
-}
-
-const asNum = (a: unknown, b?: unknown, fallback = 0) => {
-  const v = optFinite(a, b)
-  return v ?? fallback
-}
-
-/** Extrai array de jobs da resposta do sidecar (array ou `{ jobs: [] }`). */
-export function parseJobsPayload(payload: unknown): LooseJob[] {
-  if (Array.isArray(payload)) {
-    return payload as LooseJob[]
-  }
-  if (payload && typeof payload === 'object') {
-    const obj = payload as Record<string, unknown>
-    const nested = obj.jobs ?? obj.data ?? obj.items
-    if (Array.isArray(nested)) {
-      return nested as LooseJob[]
-    }
-  }
-  return []
-}
-
-/** Normaliza resposta do sidecar (camelCase ou snake_case). */
-export function normalizeDownloadJob(raw: LooseJob): DownloadJob {
-  const bytesDownloaded = asNum(
-    raw.bytesDownloaded,
-    raw.bytes_downloaded ?? raw.downloadedBytes ?? raw.downloaded,
-  )
-  const totalBytes = asNum(raw.totalBytes, raw.total_bytes ?? raw.totalSize ?? raw.size)
-  const progress = asNum(
-    raw.progress,
-    raw.progressPercent ?? raw.percent ?? raw.percentage ?? raw.completion,
-  )
-
-  return {
-    id: String(raw.id ?? ''),
-    title: String(raw.title ?? ''),
-    url: String(raw.url ?? ''),
-    destPath: String(raw.destPath ?? raw.dest_path ?? ''),
-    status: String(raw.status ?? 'pending'),
-    priority: asNum(raw.priority),
-    progress,
-    bytesDownloaded,
-    totalBytes,
-    speedBps: optFinite(raw.speedBps, raw.speed_bps),
-    etaSeconds: optFinite(raw.etaSeconds, raw.eta_seconds),
-    seedEnabled:
-      typeof raw.seedEnabled === 'boolean'
-        ? raw.seedEnabled
-        : typeof raw.seed_enabled === 'boolean'
-          ? raw.seed_enabled
-          : undefined,
-    errorMsg:
-      raw.errorMsg != null
-        ? String(raw.errorMsg)
-        : raw.error_msg != null
-          ? String(raw.error_msg)
-          : null,
-    extractionStatus:
-      raw.extractionStatus != null
-        ? String(raw.extractionStatus)
-        : raw.extraction_status != null
-          ? String(raw.extraction_status)
-          : null,
-    createdAt: String(raw.createdAt ?? raw.created_at ?? ''),
-    updatedAt: String(raw.updatedAt ?? raw.updated_at ?? raw.createdAt ?? raw.created_at ?? ''),
-  }
-}
+export { normalizeDownloadJob, parseJobsPayload } from './queueJobPayload'
 
 export const queueApi = {
   enqueueJob: async (payload: EnqueueJobInput) => {

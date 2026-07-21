@@ -1,0 +1,97 @@
+
+.discover-search-inline .browse-search--bar .browse-search__input,
+.discover-search-inline__input {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.discover-search-inline
+  .browse-search--bar
+  .browse-search__input:hover:not(:disabled),
+.discover-search-inline .browse-search--bar .browse-search__input:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.discover-search-inline__btn {
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-width: 6.75rem;
+  margin: 0;
+  padding-inline: var(--space-4);
+  border: none;
+  border-left: var(--border-width) solid var(--divider);
+  border-radius: 0;
+  white-space: nowrap;
+}
+
+.discover-search-inline__btn-loader {
+  margin: 0 auto;
+}
+
+.game-tile__cta.btn-primary:hover:not(:disabled),
+.btn-flat.btn-primary:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0a0a0a;
+}
+
+.empty-state__action:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0a0a0a;
+}
+
+.text-link {
+  border: none;
+  background: none;
+  color: var(--text-soft);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition:
+    color var(--hover-dur) ease,
+    border-color var(--hover-dur) ease;
+}
+
+.text-link:hover:not(:disabled) {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.text-link--danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.browse-toolbar {
+  display: block;
+  width: 100%;
+}
+
+.browse-search--bar {
+  width: 100%;
+  max-width: none;
+}
+
+.browse-search--bar .browse-search__input {
+  width: 100%;
+  padding: 9px 36px 9px 34px;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--bg-app);
+  border: var(--border-width) solid var(--divider);
+  transition: border-color var(--hover-dur) ease;
+}

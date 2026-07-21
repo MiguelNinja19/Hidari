@@ -1,0 +1,95 @@
+.settings-block__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.settings-block__head-actions .btn {
+  min-height: 36px;
+  padding: 8px 14px;
+}
+
+.settings-block__head-actions .btn-outline,
+.settings-page .settings-source-actions__btn.btn-outline,
+.settings-page .btn-outline {
+  color: var(--settings-btn-muted-text);
+  background: var(--settings-btn-muted-bg);
+  border-color: var(--settings-btn-muted-border);
+  box-shadow: none;
+}
+
+.settings-block__head-actions .btn-outline:hover:not(:disabled),
+.settings-block__head-actions .btn-outline:active:not(:disabled),
+.settings-page .settings-source-actions__btn.btn-outline:hover:not(:disabled),
+.settings-page .settings-source-actions__btn.btn-outline:active:not(:disabled),
+.settings-page .btn-outline:hover:not(:disabled),
+.settings-page .btn-outline:active:not(:disabled) {
+  color: #ffffff;
+  background: var(--settings-btn-muted-hover-bg);
+  border-color: var(--settings-btn-muted-hover-border);
+}
+
+.settings-block__head-actions .btn-primary,
+.settings-page .btn-primary {
+  font-weight: 700;
+  color: var(--settings-btn-action-text);
+  background: var(--settings-btn-action);
+  border-color: var(--settings-btn-action);
+  box-shadow: none;
+}
+
+.settings-block__head-actions .btn-primary:hover:not(:disabled),
+.settings-block__head-actions .btn-primary:active:not(:disabled),
+.settings-page .btn-primary:hover:not(:disabled),
+.settings-page .btn-primary:active:not(:disabled) {
+  color: #ffffff;
+  background: var(--settings-btn-action-hover);
+  border-color: var(--settings-btn-action-hover);
+  box-shadow: none;
+}
+
+.settings-source-row {
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+  transition: none;
+  min-height: 54px;
+}
+
+.settings-source-row:hover,
+.settings-source-row--off:hover {
+  background: transparent;
+  opacity: inherit;
+}
+
+.settings-page .btn--compact,
+.settings-page .settings-source-actions__btn {
+  min-height: 36px;
+  padding: 8px 12px;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: 0;
+}
+
+.settings-page .settings-source-actions__btn {
+  min-width: 4.75rem;
+}
+
+.settings-page .btn-primary {
+  font-weight: 700;
+  color: var(--settings-btn-action-text);
+  background: var(--settings-btn-action);
+  border-color: var(--settings-btn-action);
+  box-shadow: none;
+}
+
+.settings-page .btn-outline {
+  color: var(--settings-btn-muted-text);
+  background: var(--settings-btn-muted-bg);
+  border-color: var(--settings-btn-muted-border);
+  box-shadow: none;
+}
+

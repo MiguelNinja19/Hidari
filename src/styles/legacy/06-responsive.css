@@ -1,0 +1,15 @@
+
+.set-page,
+.dl-page {
+  width: 100%;
+  margin-inline: 0;
+}
+
+.set-page {
+  max-width: min(1320px, 100%);
+}
+
+.dl-page {
+  max-width: none;
+}
+

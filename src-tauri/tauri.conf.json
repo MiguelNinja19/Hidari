@@ -46,13 +46,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
+    "publisher": "Hidari",
+    "shortDescription": "Hidari — launcher de jogos",
+    "longDescription": "Hidari é um launcher de jogos com catálogo, downloads e biblioteca local.",
     "resources": [
-      "binaries/README.txt",
-      "binaries/aria2c.exe",
-      "binaries/download-engine.exe",
-      "binaries/7za.exe",
-      "binaries/7za.dll"
+      "binaries/README.txt"
     ],
     "icon": [
       "icons/32x32.png",
@@ -62,6 +61,17 @@
       "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "headerImage": "windows/nsis/header.bmp",
+        "sidebarImage": "windows/nsis/sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "startMenuFolder": "Hidari",
+        "displayLanguageSelector": true,
+        "languages": ["PortugueseBR", "English", "Spanish", "Russian"]
+      }
+    }
   }
 }

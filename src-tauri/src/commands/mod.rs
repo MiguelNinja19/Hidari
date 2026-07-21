@@ -19,10 +19,10 @@ pub use crate::favorites::{
   toggle_favorite_catalog_entry,
 };
 pub use crate::library::{
-  delete_local_library_item, extract_library_folder, get_library_note, inspect_library_path,
-  inspect_library_paths, is_executable_running_at_path, launch_game_from_path,
-  launch_setup_from_path, scan_default_download_path, set_library_game_root,
-  set_library_launch_exe, set_library_note,
+  delete_local_library_item, extract_library_folder, get_library_installed_locations,
+  get_library_note, inspect_library_path, inspect_library_paths, is_executable_running_at_path,
+  launch_game_from_path, launch_setup_from_path, scan_default_download_path, set_library_game_root,
+  set_library_launch_exe, set_library_note, uninstall_library_item,
 };
 pub use crate::notifications::send_desktop_notification;
 pub use crate::queue::clear_completed_jobs;

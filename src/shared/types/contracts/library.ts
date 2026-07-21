@@ -6,6 +6,8 @@ export type LibraryPathState = {
   installPath?: string | null
   needsExtraction: boolean
   customGameRoot?: string | null
+  /** .exe jogável já encontrado na inspeção (acelera o 1.º Jogar) */
+  launchPath?: string | null
 }
 
 export type InspectLibraryPathInput = {

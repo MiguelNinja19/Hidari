@@ -3,7 +3,6 @@ import {
   ARIA2_EXIT_MESSAGES,
   EXTRACTION_ERROR_MESSAGES,
   formatDownloadError,
-  stripAria2ProgressNoise,
 } from './downloadErrors'
 
 describe('formatDownloadError', () => {
@@ -44,7 +43,7 @@ describe('formatDownloadError', () => {
       'Sem atividade — a retomar automaticamente…',
     )
     expect(formatDownloadError('download_stalled: x')).toBe(
-      'Download parado (sem peers/velocidade). Tente outra fonte no catálogo.',
+      'Sem atividade — a retomar automaticamente…',
     )
   })
 

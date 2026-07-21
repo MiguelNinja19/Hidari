@@ -1,0 +1,55 @@
+
+.discover-detail__carousel-frame::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.55), transparent);
+}
+
+.discover-detail__carousel-frame::after {
+  right: 0;
+  background: linear-gradient(270deg, rgba(0, 0, 0, 0.55), transparent);
+}
+
+.discover-detail__carousel-frame:hover::before,
+.discover-detail__carousel-frame:hover::after,
+.discover-detail__carousel-frame:focus-within::before,
+.discover-detail__carousel-frame:focus-within::after {
+  opacity: 1;
+}
+
+.discover-detail__shot {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: min(36vh, 360px);
+  height: auto;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+@media (max-width: 900px) {
+  .discover-detail__main {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+
+  .discover-detail__main:has(> :only-child) {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+
+  .discover-detail__media {
+    max-width: none;
+  }
+
+  .discover-detail__synopsis {
+    max-height: none;
+  }
+
+  .discover-detail__shot {
+    max-height: min(34vh, 280px);
+  }
+}

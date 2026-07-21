@@ -1,0 +1,51 @@
+
+.loader--md .loader__track {
+  width: 32px;
+  height: 2px;
+}
+
+.loader--lg .loader__track {
+  width: 120px;
+  height: 3px;
+}
+
+.loader--lg .loader__bar {
+  width: 38%;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+@keyframes loader-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.loader {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.09) 45%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+

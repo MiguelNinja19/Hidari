@@ -1,0 +1,11 @@
+.library-toolbar {
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.library-toolbar__sort {
+  border-bottom: none;
+  min-height: 46px;
+  padding-bottom: 0;
+}

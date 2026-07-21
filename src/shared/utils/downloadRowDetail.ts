@@ -22,11 +22,11 @@ export function downloadRowDetail(job: DownloadJob, downloadNow: number): string
   if (softError.includes('download_failover')) {
     return 'A tentar outra fonte do catálogo…'
   }
-  if (softError.includes('download_stalled_recovering')) {
+  if (
+    softError.includes('download_stalled_recovering') ||
+    softError.includes('download_stalled')
+  ) {
     return 'Sem atividade — a retomar automaticamente…'
-  }
-  if (softError.includes('download_stalled')) {
-    return 'Parado sem velocidade — tente outra fonte'
   }
 
   if (['downloading', 'retrying', 'seeding'].includes(job.status)) {

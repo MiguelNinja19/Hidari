@@ -1,0 +1,95 @@
+@media (prefers-reduced-motion: reduce) {
+  .library-card__progress-fill {
+    width: 100%;
+    opacity: 0.55;
+    animation: none;
+  }
+}
+
+.discover-card__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 10px 12px;
+  background: linear-gradient(
+    180deg,
+    transparent 42%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.discover-card--has-overlay:hover .discover-card__overlay,
+.discover-card--has-overlay:focus-within .discover-card__overlay {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /* Biblioteca: elevação suave, sem alterar a borda */
+  .library-card--actionable:hover .discover-card__panel,
+  .library-card--actionable:focus-within .discover-card__panel {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
+  }
+
+  /*
+   * Explorar / Favoritos — hover tipo storefront:
+   * lift + zoom na capa, sem reforçar bordas.
+   */
+  .discover-card--explore.library-card--actionable:hover .discover-card__panel,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__panel {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.48);
+  }
+
+  .discover-card--explore.library-card--actionable:hover .discover-card__cover .game-card__cover,
+  .discover-card--explore.library-card--actionable:hover .discover-card__cover .game-card__media,
+  .discover-card--explore.library-card--actionable:hover .discover-card__cover img,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__cover .game-card__cover,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__cover .game-card__media,
+  .discover-card--explore.library-card--actionable:focus-within .discover-card__cover img {
+    transform: scale(1.045);
+  }
+
+  .discover-card--explore.library-card--actionable:active .discover-card__panel {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transition-duration: 120ms;
+  }
+
+  .discover-card--explore.library-card--actionable:active .discover-card__cover .game-card__cover,
+  .discover-card--explore.library-card--actionable:active .discover-card__cover .game-card__media,
+  .discover-card--explore.library-card--actionable:active .discover-card__cover img {
+    transform: scale(1.02);
+    transition-duration: 120ms;
+  }
+}
+
+.discover-card__overlay-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  background: rgba(20, 20, 20, 0.72);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+

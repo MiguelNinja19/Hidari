@@ -10,6 +10,7 @@ See also [Architecture](./architecture.md) (download and extraction flow) and [A
 
 ```bash
 npm run setup:binaries
+npm run installer:assets   # header/sidebar BMP no estilo Hidari (NSIS)
 npm run tauri:build
 ```
 
@@ -19,7 +20,19 @@ Tauri will:
 2. Compile the Rust crate in `src-tauri/`.
 3. Package the installer/executable per `tauri.conf.json`.
 
-Typical output: `src-tauri/target/release/bundle/`.
+Typical output: `src-tauri/target/release/bundle/` (NSIS em `bundle/nsis/`).
+
+### NSIS branding
+
+O instalador Windows usa imagens em `src-tauri/windows/nsis/` (fundo escuro + logo Hidari):
+
+| Asset | Uso | Tamanho |
+| ----- | --- | ------- |
+| `header.bmp` | Cabeçalho das páginas | 150×57 |
+| `sidebar.bmp` | Welcome / Finish | 164×314 |
+| `icons/icon.ico` | Ícone do setup | — |
+
+Regenerar: `npm run installer:assets`.
 
 ## Tauri configuration
 
@@ -41,60 +54,131 @@ App icons: `src-tauri/icons/` (from the Hidari brand). Docs logo: `docs/assets/`
 
 Changing the identifier from `com.mylauncher.app` to `com.hidari.app` creates a new AppData folder. On startup Hidari copies `launcher.db` (and WAL/covers when present) from the legacy folder if the new database does not yet exist.
 
-### Updater signing
+### Updater signing (chave pública / privada)
 
-1. Generate keys: `npx tauri signer generate -w ./.tauri/hidari.key`
-2. Put the **public** key in `plugins.updater.pubkey` (`tauri.conf.json`).
-3. For signed release builds locally, set env vars before `npm run tauri:build`:
-   - `TAURI_SIGNING_PRIVATE_KEY`
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+O Hidari pode verificar **updates automáticos** (plugin `updater` no `tauri.conf.json`). Isso usa um par de chaves:
 
-Never commit `.tauri/*.key`. There is no GitHub Actions workflow in this repo — builds and releases are done locally.
+| Chave | Onde fica | Função |
+| ----- | --------- | ------ |
+| **Pública** | `plugins.updater.pubkey` em `tauri.conf.json` (vai no repositório) | A app instalada usa-a para **verificar** que o update é legítimo |
+| **Privada** | Ficheiro local (ex. `.tauri/hidari.key`) — **nunca no Git** | Assina os artefactos de update no **teu** PC ao fazer o release |
+
+A pasta `.tauri/` está no `.gitignore`. A privada não se “descarrega” de lado nenhum: ou a guardaste quando a geraste, ou tens de gerar um par **novo** (e atualizar a pública no config).
+
+#### Build local sem updates assinados (padrão atual)
+
+`bundle.createUpdaterArtifacts` está a **`false`**.
+
+- `npm run tauri:build` gera só o instalador / MSI — **não** precisa da chave privada.
+- Instaladores tipicamente em:
+  - `src-tauri/target/release/bundle/nsis/Hidari_*_x64-setup.exe` (recomendado)
+  - `src-tauri/target/release/bundle/msi/Hidari_*_x64_*.msi`
+
+Se `createUpdaterArtifacts` estiver a `true` e existir `pubkey` sem `TAURI_SIGNING_PRIVATE_KEY`, o Tauri pode **criar os instaladores e falhar no fim** com:
+
+```text
+A public key has been found, but no private key.
+Make sure to set TAURI_SIGNING_PRIVATE_KEY environment variable.
+```
+
+Nesse caso os ficheiros em `bundle/nsis/` e `bundle/msi/` costumam já estar utilizáveis; o erro é só a assinatura dos artefactos de update.
+
+#### Gerar um par de chaves (quando fores ativar updates)
+
+```bash
+npx tauri signer generate -w ./.tauri/hidari.key
+```
+
+1. Guarda `.tauri/hidari.key` num sítio seguro (backup fora do repo).
+2. Copia a **chave pública** impressa pelo comando para `plugins.updater.pubkey` em `src-tauri/tauri.conf.json`.
+3. Se mudares de par, apps antigas com a pública antiga **deixam de aceitar** updates assinados com a chave nova (é preciso republicar / comunicar aos utilizadores).
+
+#### Release com artefactos de update
+
+1. Em `tauri.conf.json`, põe `"createUpdaterArtifacts": true`.
+2. Define as variáveis de ambiente **antes** do build:
+
+**Git Bash / Linux / macOS:**
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ./.tauri/hidari.key)"
+# só se definiste password ao gerar:
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="tua-password"
+npm run tauri:build
+```
+
+**PowerShell:**
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -Raw .\.tauri\hidari.key
+# $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "tua-password"
+npm run tauri:build
+```
+
+3. Publica o instalador e o `latest.json` (e ficheiros `.sig` associados) no endpoint configurado em `plugins.updater.endpoints` (hoje: GitHub Releases do projeto).
+
+Não commits `.tauri/*.key`. Builds e releases neste repo são feitos **localmente** (sem workflow CI de assinatura).
 
 ## Required binaries
 
 ### `download-engine`
 
-Sidecar that owns the download queue (HTTP/torrent). The launcher looks for `download-engine.exe` roughly in this order:
+Sidecar HTTP for the download queue. Look-up order (platform-native name: `download-engine.exe` on Windows, `download-engine` elsewhere):
 
-1. `src-tauri/download-engine.exe` (in the repo for dev)
-2. Sibling project build folders `../download-engine/target*/release|debug/`
-3. Packaged Tauri resources
-4. Application data folder
+1. `src-tauri/binaries/`
+2. `src-tauri/`
+3. `../download-engine/target/{release,debug}/`
+4. Packaged Tauri resources
+5. Application data folder
 
-For local development, put the built executable at `src-tauri/download-engine.exe` or build the `download-engine` project in an adjacent folder.
-
-### `7za.exe` / `7z.exe`
-
-Used to extract archives after download (ZIP, 7Z, RAR). Automatic setup places them at:
-
-```
-src-tauri/binaries/7za.exe
-src-tauri/binaries/7za.dll
+```bash
+npm run build:download-engine
 ```
 
-Run `npm run setup:binaries` if those files are missing. The launcher also looks for `7z` on `PATH` or under `Program Files\7-Zip`.
+### 7-Zip / p7zip
 
-For release, binaries are included via `bundle.resources` in `tauri.conf.json`.
+Used to extract archives after download (ZIP, 7Z, RAR).
 
-### `aria2c.exe`
+| OS | How |
+|----|-----|
+| Windows | `npm run setup:binaries` → `binaries/7za.exe` + `7za.dll`; also `Program Files\7-Zip` |
+| Linux | `apt install p7zip-full` (`7z` / `7za`) or copy `7zz` into `binaries/` |
+| macOS | `brew install sevenzip` (`7zz`) or `p7zip` |
 
-Used by the download engine for transfers. Place at:
+### `aria2c`
 
-```
-src-tauri/binaries/aria2c.exe
-```
+Used by the download engine for transfers.
 
-In release, the file is included via `bundle.resources` in `tauri.conf.json`.
+| OS | How |
+|----|-----|
+| Windows | Place `aria2c.exe` in `src-tauri/binaries/` (synced by `setup:binaries` when present under `src-tauri/`) |
+| Linux / macOS | `apt install aria2` / `brew install aria2`, or place `aria2c` in `binaries/` |
 
-At runtime the launcher also looks:
+At runtime the launcher also looks next to the engine, under `tools/`, Tauri resources, and `PATH`.
 
-- Next to `download-engine.exe`
-- `tools/aria2c.exe` relative to the engine
-- Tauri resources (`aria2c.exe`, `tools/`, `binaries/`)
-- System `PATH`
+### Bundle resources by platform
 
-Details in `src-tauri/binaries/README.txt`.
+| File | Role |
+|------|------|
+| `tauri.conf.json` | Base resources: `binaries/README.txt` |
+| `tauri.windows.conf.json` | `aria2c.exe`, `download-engine.exe`, `7za.exe`, `7za.dll` |
+| `tauri.linux.conf.json` / `tauri.macos.conf.json` | `binaries/README.txt` — rely on PATH or copy native binaries before release |
+
+Linux/mac release builds do **not** require Windows `.exe` files. For a self-contained Unix bundle, copy native `download-engine` (+ optional `aria2c` / `7zz`) into `src-tauri/binaries/` and extend the platform config `resources` list.
+
+## Platforms and download parity
+
+**Downloads** (Discover → queue → extract) use the **same** logic on Windows, Linux, and macOS: IPC → `download-engine` HTTP API → aria2 → 7z. Only binary **file names** and packaging differ.
+
+**Library Play/Install** for Windows repacks (`setup.exe`, PE) is **Windows-only**. On **macOS**, **Play** supports native `.app` bundles; Hydra/FitGirl repacks → open folder. On **Linux**, use Wine/Proton manually.
+
+### Unix smoke checklist
+
+1. Install `aria2` + `p7zip`/`sevenzip`
+2. `npm run build:download-engine && npm run setup:binaries`
+3. `npm run tauri:dev`
+4. Enqueue a small HTTP or magnet job → progress updates → pause/resume
+5. After completion, extract if an archive is present; open job folder
 
 ## Embedded resources
 
@@ -102,10 +186,6 @@ Details in `src-tauri/binaries/README.txt`.
 - Imported catalogs — AppData cache (`catalogs/`)
 - Icons in `src-tauri/icons/`
 - UI logo: `src/assets/logo.webp`
-
-## Platforms
-
-The project targets **Windows** (`aria2c.exe`, `download-engine.exe`). Other platforms would need equivalent binaries and changes in `lib.rs` (`cfg!(target_os = "windows")`).
 
 ## License
 

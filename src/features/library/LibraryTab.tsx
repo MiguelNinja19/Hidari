@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { useTranslation } from 'react-i18next'
 import type { AppDispatch } from '../../app/store'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { NavTab } from '../../layout/types'
-import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { useCovers } from '../covers/CoversProvider'
 import { LibraryControllerProvider } from './LibraryController'
 import { LibraryPage } from './LibraryPage'
 import { useLibraryControllerState } from './useLibraryControllerState'
 import { useLibraryFolderWatch } from './useLibraryFolderWatch'
 import { onLibraryRefreshNeeded } from '../../app/libraryRefreshBridge'
+import { LibraryDeleteDialog } from './LibraryDeleteDialog'
 
 type LibraryTabProps = {
   activeTab: NavTab
@@ -31,8 +30,6 @@ export function LibraryTab({
   onGoDownloads,
 }: LibraryTabProps) {
   const { resolveCover, resolveCoversBatch, invalidateLocalCover } = useCovers()
-  const { t } = useTranslation()
-
   const libraryController = useLibraryControllerState({
     activeTab,
     jobs,
@@ -62,28 +59,10 @@ export function LibraryTab({
     return onLibraryRefreshNeeded(requestBackgroundScan)
   }, [requestBackgroundScan])
 
-  const pendingDelete = libraryController.pendingDeleteItem
-  const isDeleting = libraryController.deletingLibraryKey !== null
-
   return (
     <LibraryControllerProvider value={libraryController}>
       <LibraryPage />
-      <ConfirmDialog
-        open={pendingDelete !== null}
-        title={t('library.deleteConfirmTitle')}
-        description={
-          pendingDelete
-            ? t('library.deleteConfirmBody', { title: pendingDelete.title })
-            : ''
-        }
-        confirmLabel={t('common.delete')}
-        busyLabel={t('library.deleting')}
-        cancelLabel={t('common.cancel')}
-        confirmVariant="danger"
-        busy={isDeleting}
-        onConfirm={() => void libraryController.handleConfirmDeleteLibraryItem()}
-        onCancel={libraryController.handleCancelDeleteLibraryItem}
-      />
+      <LibraryDeleteDialog controller={libraryController} />
     </LibraryControllerProvider>
   )
 }

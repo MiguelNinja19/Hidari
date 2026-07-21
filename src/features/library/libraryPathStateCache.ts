@@ -2,7 +2,7 @@ import type { LibraryPathState } from '../../shared/types/contracts'
 
 type PathStateMap = Record<string, LibraryPathState>
 
-const STORAGE_KEY = 'launcher.library.pathState.v1'
+const STORAGE_KEY = 'launcher.library.pathState.v3'
 
 type StoredCache = {
   downloadPath: string

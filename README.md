@@ -106,10 +106,12 @@ Build and binaries: [docs/build-and-release.md](./docs/build-and-release.md).
 | Symptom | Fix |
 |---------|-----|
 | “Tauri unavailable” | Use `npm run tauri:dev` |
-| Extraction / `7z_not_found` | `npm run setup:binaries` |
+| Extraction / `7z_not_found` | Windows: `npm run setup:binaries`. Linux/mac: install `p7zip`/`sevenzip` |
 | Empty search | Active sources + sync catalog |
 | Library shows **Play** but only setup exists | Rebuild / update — inspect treats `setup.exe` as Install until a game root is set |
 | `.torrent` not deleted after download | Expected if **Seed after download** is on |
+| Build ends with `TAURI_SIGNING_PRIVATE_KEY` | Normal if updater artefacts are on without a private key — see [Build → Updater signing](./docs/build-and-release.md#updater-signing-chave-pública--privada). Installers in `bundle/` may already exist; local builds keep `createUpdaterArtifacts: false` |
+| Downloads fail on Linux/mac | `npm run build:download-engine`; install `aria2` + `p7zip`/`sevenzip`; see [Getting started](./docs/getting-started.md) |
 
 More in [docs/getting-started.md](./docs/getting-started.md).
 
@@ -123,7 +125,7 @@ More in [docs/getting-started.md](./docs/getting-started.md).
 | [Getting started](./docs/getting-started.md) | Install and user flow |
 | [Architecture](./docs/architecture.md) | Library, queue, DB |
 | [Tauri API](./docs/api.md) | Commands and events |
-| [Build](./docs/build-and-release.md) | Packaging |
+| [Build](./docs/build-and-release.md) | Packaging, NSIS branding, updater keys |
 
 ---
 

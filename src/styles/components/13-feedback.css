@@ -1,0 +1,41 @@
+/* ── Notices & empty states ─────────────────────────────────────────────── */
+
+.game-detail__alert {
+  margin-top: 4px;
+}
+
+.settings-block__alert {
+  flex: 1;
+  min-width: 0;
+}
+
+.pick-modal__alert {
+  margin-bottom: 12px;
+}
+
+.discover-page__alert {
+  margin-bottom: 4px;
+}
+
+.empty-state {
+  padding: 40px 32px;
+  min-height: 200px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.empty-state__title {
+  font-family: var(--font-body);
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.02em;
+}
+
+.empty-state__desc {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+

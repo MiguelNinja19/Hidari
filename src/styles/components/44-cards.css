@@ -1,0 +1,99 @@
+.library-card__menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.library-card__menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 2px);
+  background: transparent;
+  color: #e4e4e7;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.library-card__menu-item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-card__menu-item:hover:not(:disabled) {
+  color: #fafafa;
+  background: #141414;
+  border-color: #222;
+}
+
+.library-card__menu-item:active:not(:disabled) {
+  background: #1c1c1c;
+  border-color: #2a2a2a;
+}
+
+.library-card__menu-item:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.28);
+  outline-offset: 1px;
+}
+
+.library-card__menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Ação principal — destaque claro, como botão primary das configs */
+.library-card__menu-item--primary {
+  color: #0a0a0a;
+  background: #fafafa;
+  border-color: #fafafa;
+  font-weight: 600;
+}
+
+.library-card__menu-item--primary:hover:not(:disabled) {
+  color: #0a0a0a;
+  background: #e4e4e7;
+  border-color: #e4e4e7;
+}
+
+.library-card__menu-item--primary:active:not(:disabled) {
+  background: #d4d4d8;
+  border-color: #d4d4d8;
+}
+
+/* Ações secundárias — mais quietas */
+.library-card__menu-item--quiet {
+  color: #a1a1aa;
+  font-weight: 500;
+}
+
+.library-card__menu-item--quiet:hover:not(:disabled) {
+  color: #fafafa;
+  background: #141414;
+  border-color: #222;
+}
+
+/* Excluir — só o texto em vermelho; fundo só no hover */
+.library-card__menu-item--danger {
+  color: #f87171;
+  background: transparent;
+  border-color: transparent;
+  font-weight: 500;
+}
+

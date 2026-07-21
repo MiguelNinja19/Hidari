@@ -1,59 +1,17 @@
 import { memo, useMemo } from 'react'
-import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { CatalogCover } from '../../shared/components/CatalogCover'
 import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
-import { localeForLanguage, type AppLanguage } from '../../shared/config/locale'
 import { useTitleCover, useStableCoverActions } from '../covers/useTitleCover'
-import type { LibraryStatusMeta } from './libraryItemState'
 import { LibraryGameCard } from './LibraryGameCard'
-import type { LibraryEntry } from './types'
-import type { GameTileAction } from '../../shared/components/GameTileAction'
+import type { LibraryGridCardModel } from './libraryGridCardModel'
 
-function formatStatusPct(pct: number, language: AppLanguage): string {
-  const decimal = localeForLanguage(language) === 'en-US' ? '.' : ','
-  return `${pct.toFixed(1).replace('.', decimal)}%`
-}
-
-function libraryStatusLine(
-  meta: LibraryStatusMeta,
-  primary: GameTileAction | null,
-  t: TFunction,
-  language: AppLanguage,
-): string | null {
-  if (meta.tone === 'ready' || meta.tone === 'waiting') return null
-  if (
-    (primary?.id === 'play' || primary?.id === 'install') &&
-    meta.tone !== 'installing' &&
-    meta.tone !== 'starting' &&
-    meta.tone !== 'verifying'
-  ) {
-    return null
-  }
-  if (meta.pct != null) {
-    return t(meta.labelKey, { pct: formatStatusPct(meta.pct, language) })
-  }
-  return t(meta.labelKey)
-}
-
-function libraryPendingActivity(meta: LibraryStatusMeta): boolean {
-  return (
-    meta.tone === 'verifying' ||
-    meta.tone === 'installing' ||
-    meta.tone === 'starting' ||
-    (meta.tone === 'downloading' && meta.pct == null)
-  )
-}
-
-export type LibraryGridCardModel = {
-  item: LibraryEntry
-  statusMeta: LibraryStatusMeta
-  primary: GameTileAction | null
-  secondary: GameTileAction[]
-  isDeleting: boolean
-  manualRoot: boolean
-  language: AppLanguage
-}
+export type { LibraryGridCardModel } from './libraryGridCardModel'
+import {
+  formatLibraryStatusPct,
+  libraryPendingActivity,
+  libraryStatusLine,
+} from './libraryGridCardStatus'
 
 type LibraryGridCardProps = {
   model: LibraryGridCardModel
@@ -86,7 +44,7 @@ export const LibraryGridCard = memo(function LibraryGridCard({
         cleanTitleForDisplay(model.item.title),
         model.statusMeta.pct != null
           ? t(model.statusMeta.labelKey, {
-              pct: formatStatusPct(model.statusMeta.pct, model.language),
+              pct: formatLibraryStatusPct(model.statusMeta.pct, model.language),
             })
           : t(model.statusMeta.labelKey),
         model.manualRoot ? t('library.manualFolder') : '',

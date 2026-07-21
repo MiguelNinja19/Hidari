@@ -1,0 +1,97 @@
+.pick-modal__option-action:hover:not(:disabled) {
+  background: #23a317;
+  border-color: #23a317;
+  color: #ffffff;
+}
+
+.pick-modal__option-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+@media (max-width: 820px) {
+  .pick-modal--detail,
+  .pick-modal--detail.pick-modal--store {
+    width: min(560px, 100%);
+    max-height: min(92vh, 900px);
+  }
+
+  .pick-modal--detail.pick-modal--single,
+  .pick-modal--detail.pick-modal--loading,
+  .pick-modal--detail.pick-modal--single:has(.pick-modal__synopsis--aside) {
+    width: min(440px, 100%);
+  }
+
+  .pick-modal--store .pick-modal__layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .pick-modal--store .pick-modal__media {
+    border-right: none;
+    border-bottom: 1px solid var(--divider);
+    overflow: visible;
+    padding: 18px 18px 16px;
+  }
+
+  .pick-modal--store .pick-modal__aside {
+    overflow: visible;
+  }
+
+  .pick-modal--store .pick-modal__aside-body {
+    overflow: visible;
+  }
+
+  .pick-modal__hero {
+    padding: 16px 18px;
+    padding-right: 48px;
+  }
+}
+
+/* ── Detalhe do jogo (Explorar) ──────────────────────────────────────────── */
+
+.game-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.game-detail__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--border-width) solid var(--divider);
+}
+
+.game-detail__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}
+
+.game-detail__error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: var(--border-width) solid rgba(255, 68, 68, 0.25);
+  border-left: 3px solid var(--danger);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.game-detail__hero {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--divider);
+  background: var(--bg-app);
+}

@@ -1,20 +1,10 @@
 import { useTranslation } from 'react-i18next'
-import type { TFunction } from 'i18next'
-import { CatalogCover } from '../../shared/components/CatalogCover'
-import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
-import { formatDownloadError } from '../../shared/utils/downloadErrors'
-import { jobCanExtract } from '../../shared/utils/jobExtraction'
-import {
-  isInsufficientGameDownload,
-  isAwaitingTorrentContent,
-  isDownloadFullyTransferred,
-} from '../../shared/utils/jobProgress'
-import { cleanTitleForDisplay } from '../../shared/utils/normalizeTitleKey'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { ResolvedCover } from '../covers/useGameCovers'
-import { jobBelongsInLibrary } from '../library/libraryItemState'
 import { useDownloadClock } from './useDownloadClock'
-import { resolveJobVerificationStatus } from '../../shared/utils/jobVerification'
+import { buildJobSections, isSeedingJob, isUiFinishedJob } from './downloadJobUi'
+import { DownloadJobRow } from './DownloadJobRow'
+import { DownloadsPageHeader } from './DownloadsPageHeader'
 
 type DownloadsPageProps = {
   jobs: DownloadJob[]
@@ -36,120 +26,21 @@ type DownloadsPageProps = {
   invalidateLocalCover: (title: string, coverUrl?: string | null) => void
 }
 
-/** Concluído na UI: inclui seeding e 100% ainda marcado como downloading. */
-function isUiFinishedJob(job: DownloadJob): boolean {
-  if (isInsufficientGameDownload(job)) return false
-  const total = Number(job.totalBytes) || 0
-  const done = Number(job.bytesDownloaded) || 0
-  // Ainda a meio dos bytes → continua "em andamento", mesmo com status completed/skipped.
-  if (total >= 5 * 1024 * 1024 && done < total * 0.995) return false
-  if (['completed', 'extracted', 'skipped', 'seeding'].includes(job.status)) return true
-  if (
-    isDownloadFullyTransferred(job) &&
-    ['downloading', 'pending', 'retrying', 'paused'].includes(job.status)
-  ) {
-    return true
-  }
-  return false
-}
-
-function queuePrimaryAction(
-  job: DownloadJob,
-  busyId: string | null,
-  t: TFunction,
-  onPauseJob: (jobId: string) => Promise<void>,
-  onResumeJob: (jobId: string) => Promise<void>,
-  onGoLibrary: () => void,
-) {
-  // Só quando o jogo já entra na Biblioteca — Instalar = atalho para lá.
-  if (jobBelongsInLibrary(job) || isUiFinishedJob(job)) {
-    return {
-      label: t('common.install'),
-      onClick: () => onGoLibrary(),
-      disabled: busyId === job.id,
-      primary: true,
-    }
-  }
-
-  if (job.status === 'paused' || job.status === 'failed') {
-    return {
-      label: job.status === 'failed' ? t('common.retry') : t('common.resume'),
-      onClick: () => void onResumeJob(job.id),
-      primary: false,
-    }
-  }
-
-  if (
-    ['downloading', 'pending', 'retrying'].includes(job.status) ||
-    (isInsufficientGameDownload(job) && !['paused', 'failed', 'cancelled'].includes(job.status))
-  ) {
-    return {
-      label: t('common.pause'),
-      onClick: () => void onPauseJob(job.id),
-      primary: false,
-    }
-  }
-
-  return null
-}
-
-function buildJobSections(jobs: DownloadJob[], t: TFunction) {
-  const inProgress = jobs.filter((job) => !isUiFinishedJob(job))
-  const finished = jobs.filter((job) => isUiFinishedJob(job))
-  const sections: { key: string; title: string | null; jobs: DownloadJob[] }[] = []
-
-  if (inProgress.length > 0) {
-    sections.push({
-      key: 'active',
-      title: finished.length > 0 ? t('downloads.inProgress') : null,
-      jobs: inProgress,
-    })
-  }
-
-  if (finished.length > 0) {
-    sections.push({
-      key: 'done',
-      title: inProgress.length > 0 ? t('downloads.completed') : null,
-      jobs: finished,
-    })
-  }
-
-  return sections
-}
-
-export function DownloadsPage({
-  jobs,
-  actionBusyId,
-  isTorrentMetadataPhase,
-  resolveJobProgressPercent,
-  formatProgressPercent,
-  onPauseJob,
-  onResumeJob,
-  onCancelJob,
-  onRemoveJob,
-  onExtractJob,
-  onClearCompleted,
-  onPauseAll,
-  onResumeAll,
-  onOpenJobFolder,
-  onGoLibrary,
-  resolveCover,
-  invalidateLocalCover,
-}: DownloadsPageProps) {
+export function DownloadsPage(props: DownloadsPageProps) {
   const { t } = useTranslation()
+  const { jobs, actionBusyId, onClearCompleted, onPauseAll, onResumeAll } = props
   const downloadNow = useDownloadClock(jobs)
-  const activeJobs = jobs.filter((job) => job.status !== 'cancelled')
+  const activeJobs = jobs
   const sections = buildJobSections(activeJobs, t)
   const inProgressCount = activeJobs.filter((job) => !isUiFinishedJob(job)).length
-  const finishedCount = activeJobs.filter((job) => isUiFinishedJob(job)).length
+  const finishedCount = activeJobs.filter(
+    (job) => isUiFinishedJob(job) && !isSeedingJob(job),
+  ).length
+  const seedingCount = activeJobs.filter((job) => isSeedingJob(job)).length
   const canPauseAll = activeJobs.some(
-    (job) =>
-      ['downloading', 'pending', 'retrying'].includes(job.status) && !isUiFinishedJob(job),
+    (job) => ['downloading', 'pending', 'retrying'].includes(job.status) && !isUiFinishedJob(job),
   )
   const canResumeAll = activeJobs.some((job) => job.status === 'paused' || job.status === 'failed')
-  const canClearCompleted = finishedCount > 0
-  const showHeaderActions = canPauseAll || canResumeAll || canClearCompleted
-
   const summary =
     activeJobs.length === 0
       ? t('downloads.summaryEmpty')
@@ -157,221 +48,35 @@ export function DownloadsPage({
         ? t('downloads.summaryMixed', { active: inProgressCount, done: finishedCount })
         : inProgressCount > 0
           ? t('downloads.summaryActive', { count: inProgressCount })
-          : t('downloads.summaryDone', { count: finishedCount })
-
-  const progressWidth = (job: DownloadJob) => {
-    const value = resolveJobProgressPercent(job)
-    if (value <= 0) return 0
-    return Math.max(2, Math.min(100, value))
-  }
-
-  const renderJobRow = (job: DownloadJob) => {
-    const metadataPhase = isTorrentMetadataPhase(job)
-    const percentLabel = formatProgressPercent(job)
-    const hidePercent = !percentLabel
-    const cover = resolveCover(job.title)
-    const primary = queuePrimaryAction(
-      job,
-      actionBusyId,
-      t,
-      onPauseJob,
-      onResumeJob,
-      onGoLibrary,
-    )
-    const canCancel =
-      job.status !== 'cancelled' &&
-      job.status !== 'failed' &&
-      !isUiFinishedJob(job) &&
-      !['extracted'].includes(job.status)
-    const canRemove = job.status === 'failed'
-    const canExtract = jobCanExtract(job)
-    const extracting =
-      job.status === 'extracting' || job.extractionStatus === 'extracting'
-    const showFolder = job.destPath.trim().length > 0
-    const verificationStatus = resolveJobVerificationStatus(job)
-    const busy = actionBusyId === job.id
-
-    return (
-      <li key={job.id} className="dl-row">
-        <div className="dl-row__thumb">
-          <CatalogCover
-            title={job.title}
-            coverUrl={cover.coverUrl}
-            localPath={cover.localPath}
-            cached={cover.status === 'cached'}
-            status={cover.status}
-            priority
-            onLocalCoverError={() => invalidateLocalCover(job.title, cover.coverUrl)}
-          />
-        </div>
-
-        <div className="dl-row__main">
-          <div className="dl-row__top">
-            <strong className="dl-row__title" title={job.title}>
-              {cleanTitleForDisplay(job.title)}
-            </strong>
-            <div className="dl-row__top-meta">
-              {verificationStatus ? (
-                <span
-                  className={`dl-row__verify dl-row__verify--${verificationStatus}`}
-                  title={
-                    verificationStatus === 'verified'
-                      ? t('downloads.verifiedTitle')
-                      : t('downloads.verifyFailedTitle')
-                  }
-                >
-                  {verificationStatus === 'verified'
-                    ? t('downloads.verified')
-                    : t('downloads.verifyFailed')}
-                </span>
-              ) : null}
-              {!hidePercent ? <span className="dl-row__percent">{percentLabel}</span> : null}
-            </div>
-          </div>
-
-          <div
-            className={`dl-progress${metadataPhase || extracting || hidePercent ? ' dl-progress--pulse' : ''}`}
-            role="progressbar"
-            aria-valuenow={metadataPhase || extracting || hidePercent ? undefined : progressWidth(job)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <div
-              className={`dl-progress__fill${
-                metadataPhase || extracting || hidePercent ? ' dl-progress__fill--indeterminate' : ''
-              }`}
-              style={
-                metadataPhase || extracting || hidePercent
-                  ? undefined
-                  : { width: `${progressWidth(job)}%` }
-              }
-            />
-          </div>
-
-          <p className="dl-row__meta">{downloadRowDetail(job, downloadNow)}</p>
-          {(() => {
-            if (!job.errorMsg) return null
-            if (job.errorMsg.includes('download_stalled_recovering')) return null
-            if (job.errorMsg.includes('download_failover')) return null
-            // Soft “a obter conteúdo” já vai no meta — não duplicar como erro vermelho.
-            if (isAwaitingTorrentContent(job) || isInsufficientGameDownload(job)) return null
-            const formatted = formatDownloadError(job.errorMsg)
-            if (!formatted.trim()) return null
-            return <p className="dl-row__error">{formatted}</p>
-          })()}
-        </div>
-
-        <div className="dl-row__actions">
-          {primary ? (
-            <button
-              type="button"
-              className={`set-btn set-btn--compact${primary.primary ? ' set-btn--primary' : ' set-btn--secondary'}`}
-              disabled={primary.disabled || busy}
-              onClick={primary.onClick}
-            >
-              {primary.label}
-            </button>
-          ) : null}
-          {canExtract ? (
-            <button
-              type="button"
-              className="set-btn set-btn--compact set-btn--primary"
-              disabled={busy || extracting}
-              onClick={() => void onExtractJob(job.id)}
-            >
-              {extracting || busy
-                ? t('downloads.extracting')
-                : job.extractionStatus === 'failed'
-                  ? t('downloads.retryExtract')
-                  : t('common.extract')}
-            </button>
-          ) : null}
-          {showFolder ? (
-            <button
-              type="button"
-              className="set-btn set-btn--compact set-btn--secondary"
-              disabled={busy}
-              onClick={() => onOpenJobFolder(job.id)}
-            >
-              {t('common.openFolder')}
-            </button>
-          ) : null}
-          {canRemove ? (
-            <button
-              type="button"
-              className="set-btn set-btn--compact set-btn--danger"
-              disabled={busy}
-              onClick={() => void onRemoveJob(job.id)}
-            >
-              {t('common.delete')}
-            </button>
-          ) : null}
-          {canCancel ? (
-            <button
-              type="button"
-              className="set-btn set-btn--compact set-btn--danger"
-              disabled={busy}
-              onClick={() => void onCancelJob(job.id)}
-            >
-              {t('common.cancel')}
-            </button>
-          ) : null}
-        </div>
-      </li>
-    )
-  }
+          : seedingCount > 0 && finishedCount === 0
+            ? t('downloads.summarySeeding', {
+                count: seedingCount,
+                defaultValue: `${seedingCount} semeando`,
+              })
+            : t('downloads.summaryDone', { count: finishedCount })
 
   return (
     <section className="dl-page">
-      <header className="dl-page__head">
-        <div className="dl-page__titles">
-          <p className="dl-page__label">{t('nav.downloads')}</p>
-          <p className="dl-page__desc">{summary}</p>
-        </div>
-        {showHeaderActions ? (
-          <div className="dl-page__actions">
-            {canResumeAll ? (
-              <button
-                type="button"
-                className="set-btn set-btn--secondary"
-                disabled={actionBusyId === '__all__'}
-                onClick={() => void onResumeAll()}
-              >
-                {t('downloads.resumeAll')}
-              </button>
-            ) : null}
-            {canPauseAll ? (
-              <button
-                type="button"
-                className="set-btn set-btn--secondary"
-                disabled={actionBusyId === '__all__'}
-                onClick={() => void onPauseAll()}
-              >
-                {t('downloads.pauseAll')}
-              </button>
-            ) : null}
-            {canClearCompleted ? (
-              <button
-                type="button"
-                className="set-btn set-btn--secondary"
-                onClick={() => void onClearCompleted()}
-              >
-                {t('downloads.clearCompleted')}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-      </header>
-
+      <DownloadsPageHeader
+        summary={summary}
+        showHeaderActions={canPauseAll || canResumeAll || finishedCount > 0}
+        canResumeAll={canResumeAll}
+        canPauseAll={canPauseAll}
+        canClearCompleted={finishedCount > 0}
+        actionBusyId={actionBusyId}
+        onResumeAll={onResumeAll}
+        onPauseAll={onPauseAll}
+        onClearCompleted={onClearCompleted}
+      />
       {sections.length > 0 ? (
         <div className="dl-page__sections">
           {sections.map((section) => (
             <section key={section.key} className="dl-section">
-              {section.title ? (
-                <h2 className="dl-section__title">{section.title}</h2>
-              ) : null}
+              {section.title ? <h2 className="dl-section__title">{section.title}</h2> : null}
               <ul className="dl-list" role="list">
-                {section.jobs.map(renderJobRow)}
+                {section.jobs.map((job) => (
+                  <DownloadJobRow key={job.id} job={job} t={t} downloadNow={downloadNow} {...props} />
+                ))}
               </ul>
             </section>
           ))}

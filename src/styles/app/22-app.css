@@ -1,0 +1,98 @@
+
+.game-card__cta {
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--link);
+  opacity: 0.85;
+  letter-spacing: -0.01em;
+}
+
+/* ── Pick modal (Explorar → download) — store-like two column ───────────── */
+
+.pick-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 3vh, 28px) clamp(12px, 3vw, 28px);
+  background: rgba(0, 0, 0, 0.88);
+  animation: pick-modal-fade 0.14s ease-out;
+}
+
+@keyframes pick-modal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pick-modal {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: min(88vh, 760px);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 24px 20px;
+  background: var(--bg-app);
+  border: var(--border-width) solid var(--divider-strong);
+  border-radius: var(--radius-md);
+  animation: pick-modal-rise 0.16s ease-out;
+  overflow: hidden;
+}
+
+.pick-modal--detail {
+  width: min(960px, 100%);
+  max-height: min(90vh, 820px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pick-modal--detail.pick-modal--single,
+.pick-modal--detail.pick-modal--loading {
+  width: min(440px, 100%);
+  max-height: min(88vh, 720px);
+}
+
+.pick-modal--detail.pick-modal--single:has(.pick-modal__synopsis--aside) {
+  width: min(520px, 100%);
+}
+
+@keyframes pick-modal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pick-modal__close::before {
+  content: "×";
+}
+
+.pick-modal__cover .game-card__media,
+.pick-modal__cover .game-card__cover-empty {
+  position: absolute;
+  inset: 0;
+}
+
+.pick-modal__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  margin: 0;
+  padding: 16px 4px;
+  text-align: center;
+  font-family: var(--sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}

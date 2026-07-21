@@ -1,0 +1,56 @@
+
+.settings-input {
+  width: 100%;
+  border: var(--border-width) solid var(--divider);
+  background: var(--bg-app);
+  color: var(--text-main);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  outline: none;
+  transition: border-color var(--hover-dur) ease;
+}
+
+.settings-input:hover:not(:disabled) {
+  border-color: var(--divider-strong);
+}
+
+.settings-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.settings-input--narrow {
+  width: auto;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.settings-field--row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--border-width);
+  background: var(--divider);
+  border: var(--border-width) solid var(--divider);
+}

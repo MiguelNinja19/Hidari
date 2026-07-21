@@ -12,16 +12,16 @@ import { ToastProvider } from './shared/components/ToastProvider'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
-      <Provider store={store}>
-        <AppSettingsProvider>
-          <NavigationProvider>
-            <ToastProvider>
+    <Provider store={store}>
+      <AppSettingsProvider>
+        <NavigationProvider>
+          <ToastProvider>
+            <ErrorBoundary>
               <App />
-            </ToastProvider>
-          </NavigationProvider>
-        </AppSettingsProvider>
-      </Provider>
-    </ErrorBoundary>
+            </ErrorBoundary>
+          </ToastProvider>
+        </NavigationProvider>
+      </AppSettingsProvider>
+    </Provider>
   </StrictMode>,
 )

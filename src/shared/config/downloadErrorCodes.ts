@@ -1,3 +1,7 @@
+import { formatExtractionError } from './extractionErrorMessages'
+
+export { EXTRACTION_ERROR_MESSAGES, formatExtractionError } from './extractionErrorMessages'
+
 /** Mensagens para códigos de saída comuns do aria2 (ver manual aria2c). */
 export const ARIA2_EXIT_MESSAGES: Record<number, string> = {
   3: 'Recurso não encontrado. O torrent ou link pode estar indisponível.',
@@ -17,18 +21,6 @@ export const ARIA2_EXIT_MESSAGES: Record<number, string> = {
   27: 'Link magnet inválido ou incompleto.',
 }
 
-export const EXTRACTION_ERROR_MESSAGES = {
-  cannotOpen:
-    'Arquivo inválido ou incompleto. Verifique o download (e se faltam partes .r00 / .part2) e tente extrair de novo.',
-  unsupportedMethod:
-    'Este arquivo usa um formato que o extrator não consegue abrir. Tente extrair com o WinRAR/7-Zip do sistema ou use Instalar se houver setup.exe.',
-  busy: 'Já existe uma extração em andamento. Aguarde terminar.',
-  noArchive:
-    'Nenhum arquivo compactado encontrado na pasta. Se houver setup.exe, use Instalar.',
-  generic:
-    'Não foi possível extrair o arquivo. Confirme que o download terminou e tente novamente.',
-} as const
-
 const TORRENT_EXIT_PREFIX = /torrent_client_exit_code:\s*exit code:\s*(\d+)/i
 const FILE_EXISTS_HINT =
   /file already exists|errorCode=13|control file\(\*\.aria2\)|\.aria2\) does not exist/i
@@ -36,51 +28,6 @@ const PROGRESS_SUMMARY = /\*\*\* Download Progress Summary[\s\S]*/i
 
 export function stripAria2ProgressNoise(message: string): string {
   return message.replace(PROGRESS_SUMMARY, '').replace(/\|\s*aria2:\s*$/i, '').trim()
-}
-
-/** Traduz erros de 7-Zip / pós-download para texto legível. Devolve null se não for erro de extração. */
-export function formatExtractionError(message: string): string | null {
-  const msg = message.trim()
-  if (!msg) return null
-
-  if (msg.includes('extraction_busy')) {
-    return EXTRACTION_ERROR_MESSAGES.busy
-  }
-  if (msg.includes('no_archive_found')) {
-    return EXTRACTION_ERROR_MESSAGES.noArchive
-  }
-  if (
-    /cannot open the file as archive/i.test(msg) ||
-    /can't open as archive/i.test(msg)
-  ) {
-    return EXTRACTION_ERROR_MESSAGES.cannotOpen
-  }
-  if (/unsupported method/i.test(msg)) {
-    return EXTRACTION_ERROR_MESSAGES.unsupportedMethod
-  }
-  if (msg.includes('7z_extract_failed')) {
-    return EXTRACTION_ERROR_MESSAGES.generic
-  }
-  if (msg.includes('download_failover')) {
-    return 'A tentar outra fonte do catálogo automaticamente…'
-  }
-  if (msg.includes('download_stalled_recovering')) {
-    return 'Sem atividade — a retomar automaticamente…'
-  }
-  if (msg.includes('download_stalled')) {
-    return 'Download parado (sem peers/velocidade). Tente outra fonte no catálogo.'
-  }
-  if (msg.includes('already registered') || /infohash\s+[a-f0-9]+\s+is already registered/i.test(msg)) {
-    return 'Este torrent já está na fila ou a ser transferido. Abra Downloads ou cancele o job anterior e tente de novo.'
-  }
-  if (msg.includes('download_payload_too_small') || msg.includes('verify_too_small')) {
-    return 'Ainda só há metadados do torrent — a iniciar o download do jogo…'
-  }
-  if (msg.includes('verify_failed') || msg.includes('verify_no_file')) {
-    return 'O download parece incompleto ou corrompido. Retome ou baixe de novo.'
-  }
-
-  return null
 }
 
 export function formatDownloadError(error: unknown): string {

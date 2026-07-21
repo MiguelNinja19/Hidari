@@ -1,0 +1,40 @@
+.settings-inline .btn-outline.btn--compact {
+  font-weight: var(--weight-strong);
+}
+
+.settings-page .settings-inline .btn-outline.btn--compact {
+  color: var(--settings-btn-muted-text);
+  background: var(--settings-btn-muted-bg);
+  border-color: var(--settings-btn-muted-border);
+}
+
+.settings-page .settings-inline .btn-outline.btn--compact:hover:not(:disabled),
+.settings-page .settings-inline .btn-outline.btn--compact:active:not(:disabled),
+.settings-page .settings-inline .btn-outline.btn--compact:focus-visible {
+  color: #ffffff;
+  background: var(--settings-btn-muted-hover-bg);
+  border-color: var(--settings-btn-muted-hover-border);
+  font-weight: var(--weight-heavy);
+}
+
+/* Explorar: hover/focus suave, igual ao campo da Biblioteca */
+.page-toolbar--discover .discover-search-inline__input:hover:not(:disabled),
+.page-toolbar--discover .discover-search-inline__input:focus {
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.page-toolbar--discover .discover-search-inline:focus-within {
+  box-shadow:
+    var(--shadow-inset),
+    0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.page-toolbar--discover .browse-search__input:hover:not(:disabled),
+.page-toolbar--discover .browse-search__input:focus {
+  border-color: var(--divider);
+  box-shadow: var(--shadow-inset);
+  outline: none;
+}
+

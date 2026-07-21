@@ -1,26 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppSettings } from "../context/AppSettingsContext";
-import { cleanTitleForDisplay } from "../../shared/utils/normalizeTitleKey";
 import {
   sendHidariNotification,
   warmNotificationPermission,
 } from "../../shared/utils/osNotification";
 import type { DownloadJob } from "../../shared/types/contracts";
-import {
-  resolveDownloadNotifyKind,
-  type DownloadNotifySnapshot,
-} from "./downloadNotifyKind";
-
-function snapshotOf(job: DownloadJob): DownloadNotifySnapshot {
-  return {
-    status: job.status,
-    extractionStatus: job.extractionStatus ?? null,
-    progress: job.progress,
-    bytesDownloaded: job.bytesDownloaded,
-    totalBytes: job.totalBytes,
-  };
-}
+import type { DownloadNotifySnapshot } from "./downloadNotifyKind";
+import { collectDownloadNotifications } from "./downloadNotificationEvents";
 
 type UseDownloadNotificationsOptions = {
   onReadyToInstall?: (gameTitle: string) => void;
@@ -49,26 +36,13 @@ export function useDownloadNotifications(
   }, []);
 
   useEffect(() => {
-    const pending: Array<{
-      kind: "install" | "play";
-      gameTitle: string;
-    }> = [];
-
-    for (const job of jobs) {
-      const next = snapshotOf(job);
-      const prev = prevRef.current.get(job.id) ?? null;
-      prevRef.current.set(job.id, next);
-
-      const kind = resolveDownloadNotifyKind(prev, next);
-      if (!kind) continue;
-      if (kind === "install" && !notifyReadyToInstall) continue;
-      if (kind === "play" && !notifyReadyToPlay) continue;
-
-      const dedupeKey = `${job.id}:${kind}`;
-      if (notifiedRef.current.has(dedupeKey)) continue;
-      notifiedRef.current.add(dedupeKey);
-      pending.push({ kind, gameTitle: cleanTitleForDisplay(job.title) });
-    }
+    const pending = collectDownloadNotifications(
+      jobs,
+      prevRef.current,
+      notifiedRef.current,
+      notifyReadyToInstall,
+      notifyReadyToPlay,
+    );
 
     if (pending.length === 0) return;
 

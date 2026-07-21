@@ -1,0 +1,33 @@
+@media (max-width: 900px) {
+.dl-page__actions .set-btn {
+    flex: 1 1 auto;
+  }
+
+  .dl-row {
+    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-areas:
+      'thumb main'
+      'actions actions';
+    gap: 12px;
+    padding: 14px 0;
+  }
+
+  .dl-row__thumb {
+    grid-area: thumb;
+    width: 48px;
+    height: 72px;
+  }
+
+  .dl-row__main {
+    grid-area: main;
+  }
+
+  .dl-row__actions {
+    grid-area: actions;
+    justify-content: stretch;
+  }
+
+  .dl-row__actions .set-btn {
+    flex: 1 1 auto;
+  }
+}

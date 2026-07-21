@@ -1,0 +1,97 @@
+
+.download-row__primary {
+  min-width: 108px;
+  justify-content: center;
+}
+
+.download-row__secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  justify-content: flex-end;
+}
+
+/* ── Biblioteca ──────────────────────────────────────────────────────────── */
+
+.library-page {
+  width: 100%;
+  gap: var(--space-4);
+}
+
+.library-toolbar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--border-width);
+  background: var(--divider);
+  border: var(--border-width) solid var(--divider);
+}
+
+.library-toolbar__search {
+  flex: 1;
+  min-width: min(100%, 280px);
+  background: var(--bg-app);
+}
+
+.library-toolbar__search .browse-search__input {
+  border: none;
+  min-height: 36px;
+}
+
+.library-toolbar__search .browse-search__input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-primary);
+}
+
+.library-toolbar__filters {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--bg-app);
+}
+
+.library-toolbar__filters .chip {
+  border: none;
+  border-left: var(--border-width) solid var(--divider);
+  min-height: 36px;
+  padding-inline: 12px;
+}
+
+.library-toolbar__sort {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  background: var(--bg-app);
+  border-left: var(--border-width) solid var(--divider);
+}
+
+.library-toolbar__sort-select {
+  min-height: 36px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.library-toolbar__sort-select:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-primary);
+}
+
+.library-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 156px);
+  justify-content: start;
+  gap: 16px 14px;
+}
+
+.library-grid__item {
+  min-width: 0;
+  max-width: 156px;
+  width: 100%;
+  list-style: none;
+  justify-self: start;
+}

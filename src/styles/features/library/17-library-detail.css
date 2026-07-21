@@ -1,0 +1,39 @@
+.game-detail__trailer {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.game-detail__option {
+  border-radius: var(--radius-sm);
+}
+
+.game-detail .btn:hover:not(:disabled),
+.game-detail .btn:active:not(:disabled),
+.game-detail__back:hover:not(:disabled),
+.game-detail__back:active:not(:disabled) {
+  filter: none;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-main);
+  box-shadow: none;
+}
+
+.game-detail__option-action {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  border-radius: var(--radius-sm);
+  color: var(--accent-text);
+  background: var(--toggle-on);
+  border-color: var(--toggle-on);
+}
+
+.game-detail__option-action:hover:not(:disabled) {
+  background: var(--toggle-on-hover);
+  border-color: var(--toggle-on-hover);
+  color: var(--accent-text);
+}
+

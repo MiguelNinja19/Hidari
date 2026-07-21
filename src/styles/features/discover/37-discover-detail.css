@@ -1,0 +1,67 @@
+.discover-detail__section-label {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.discover-detail__count {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.discover-detail__option {
+  transition: background var(--hover-dur) ease;
+}
+
+.discover-detail__option:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.discover-detail__option-variant {
+  font-size: var(--text-base);
+}
+
+.discover-detail__option-action {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #ffffff;
+  background: #1b7f12;
+  border-color: #1b7f12;
+}
+
+.discover-detail__option-action:hover:not(:disabled) {
+  background: #23a317;
+  border-color: #23a317;
+}
+
+.discover-detail__shot {
+  border: none;
+  cursor: zoom-in;
+  max-height: min(36vh, 360px);
+}
+
+.discover-detail__carousel-frame {
+  border-color: var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.discover-detail__carousel-nav,
+.discover-detail__carousel-thumb,
+.discover-detail__carousel-count {
+  border-radius: var(--radius-sm);
+}
+
+.discover-detail__lightbox {
+  background: rgba(6, 7, 10, 0.72);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+
+.discover-detail__lightbox-close,
+.discover-detail__lightbox-nav,
+.discover-detail__lightbox-thumb {
+  border-radius: var(--radius-sm);
+}
+

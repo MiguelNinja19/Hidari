@@ -1,0 +1,77 @@
+.settings-page .settings-block__desc,
+.settings-page .settings-block__hint,
+.settings-page .settings-toggle__hint {
+  display: block;
+}
+
+.settings-page .settings-field {
+  font-size: 0.6875rem;
+}
+
+.settings-page .settings-input,
+.settings-page .settings-toggle {
+  font-size: 0.8125rem;
+}
+
+.settings-page .settings-source-row__name {
+  font-size: 0.8125rem;
+}
+
+.settings-page .settings-source-row__file,
+.settings-page .settings-source-row__count-inline {
+  font-size: 0.6875rem;
+}
+
+.settings-page .settings-source-row__count {
+  font-size: 0.8125rem;
+}
+
+/* ── Peso tipográfico (alinhar ao sidebar) ─────────────────────────────── */
+
+.chip,
+.text-link,
+.settings-field,
+.settings-toggle,
+.settings-input,
+.browse-search--bar .browse-search__input,
+.library-sort-toggle__btn,
+.library-toolbar__sort-select,
+.discover-card__meta,
+.library-card__status,
+.download-row__meta,
+.download-row__btn,
+.pick-modal__hint,
+.pick-modal__option-meta,
+.settings-source-row__count-inline,
+.game-tile--library .game-tile__status,
+.game-tile__dock-tool,
+.game-tile__tool,
+.library-card__menu-item {
+  font-weight: var(--weight-ui);
+}
+
+.discover-search-inline__btn {
+  font-weight: 800;
+}
+
+.discover-card__title,
+.discover-card--explore .discover-card__title,
+.download-row__title,
+.settings-block__title,
+.settings-source-row__name,
+.pick-modal__title,
+.pick-modal__option-variant,
+.empty-state__title,
+.browse-section__title,
+.discover-card__cta,
+.game-tile--library .game-tile__dock-primary,
+.game-tile__title--above,
+.discover-setup__title,
+.browse-empty__title,
+.library-empty__title,
+h1,
+h2,
+h3 {
+  font-weight: var(--weight-strong);
+}
+

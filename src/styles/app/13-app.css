@@ -1,0 +1,98 @@
+
+.discover-detail__lightbox-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.discover-detail__lightbox-thumb:hover {
+  opacity: 0.78;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.discover-detail__lightbox-thumb.is-active {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.55);
+  transform: translateY(-1px);
+}
+
+.discover-detail__lightbox-thumb:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 1px;
+  opacity: 1;
+}
+
+.discover-detail__downloads-wrap {
+  min-width: 0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  width: 100%;
+}
+
+.discover-detail__below
+  .discover-detail__categories
+  + .discover-detail__downloads-wrap {
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.discover-detail__downloads-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.discover-detail__count {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.discover-detail__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 120px;
+  padding: 28px 0;
+}
+
+.discover-detail__loading-label {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.discover-detail__empty {
+  margin: 0;
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.discover-detail__empty--error {
+  color: #e8a0a8;
+}
+
+.discover-detail__section-label {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}

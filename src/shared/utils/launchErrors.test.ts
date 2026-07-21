@@ -11,6 +11,12 @@ describe('formatLaunchError', () => {
     )
   })
 
+  it('traduz mac_windows_repack_only', () => {
+    expect(formatLaunchError(new Error('launch_error:mac_windows_repack_only|x'))).toBe(
+      LAUNCH_ERROR_MESSAGES.mac_windows_repack_only,
+    )
+  })
+
   it('mapeia substrings legadas', () => {
     expect(formatLaunchError(new Error('no_executable in folder'))).toBe(
       LAUNCH_ERROR_MESSAGES.needs_install,

@@ -17,7 +17,7 @@ Inspired by [Hydra Launcher](https://github.com/hydralauncher/hydra), with its o
 | [Getting started](./getting-started.md)     | Install, commands, **how to add sources**, user flow |
 | [Architecture](./architecture.md)           | Layers, library, queue, DB, Steam, events            |
 | [Tauri API](./api.md)                       | IPC commands, events, TypeScript modules             |
-| [Build and release](./build-and-release.md) | Binaries, packaging, resources                       |
+| [Build and release](./build-and-release.md) | Binaries, packaging, NSIS, updater keys, **Linux/mac downloads** |
 
 ## Quick overview
 

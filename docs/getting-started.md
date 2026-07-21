@@ -10,7 +10,9 @@
 |------|---------|-------|
 | [Node.js](https://nodejs.org/) | 18+ | Frontend (Vite) and Tauri CLI |
 | [Rust](https://www.rust-lang.org/tools/install) | 1.77+ | Backend in `src-tauri/` |
-| Windows SDK | — | Required on Windows |
+| Windows SDK | — | Required **on Windows** |
+| [aria2](https://aria2.github.io/) | — | **Linux/macOS:** `apt install aria2` / `brew install aria2` (or place `aria2c` in `src-tauri/binaries/`) |
+| 7-Zip / p7zip | — | **Windows:** via `setup:binaries`. **Linux/macOS:** `apt install p7zip-full` / `brew install sevenzip` |
 
 See also [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/).
 
@@ -18,14 +20,32 @@ See also [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```bash
 npm install
+npm run build:download-engine   # compile sidecar (required for downloads)
 ```
 
 `postinstall` runs `npm run setup:binaries`:
 
-- **7-Zip** (`7za.exe`, `7za.dll`) — automatic extraction
-- **aria2c.exe** and **download-engine.exe** → `src-tauri/binaries/`
+- **Windows:** 7-Zip (`7za.exe`, `7za.dll`) + sync `aria2c.exe` / `download-engine.exe` when present
+- **Linux / macOS:** sync `download-engine` if built; expects `aria2c` and `7z`/`7zz` on `PATH`
 
 On first run, Rust compiles dependencies (may take a few minutes).
+
+### Linux / macOS notes
+
+Downloads use the **same** HTTP pipeline as Windows (UI → Tauri → `download-engine` → aria2 → extract). Only native binary names differ.
+
+Play/Install of Windows repacks (`setup.exe`) is **Windows-only**. On **macOS**, **Play** works for native games (`.app` bundles); for Hydra/FitGirl repacks, use **Open folder** after download. On **Linux**, use Wine/Proton manually — the launcher does not change that flow.
+
+```bash
+# Debian/Ubuntu
+sudo apt install aria2 p7zip-full
+# macOS
+brew install aria2 sevenzip
+
+npm run build:download-engine
+npm run setup:binaries
+npm run tauri:dev
+```
 
 ## Commands
 
@@ -44,7 +64,7 @@ On first run, Rust compiles dependencies (may take a few minutes).
 1. **Settings** — download folder + add at least one catalog source (see below)
 2. **Discover** — type a game name → **Enter** or Search → pick a version → enqueue
 3. **Downloads** — watch progress; post-download is **automatic**
-4. **Library** — **Install** (`setup.exe` repacks) → choose/locate game folder → **Play**
+4. **Library** — **Install** (`setup.exe` repacks, Windows) → choose/locate game folder → **Play**. On **macOS**, **Play** targets native `.app` games; Windows repacks → open folder.
 
 > First launch uses **English** as the default UI language. Change it anytime under **Settings → Language**.
 
@@ -100,12 +120,19 @@ You are running `npm run dev` only. Use `npm run tauri:dev`.
 ### Extraction fails (`7z_not_found`)
 
 ```bash
+# Windows
 npm run setup:binaries
+# Linux / macOS
+sudo apt install p7zip-full   # or: brew install sevenzip
 ```
 
 ### Missing download-engine
 
-See [Build and release](./build-and-release.md) — place `download-engine.exe` under `src-tauri/`.
+```bash
+npm run build:download-engine
+```
+
+See [Build and release](./build-and-release.md).
 
 ## Helper script
 

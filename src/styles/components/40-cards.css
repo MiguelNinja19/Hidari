@@ -1,0 +1,83 @@
+.discover-card--explore .discover-card__cover-hitbox {
+  display: block;
+  line-height: 0;
+}
+
+.discover-card__cover-hitbox:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+
+.discover-card__cover {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+}
+
+.discover-card--explore .discover-card__cover {
+  display: block;
+  width: 100%;
+}
+
+.discover-card--explore .discover-card__cover .game-card__cover,
+.discover-card--explore .discover-card__cover .game-card__media,
+.discover-card--explore .discover-card__cover img {
+  transition: transform 320ms ease-out;
+  transform-origin: center center;
+}
+
+.discover-card__title--fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 16px 12px;
+  min-height: 0;
+  max-height: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  text-align: center;
+  color: var(--text-soft);
+  white-space: normal;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.discover-card__game-card.game-card {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  overflow: hidden;
+  aspect-ratio: unset;
+}
+
+.discover-card--explore .discover-card__game-card {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.discover-card__cover .game-card__media,
+.discover-card__cover .game-card__cover-empty,
+.discover-card__cover .game-card__cover-skeleton {
+  border-radius: 0;
+  border: none;
+}
+
+.discover-card--explore .discover-card__cover .game-card__cover {
+  object-fit: cover;
+  object-position: center top;
+}
+
+.discover-card__body {
+  display: none;
+}
+

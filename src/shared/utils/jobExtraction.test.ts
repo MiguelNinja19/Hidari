@@ -18,19 +18,44 @@ const baseJob: DownloadJob = {
 }
 
 describe('jobNeedsExtraction', () => {
-  it('nunca pede extração — o download já é o instalável', () => {
-    expect(jobNeedsExtraction({ ...baseJob, status: 'completed' })).toBe(false)
-    expect(jobNeedsExtraction({ ...baseJob, status: 'seeding', progress: 100 })).toBe(false)
+  it('pede extração quando o download terminou', () => {
+    expect(jobNeedsExtraction({ ...baseJob, status: 'completed' })).toBe(true)
+    expect(jobNeedsExtraction({ ...baseJob, status: 'seeding', progress: 100 })).toBe(true)
+  })
+
+  it('não pede extração se já foi saltada ou feita', () => {
+    expect(
+      jobNeedsExtraction({ ...baseJob, status: 'completed', extractionStatus: 'skipped' }),
+    ).toBe(false)
+    expect(
+      jobNeedsExtraction({ ...baseJob, status: 'completed', extractionStatus: 'extracted' }),
+    ).toBe(false)
   })
 })
 
 describe('jobCanExtract', () => {
-  it('nunca mostra botão Extrair', () => {
-    expect(jobCanExtract({ ...baseJob, status: 'completed' })).toBe(false)
+  it('mostra Extrair em completed/seeding quando ainda falta extrair', () => {
+    expect(jobCanExtract({ ...baseJob, status: 'completed' })).toBe(true)
+    expect(jobCanExtract({ ...baseJob, status: 'seeding', progress: 100 })).toBe(true)
     expect(
       jobCanExtract({ ...baseJob, status: 'completed', extractionStatus: 'failed' }),
+    ).toBe(true)
+  })
+
+  it('esconde Extrair quando skipped (sem arquivo para extrair)', () => {
+    expect(
+      jobCanExtract({ ...baseJob, status: 'completed', extractionStatus: 'skipped' }),
     ).toBe(false)
-    expect(jobCanExtract({ ...baseJob, status: 'extracting' })).toBe(false)
+    expect(
+      jobCanExtract({ ...baseJob, status: 'seeding', progress: 100, extractionStatus: 'skipped' }),
+    ).toBe(false)
+  })
+
+  it('esconde Extrair quando já extracted', () => {
+    expect(
+      jobCanExtract({ ...baseJob, status: 'completed', extractionStatus: 'extracted' }),
+    ).toBe(false)
+    expect(jobCanExtract({ ...baseJob, status: 'cancelled' })).toBe(false)
   })
 })
 

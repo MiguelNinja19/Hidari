@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { LibraryEntry } from '../../features/library/types'
 import type { LocalLibraryItem } from '../types/contracts'
-import { isFileLockDeleteError, resolveLibraryDeletePaths } from './libraryDelete'
+import {
+  isFileLockDeleteError,
+  resolveLibraryDeletePaths,
+  shouldUninstallInstalledFiles,
+} from './libraryDelete'
 
 describe('resolveLibraryDeletePaths', () => {
   const jobItem: LibraryEntry = {
@@ -77,6 +81,20 @@ describe('resolveLibraryDeletePaths', () => {
       ]),
     )
     expect(paths).not.toContain('D:\\Games\\Downloads\\OutroJogo.torrent')
+  })
+})
+
+describe('shouldUninstallInstalledFiles', () => {
+  it('liga uninstall quando checkbox ativo e há pastas instaladas', () => {
+    expect(shouldUninstallInstalledFiles(true, ['D:\\Games\\Galaxy Rangers'])).toBe(true)
+  })
+
+  it('não chama uninstall com checkbox desligado', () => {
+    expect(shouldUninstallInstalledFiles(false, ['D:\\Games\\Galaxy Rangers'])).toBe(false)
+  })
+
+  it('não chama uninstall sem pastas instaladas', () => {
+    expect(shouldUninstallInstalledFiles(true, [])).toBe(false)
   })
 })
 

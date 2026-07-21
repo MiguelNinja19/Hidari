@@ -1,0 +1,95 @@
+
+.game-tile__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 2px 0;
+  min-width: 0;
+}
+
+.game-tile__status {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  line-height: 1.35;
+}
+
+.game-tile--skeleton {
+  pointer-events: none;
+}
+
+.game-tile__cover--skeleton {
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border: var(--border-width) solid var(--divider);
+}
+
+.card-action {
+  position: absolute;
+  border: none;
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--text-main);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 5px 9px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Settings ────────────────────────────────────────────────────────────── */
+
+.settings-page {
+  width: 100%;
+}
+
+.settings-page__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.settings-page__status-badge {
+  padding: 2px var(--space-2);
+  border: var(--border-width) solid transparent;
+  font-size: 0.5625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.settings-page__status-badge--warn {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.settings-page__status-badge--ok {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+}
+
+.settings-page__footer {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: var(--border-width) solid var(--divider);
+}
+

@@ -1,0 +1,53 @@
+
+.pick-modal__info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.pick-modal__cover {
+  width: 72px;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  position: relative;
+  background: #060810;
+  border: 1px solid var(--divider);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.pick-modal__title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-align: left;
+  color: var(--text-main);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pick-modal__genres {
+  margin: 0;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+.pick-modal__genre {
+  color: var(--text-soft);
+}
+
+.pick-modal__genre-sep {
+  color: var(--text-faint);
+}

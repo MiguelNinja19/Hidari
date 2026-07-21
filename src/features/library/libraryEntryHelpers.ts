@@ -17,6 +17,7 @@ export const emptyPathState =
     needsInstall: false,
     needsExtraction: false,
     installPath: null,
+    launchPath: null,
   })
 
 export const normalizeDownloadPath = (path: string) =>

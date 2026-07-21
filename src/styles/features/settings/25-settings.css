@@ -1,0 +1,100 @@
+.settings-page .btn--busy,
+.settings-page .btn--busy:disabled {
+  opacity: 1;
+  cursor: progress;
+  color: var(--settings-btn-muted-text);
+  background: var(--settings-btn-busy-bg);
+  border-color: var(--settings-btn-busy-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.settings-page .btn__spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: settings-btn-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes settings-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.settings-page .btn-danger {
+  color: var(--settings-btn-danger-text);
+  background: var(--settings-btn-danger-bg);
+  border-color: var(--settings-btn-danger-border);
+  box-shadow: none;
+}
+
+.settings-page .btn:hover:not(:disabled),
+.settings-page .btn:active:not(:disabled) {
+  transform: none;
+}
+
+.settings-page .btn-primary:hover:not(:disabled),
+.settings-page .btn-primary:active:not(:disabled) {
+  color: #ffffff;
+  background: var(--settings-btn-action-hover);
+  border-color: var(--settings-btn-action-hover);
+  box-shadow: none;
+}
+
+.settings-page .btn-outline:hover:not(:disabled),
+.settings-page .btn-outline:active:not(:disabled) {
+  color: #ffffff;
+  background: var(--settings-btn-muted-hover-bg);
+  border-color: var(--settings-btn-muted-hover-border);
+}
+
+.settings-page .btn-danger:hover:not(:disabled),
+.settings-page .btn-danger:active:not(:disabled) {
+  background: var(--settings-btn-danger-hover);
+  border-color: var(--settings-btn-danger-hover);
+  color: #ffffff;
+}
+
+.settings-page .switch-btn:hover {
+  filter: none;
+}
+
+.settings-block__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: var(--border-thin) solid var(--border-subtle);
+}
+
+.settings-block__head-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-block__head--stack {
+  gap: 8px;
+}
+
+.settings-block__head-row {
+  gap: 8px;
+}
+
+.settings-block__title {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  color: var(--text-main);
+}
+

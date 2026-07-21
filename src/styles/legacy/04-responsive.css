@@ -1,0 +1,98 @@
+@media (max-width: 800px) {
+
+  .download-row__actions,
+  .dl-row__actions {
+    grid-area: actions;
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: stretch;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .download-row__actions .btn,
+  .download-row__actions .set-btn,
+  .dl-row__actions .set-btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* ── Muito estreito (perto do minWidth da janela) ─────────────────────── */
+@media (max-width: 640px) {
+  .titlebar {
+    --titlebar-height: 36px;
+  }
+
+  .titlebar__title {
+    font-size: 1rem;
+  }
+
+  .titlebar__btn {
+    width: 36px;
+  }
+
+  .titlebar__drag {
+    padding: 0 10px;
+  }
+
+  .app-frame .sidebar {
+    padding: 4px 6px;
+  }
+
+  .sidebar-link {
+    min-height: 44px;
+    padding: 8px 2px;
+    gap: 0;
+  }
+
+  /* Só ícones — labels não cabem bem */
+  .sidebar-link__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .sidebar-link__icon,
+  .sidebar-link__icon svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .main-panel {
+    padding: 8px 10px 12px;
+  }
+
+  .discover-detail__hero {
+    gap: 12px;
+  }
+
+  .discover-detail__title {
+    font-size: 1.125rem;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .discover-detail__carousel-thumb {
+    width: 56px;
+  }
+
+  .discover-detail__carousel-nav {
+    width: 30px;
+    height: 30px;
+  }
+
+  .discover-detail__lightbox-footer {
+    max-width: 100%;
+  }
+
+  .browse-search {
+    min-width: 0;
+  }
+}

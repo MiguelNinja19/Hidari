@@ -1,0 +1,99 @@
+/**
+ * Premium Brutalist — accent branco + minimal spacing, legibility, depth.
+ * Loaded after App.css; overrides tokens and key surfaces.
+ */
+
+:root {
+  --font-body: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-body);
+  --display: var(--font-body);
+  --sans: var(--font-body);
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+
+  /* Escala tipográfica — legibilidade em desktop */
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.375rem;
+  --leading-tight: 1.3;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.65;
+
+  --weight-ui: 600;
+  --weight-strong: 700;
+  --weight-heavy: 800;
+
+  --toggle-on: #1b7f12;
+  --toggle-on-hover: #23a317;
+
+  --install: #c4840f;
+  --install-hover: #e8a020;
+  --install-text: #ffffff;
+
+  /* Botões — Configurações (sólidos, legíveis no tema escuro) */
+  --settings-btn-action: #3d6a9e;
+  --settings-btn-action-hover: #4a7db8;
+  --settings-btn-action-text: #f4f7fb;
+  --settings-btn-muted-bg: #161616;
+  --settings-btn-muted-border: #434343;
+  --settings-btn-muted-text: #e0e0e0;
+  --settings-btn-muted-hover-bg: #222222;
+  --settings-btn-muted-hover-border: #5a5a5a;
+  --settings-btn-danger-bg: #6b2828;
+  --settings-btn-danger-border: #8a3535;
+  --settings-btn-danger-hover: #7d3030;
+  --settings-btn-danger-text: #ffecec;
+  --settings-btn-busy-bg: #252525;
+  --settings-btn-busy-border: #525252;
+  --bg-app: #080808;
+  --bg-panel: #0c0c0c;
+  --bg-elevated: #121212;
+  --bg-card: #0e0e0e;
+  --bg-surface: #101010;
+  --bg-sidebar: #000000;
+  --bg-main: #060606;
+
+  --accent: #ffffff;
+  --accent-primary: #e8e8e8;
+  --accent-lime: #e8e8e8;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --accent-hover: #ffffff;
+  --accent-on: #0a0a0a;
+  --accent-text: #f2f2f2;
+  --link: #e8e8e8;
+
+  --divider: rgba(255, 255, 255, 0.06);
+  --divider-strong: rgba(255, 255, 255, 0.16);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --sidebar-edge: rgba(255, 255, 255, 0.08);
+
+  --text-main: #f2f2f2;
+  --text-soft: #b3b3b3;
+  --text-faint: #7a7a7a;
+  --text-muted: #7a7a7a;
+
+  --danger: #ff5555;
+  --danger-soft: rgba(255, 85, 85, 0.1);
+  --success: #5ee89a;
+  --success-soft: rgba(94, 232, 154, 0.1);
+  --warning: #ffb020;
+  --warning-soft: rgba(255, 176, 32, 0.1);
+
+  --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.28);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.65);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+
+  --radius-sm: 0;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --border-width: 1px;
+  --border-thin: 1px;
+
+  --hover-dur: 0.18s;
+  --space-panel-x: 40px;
+  --space-panel-y: 32px;
+}
+

@@ -1,0 +1,45 @@
+.library-toolbar__sort {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+}
+
+.library-sort-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  min-height: 44px;
+}
+
+.library-sort-toggle__btn {
+  margin: 0;
+  padding: 0 14px;
+  border: none;
+  border-left: var(--border-thin) solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.library-sort-toggle__btn:first-child {
+  border-left: none;
+}
+
+.library-sort-toggle__btn--active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.library-sort-toggle__btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+  z-index: 1;
+}
+

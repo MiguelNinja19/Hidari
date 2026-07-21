@@ -1,0 +1,60 @@
+
+.game-detail__cover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  position: relative;
+  background: #060810;
+  border: var(--border-width) solid var(--divider);
+}
+
+.game-detail__info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.game-detail__eyebrow {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.game-detail__title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.25rem, 3vw, 1.75rem);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  color: var(--text-main);
+}
+
+.game-detail__badge {
+  margin: 0;
+  align-self: flex-start;
+  padding: 4px 8px;
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  background: var(--accent-primary);
+  border: var(--border-width) solid var(--accent-primary);
+}
+
+.game-detail__synopsis {
+  margin: var(--space-2) 0 0;
+  font-family: var(--sans);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+  text-transform: none;
+  letter-spacing: -0.01em;
+}

@@ -2,11 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useAppDispatch, useAppSelector } from '../hooks'
 import { fetchJobs } from '../../features/queue/queueSlice'
 import { selectHasActiveDownloads } from '../../features/queue/queueSelectors'
-import {
-  POLL_ACTIVE_JOBS_BACKGROUND_MS,
-  POLL_ACTIVE_JOBS_MS,
-} from '../../shared/config/polling'
 import type { NavTab } from '../../layout/types'
+import { useQueuePolling } from './useQueuePolling'
 
 type UseQueueSyncArgs = {
   activeTab: NavTab
@@ -62,42 +59,11 @@ export function useQueueSync({
     }
   }, [activeTab, dispatch, setDownloadsBooting])
 
-  useEffect(() => {
-    if (!hasActiveDownloads) return
-
-    const intervalMs =
-      activeTab === 'downloads' ? POLL_ACTIVE_JOBS_MS : POLL_ACTIVE_JOBS_BACKGROUND_MS
-
-    const reconcile = () => {
-      if (reconcileInFlightRef.current) return
-      reconcileInFlightRef.current = true
-      void dispatch(fetchJobs({ silent: true }))
-        .then(() => {
-          onJobsReconciledRef.current?.()
-        })
-        .finally(() => {
-          reconcileInFlightRef.current = false
-        })
-    }
-
-    reconcile()
-    const id = window.setInterval(reconcile, intervalMs)
-    return () => window.clearInterval(id)
-  }, [hasActiveDownloads, dispatch, activeTab])
-
-  useEffect(() => {
-    const onFocus = () => {
-      if (reconcileInFlightRef.current) return
-      reconcileInFlightRef.current = true
-      void dispatch(fetchJobs({ silent: true }))
-        .then(() => {
-          onJobsReconciledRef.current?.()
-        })
-        .finally(() => {
-          reconcileInFlightRef.current = false
-        })
-    }
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [dispatch])
+  useQueuePolling(
+    activeTab,
+    hasActiveDownloads,
+    dispatch,
+    reconcileInFlightRef,
+    onJobsReconciledRef,
+  )
 }

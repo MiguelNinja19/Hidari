@@ -1,23 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import {
-  INSTALL_WATCH_INTERVAL_MS,
-  INSTALL_WATCH_MAX_TICKS,
-  INSTALL_WATCH_POST_CLOSE_TICKS,
-  INSTALL_WATCH_START_GRACE_TICKS,
-} from '../../shared/config/polling'
+import { INSTALL_WATCH_INTERVAL_MS } from '../../shared/config/polling'
 import { pathStateKey } from './libraryItemState'
 import type { LibraryControllerValue } from './LibraryController'
+import { tickInstallWatch, type InstallWatch } from './libraryInstallWatchTick'
 import { setLibraryPathStateCacheEntry } from './libraryPathStateCache'
-
-type InstallWatch = {
-  intervalId: number
-  busyKey: string
-  setupPath: string
-  ticks: number
-  sawInstallerRunning: boolean
-  installerClosedTick: number | null
-}
+import { useInstallingKeys } from './useInstallingKeys'
 
 type UseLibraryInstallWatchArgs = {
   defaultDownloadPathRef: React.MutableRefObject<string>
@@ -30,28 +18,9 @@ export function useLibraryInstallWatch({
   defaultDownloadPathRef,
   setPathStateByKey,
 }: UseLibraryInstallWatchArgs) {
-  const [installingKeys, setInstallingKeys] = useState<Set<string>>(
-    () => new Set(),
-  )
+  const { installingKeys, addInstallingKey, removeInstallingKey } =
+    useInstallingKeys()
   const installWatchRef = useRef<Map<string, InstallWatch>>(new Map())
-
-  const addInstallingKey = useCallback((busyKey: string) => {
-    setInstallingKeys((prev) => {
-      if (prev.has(busyKey)) return prev
-      const next = new Set(prev)
-      next.add(busyKey)
-      return next
-    })
-  }, [])
-
-  const removeInstallingKey = useCallback((busyKey: string) => {
-    setInstallingKeys((prev) => {
-      if (!prev.has(busyKey)) return prev
-      const next = new Set(prev)
-      next.delete(busyKey)
-      return next
-    })
-  }, [])
 
   const refreshPathState = useCallback(
     async (title: string, path: string, jobId?: string) => {
@@ -91,53 +60,17 @@ export function useLibraryInstallWatch({
       }
       addInstallingKey(busyKey)
 
-      const tick = async () => {
-        const watch = installWatchRef.current.get(watchKey)
-        if (!watch) return
-        watch.ticks += 1
+      const tick = () => tickInstallWatch({
+        watches: installWatchRef.current,
+        watchKey,
+        title,
+        destPath,
+        jobId,
+        refreshPathState,
+        stopInstallWatch,
+      })
 
-        try {
-          const state = await refreshPathState(title, destPath, jobId)
-          if (state.hasGame) {
-            stopInstallWatch(watchKey)
-            return
-          }
-        } catch {
-          // continua a monitorizar
-        }
-
-        if (watch.setupPath && watch.ticks > INSTALL_WATCH_START_GRACE_TICKS) {
-          let running = false
-          try {
-            running = await sourcesApi.isExecutableRunning(watch.setupPath)
-          } catch {
-            // keep false
-          }
-
-          if (running) {
-            watch.sawInstallerRunning = true
-            watch.installerClosedTick = null
-          } else if (watch.sawInstallerRunning) {
-            if (watch.installerClosedTick === null) {
-              watch.installerClosedTick = watch.ticks
-            } else if (
-              watch.ticks - watch.installerClosedTick >=
-              INSTALL_WATCH_POST_CLOSE_TICKS
-            ) {
-              stopInstallWatch(watchKey)
-              return
-            }
-          }
-        }
-
-        if (watch.ticks >= INSTALL_WATCH_MAX_TICKS) {
-          stopInstallWatch(watchKey)
-        }
-      }
-
-      const intervalId = window.setInterval(() => {
-        void tick()
-      }, INSTALL_WATCH_INTERVAL_MS)
+      const intervalId = window.setInterval(() => void tick(), INSTALL_WATCH_INTERVAL_MS)
       installWatchRef.current.set(watchKey, {
         intervalId,
         busyKey,
@@ -154,18 +87,13 @@ export function useLibraryInstallWatch({
   useEffect(() => {
     const watches = installWatchRef.current
     return () => {
-      for (const watch of watches.values()) {
-        window.clearInterval(watch.intervalId)
-      }
+      for (const watch of watches.values()) window.clearInterval(watch.intervalId)
       watches.clear()
     }
   }, [])
 
   return {
-    installingKeys,
-    installWatchRef,
-    refreshPathState,
-    removeInstallingKey,
-    watchForInstalledGame,
+    installingKeys, installWatchRef, refreshPathState,
+    removeInstallingKey, watchForInstalledGame,
   }
 }

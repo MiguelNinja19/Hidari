@@ -1,0 +1,75 @@
+@media (max-width: 900px) {
+  .settings-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-page__lang {
+    width: 100%;
+    max-width: 280px;
+  }
+
+  .settings-stack__row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-block__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-block__head-actions {
+    justify-content: flex-start;
+  }
+
+  .settings-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-inline .btn {
+    width: 100%;
+  }
+
+  .settings-source-table--simple .settings-source-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name name"
+      "on actions";
+    row-gap: 8px;
+  }
+
+  .settings-source-table--simple .settings-source-table__col--name {
+    grid-area: name;
+  }
+
+  .settings-source-table--simple .settings-source-table__col--on {
+    grid-area: on;
+    justify-content: flex-start;
+  }
+
+  .settings-source-table--simple .settings-source-table__col--actions {
+    grid-area: actions;
+  }
+}
+
+@media (max-width: 640px) {
+  .settings-block {
+    padding: 12px;
+  }
+
+  .settings-source-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .settings-block__head-actions .btn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+

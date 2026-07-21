@@ -1,0 +1,97 @@
+@media (max-width: 800px) {
+  .discover-detail__lightbox {
+    padding: 12px 10px 16px;
+  }
+
+  .discover-detail__lightbox-img {
+    max-height: min(68vh, 640px);
+  }
+
+  .discover-detail__lightbox-nav {
+    width: 34px;
+    height: 34px;
+  }
+
+  .discover-detail__lightbox-nav--prev {
+    left: 6px;
+  }
+
+  .discover-detail__lightbox-nav--next {
+    right: 6px;
+  }
+
+  .discover-detail__lightbox-thumb {
+    width: 48px;
+  }
+
+  .discover-grid {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 12px 10px;
+  }
+
+  .discover-grid__item,
+  .discover-card {
+    max-width: none;
+    width: 100%;
+  }
+
+  .library-grid {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 12px 10px;
+  }
+
+  .library-grid__item,
+  .library-card {
+    max-width: none;
+    width: 100%;
+  }
+
+  .library-toolbar,
+  .downloads-page__header,
+  .downloads-toolbar,
+  .dl-page__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .dl-page__actions {
+    margin-left: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .dl-page__actions .set-btn,
+  .downloads-toolbar .btn {
+    flex: 1 1 auto;
+  }
+
+  .settings-stack,
+  .settings-stack__row,
+  .settings-field-grid,
+  .settings-sources,
+  .settings-sources--cards {
+    grid-template-columns: 1fr;
+  }
+
+  .download-row,
+  .dl-row {
+    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-areas:
+      "thumb main"
+      "actions actions";
+    gap: 12px;
+  }
+
+  .download-row__thumb,
+  .dl-row__thumb {
+    grid-area: thumb;
+  }
+
+  .download-row__main,
+  .dl-row__main {
+    grid-area: main;
+    min-width: 0;
+  }
+}

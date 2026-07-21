@@ -1,0 +1,51 @@
+.settings-block__meta {
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.settings-block__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.settings-block__body--tight {
+  gap: 0;
+}
+
+.settings-cover-progress {
+  height: 6px;
+  border-radius: 0;
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.06));
+  overflow: hidden;
+}
+
+.settings-cover-progress__bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3b82f6, #6366f1);
+  transition: width 0.35s ease;
+}
+
+.settings-cover-progress__label {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.settings-block__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: var(--border-width) solid var(--divider);
+}
+
