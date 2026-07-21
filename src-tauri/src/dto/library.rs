@@ -43,6 +43,14 @@ pub struct SetLibraryGameRootPayload {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AddExternalLibraryGamePayload {
+  pub path: String,
+  #[serde(default)]
+  pub title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetLibraryLaunchExePayload {
   pub title: String,
   pub dest_path: String,

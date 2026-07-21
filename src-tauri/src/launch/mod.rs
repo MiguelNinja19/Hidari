@@ -29,7 +29,7 @@ mod utility;
 pub(crate) use utility::*;
 mod playable;
 pub use playable::*;
-pub(crate) use playable::{folder_has_install_or_game, folder_has_playable_game_exe_depth};
+pub(crate) use playable::folder_has_playable_game_exe_depth;
 mod content;
 pub use content::*;
 mod roots;
@@ -46,6 +46,8 @@ mod setup;
 pub use setup::*;
 mod running;
 pub use running::*;
+mod shell_open;
+pub use shell_open::open_shell_target;
 
 #[cfg(test)]
 mod tests;

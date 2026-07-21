@@ -9,6 +9,7 @@ pub use policy::{
   validate_managed_path,
 };
 pub use core::validate_absolute_user_path;
+pub use roots::invalidate_managed_roots_cache;
 
 #[cfg(test)]
 mod tests;

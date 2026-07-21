@@ -1,16 +1,16 @@
-use super::{finalize_fully_transferred_persisted_jobs, is_fully_transferred_bytes};
+use super::transfer::{finalize_fully_transferred_persisted_jobs, is_fully_transferred_job};
 use rusqlite::Connection;
 
 #[test]
 fn fully_transferred_requires_exact_bytes_and_min_size() {
   let big = 618_035_125_i64;
-  assert!(is_fully_transferred_bytes(big, big));
-  assert!(!is_fully_transferred_bytes(big - 1, big));
+  assert!(is_fully_transferred_job(big, big));
+  assert!(!is_fully_transferred_job(big - 1, big));
   // 99.6% ainda incompleto — não finaliza
-  assert!(!is_fully_transferred_bytes(((big as f64) * 0.996) as i64, big));
+  assert!(!is_fully_transferred_job(((big as f64) * 0.996) as i64, big));
   // Metadados pequeninos nunca contam
-  assert!(!is_fully_transferred_bytes(32_708, 32_708));
-  assert!(!is_fully_transferred_bytes(0, 0));
+  assert!(!is_fully_transferred_job(32_708, 32_708));
+  assert!(!is_fully_transferred_job(0, 0));
 }
 
 #[test]

@@ -26,6 +26,14 @@ describe('formatDownloadError', () => {
     ).toBe(ARIA2_EXIT_MESSAGES[13])
   })
 
+  it('traduz arquivo protegido por senha', () => {
+    expect(
+      formatDownloadError(
+        'archive_password_required: stderr=ERROR: Wrong password : game.rar stdout=',
+      ),
+    ).toBe(EXTRACTION_ERROR_MESSAGES.passwordRequired)
+  })
+
   it('traduz 7z Cannot open the file as archive', () => {
     const raw =
       "7z_extract_failed: status=exit code: 2 stderr=ERROR: J:\\dddd\\Megabonk\\game.rar Cannot open the file as archive stdout=Can't open as archive: 1"

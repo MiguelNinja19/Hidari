@@ -4,6 +4,10 @@ import type { LibraryPathState, LocalLibraryItem } from '../../types/contracts'
 export const libraryApi = {
   scanDefaultDownloadPath: () =>
     tauriClient.invoke<LocalLibraryItem[]>('scan_default_download_path'),
+  addExternalLibraryGame: (path: string, title?: string | null) =>
+    tauriClient.invoke<{ title: string; path: string }>('add_external_library_game', {
+      payload: { path, title: title?.trim() ? title : null },
+    }),
   deleteLocalLibraryItem: (path: string, title?: string) =>
     tauriClient.invoke<void>('delete_local_library_item', {
       payload: { path, title: title?.trim() ? title : null },
@@ -71,6 +75,16 @@ export const libraryApi = {
     tauriClient.invoke<void>('extract_library_folder', {
       payload: { title, path, jobId: jobId ?? null },
     }),
+  createDesktopShortcut: (title: string, destPath: string, iconPath?: string | null) =>
+    tauriClient.invoke<string>('create_library_desktop_shortcut', {
+      payload: {
+        title,
+        destPath,
+        iconPath: iconPath?.trim() || null,
+      },
+    }),
+  openOriginLauncher: (path: string) =>
+    tauriClient.invoke<void>('open_library_origin_launcher', { path }),
   listFavoriteCatalogEntries: () =>
     tauriClient.invoke<import('../../types/contracts').FavoriteCatalogEntry[]>(
       'list_favorite_catalog_entries',

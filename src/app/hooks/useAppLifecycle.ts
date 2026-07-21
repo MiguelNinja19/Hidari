@@ -21,6 +21,7 @@ type UseAppLifecycleInput = {
   discoverBridgeRef: RefObject<DiscoverBridge>
   navigateDiscover: () => void
   showSuccess: (message: string) => void
+  showError: (message: string) => void
 }
 
 export function useAppLifecycle({
@@ -32,6 +33,7 @@ export function useAppLifecycle({
   discoverBridgeRef,
   navigateDiscover,
   showSuccess,
+  showError,
 }: UseAppLifecycleInput) {
   const { t } = useTranslation()
   const onReadyToInstall = useCallback(
@@ -51,8 +53,10 @@ export function useAppLifecycle({
   useQueueSync({ activeTab, setDownloadsBooting })
   useDeepLinkNavigation({
     onNavigateDiscover: navigateDiscover,
+    onNavigateLibrary: () => setActiveTab('library'),
     applyDiscoverSearch: (query) => discoverBridgeRef.current?.applyDiscoverSearch(query),
     openGameDetail: (input) => discoverBridgeRef.current?.openGameDetail(input),
+    showError,
   })
 
   return updater

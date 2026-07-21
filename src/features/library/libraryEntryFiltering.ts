@@ -44,6 +44,12 @@ function folderBlocked(
   )
 }
 
+function isImportableLibraryFile(item: LocalLibraryItem) {
+  if (item.isDir) return false
+  const lower = item.path.toLowerCase()
+  return lower.endsWith('.url') || lower.endsWith('.lnk') || lower.endsWith('.exe')
+}
+
 export function createLibraryEntries(
   items: LocalLibraryItem[],
   jobs: DownloadJob[],
@@ -55,11 +61,15 @@ export function createLibraryEntries(
       .filter(Boolean),
   )
   const folders: LibraryEntry[] = items
-    .filter((item) => item.isDir)
+    .filter((item) => item.isDir || isImportableLibraryFile(item))
     .filter((item) => !folderBlocked(item, jobs, defaultDownloadPath, jobPaths))
     .map((item) => ({
-      id: `folder-${item.path}`, title: item.name, status: 'installed',
-      destPath: item.path, kind: 'folder',
+      id: `folder-${item.path}`,
+      title: item.name,
+      status: 'installed',
+      destPath: item.path,
+      kind: 'folder',
+      external: item.external === true,
     }))
   const jobEntries: LibraryEntry[] = jobs.filter(jobBelongsInLibrary).map((job) => ({
     id: job.id, title: job.title, status: job.status,

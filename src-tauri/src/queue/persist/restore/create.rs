@@ -73,6 +73,7 @@ pub(super) fn persist_restored_job(
     bytes_downloaded: job.bytes_downloaded,
     total_bytes: job.total_bytes,
     error_msg: None,
+    source_name: job.source_name.clone(),
   };
   let _ = upsert_persisted_queue_job(&conn, &restored);
   let _ = conn.execute(

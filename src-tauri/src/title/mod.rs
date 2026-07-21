@@ -11,6 +11,7 @@ mod search;
 pub use cover::{cover_storage_key, cover_title_key_candidates};
 pub use display::catalog_game_display_title_from_group_key;
 pub use group_key::{canonical_catalog_group_key, catalog_game_group_key};
+pub use base::extract_catalog_base_title;
 pub use normalize::{
   clean_title_for_matching, normalize_title_key, simplify_source_search_query, tokenize_title,
 };

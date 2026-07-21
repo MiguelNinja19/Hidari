@@ -18,6 +18,20 @@ export function buildLibraryPrimaryAction(
   const isPlayBusy = ctx.playBusyId === ctx.key
 
   // Ordem: Play → Extract → Install → job/path fallback
+  if (item.external) {
+    return {
+      primary: {
+        id: 'play',
+        label: isPlayBusy ? t('library.playStarting') : t('common.play'),
+        title: t('library.playTitle'),
+        variant: 'primary',
+        disabled: isPlayBusy,
+        onClick: () => void ctx.handlePlayLibraryItem(item),
+      },
+      secondary,
+    }
+  }
+
   if (ctx.canPlay) {
     return {
       primary: {

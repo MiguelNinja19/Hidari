@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-fn sanitize_folder_name(title: &str) -> String {
+pub(crate) fn sanitize_folder_name(title: &str) -> String {
   let cleaned: String = title
     .chars()
     .map(|c| {
@@ -17,6 +17,12 @@ fn sanitize_folder_name(title: &str) -> String {
   } else {
     trimmed.to_string()
   }
+}
+
+/// Pasta de destino por jogo: `download_root/Title` (evita tudo em J:\dddd).
+pub fn resolve_enqueue_dest_folder(download_root: &str, title: &str) -> PathBuf {
+  let root = PathBuf::from(download_root.trim());
+  root.join(sanitize_folder_name(title))
 }
 
 /// Resolves where extracted files should land.

@@ -12,6 +12,17 @@ export function buildLibraryFileActions(
   const isInstallBusy =
     ctx.installBusyId === ctx.key || ctx.installingKeys.has(ctx.key)
 
+  if (item.external) {
+    actions.push({
+      id: 'remove-external',
+      label: t('library.removeFromLibrary'),
+      title: t('library.removeFromLibraryTitle'),
+      variant: 'danger',
+      onClick: () => void ctx.handleDeleteLibraryItem(item),
+    })
+    return actions
+  }
+
   actions.push({
     id: 'open',
     label: t('library.openExplorer'),
@@ -43,6 +54,15 @@ export function buildLibraryFileActions(
     disabled: isInstallBusy,
     onClick: () => void ctx.handlePickLaunchExe(item),
   })
+  if (ctx.canPlay) {
+    actions.push({
+      id: 'create-shortcut',
+      label: t('library.createShortcut'),
+      title: t('library.createShortcutTitle'),
+      variant: 'outline',
+      onClick: () => void ctx.handleCreateDesktopShortcut(item),
+    })
+  }
   if (ctx.canDelete) {
     actions.push({
       id: 'delete',

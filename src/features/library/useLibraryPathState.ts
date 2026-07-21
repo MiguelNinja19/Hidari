@@ -59,7 +59,11 @@ export function useLibraryPathState(
     try {
       const items = await sourcesApi.scanDefaultDownloadPath()
       setLocalLibraryItems(items)
-      await runBatchPathInspection(items, jobsRef.current)
+      const hasCachedStates = Object.keys(pathStateByKeyRef.current).length > 0
+      await runBatchPathInspection(items, jobsRef.current, {
+        // Com cache hidratado: só paths novos. Sem cache: inspect completo uma vez.
+        onlyUnresolved: hasCachedStates,
+      })
     } catch (error) {
       showError(formatUserError(error, t('library.verifyPathError')))
     } finally {

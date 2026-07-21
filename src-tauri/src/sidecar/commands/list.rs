@@ -1,5 +1,7 @@
 use super::super::engine::ensure_sidecar_running;
 use super::super::extraction::enrich_jobs_with_extraction;
+use super::merge_history::merge_persisted_history;
+use super::source_overlay::enrich_jobs_with_source_name;
 use crate::db::open_database_connection;
 use tauri::AppHandle;
 
@@ -17,6 +19,8 @@ pub async fn sidecar_list_jobs(app: AppHandle) -> Result<serde_json::Value, Stri
     .map_err(|e| format!("sidecar_parse_failed: {e}"))?;
 
   if let Ok(conn) = open_database_connection(&app) {
+    merge_persisted_history(&mut value, &conn);
+    enrich_jobs_with_source_name(&mut value, &conn);
     enrich_jobs_with_extraction(&mut value, &conn);
   }
 

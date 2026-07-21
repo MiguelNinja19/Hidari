@@ -17,6 +17,7 @@ export const queueApi = {
         destPath: payload.destPath,
         priority: payload.priority,
         coverUrl: payload.coverUrl ?? null,
+        sourceName: payload.sourceName ?? null,
       },
     })
     return normalizeDownloadJob(raw ?? {})

@@ -16,7 +16,7 @@ export type DiscoverGameDetailPageProps = {
   favoriteBusy: boolean
   onToggleFavorite: () => void
   onBack: () => void
-  onDownload?: (title: string, url: string, coverUrl?: string | null) => Promise<void>
+  onDownload?: (title: string, url: string, coverUrl?: string | null, sourceName?: string | null) => Promise<void>
   footerSlot?: ReactNode
   hideDownloads?: boolean
 }

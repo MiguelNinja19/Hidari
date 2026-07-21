@@ -22,6 +22,26 @@ export function buildLibraryMenuActions(
     variant: 'outline',
     onClick: () => ctx.openLibraryDetail(item),
   })
+
+  if (item.external) {
+    actions.push({
+      id: 'play-menu',
+      label: isPlayBusy ? t('library.playStarting') : t('common.play'),
+      title: t('library.playTitle'),
+      variant: 'primary',
+      disabled: isPlayBusy,
+      onClick: () => void ctx.handlePlayLibraryItem(item),
+    })
+    actions.push({
+      id: 'open-origin',
+      label: t('library.openOriginLauncher'),
+      title: t('library.openOriginLauncherTitle'),
+      variant: 'outline',
+      onClick: () => void ctx.handleOpenOriginLauncher(item),
+    })
+    return actions
+  }
+
   if (ctx.canPlay) {
     actions.push({
       id: 'play-menu',

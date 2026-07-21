@@ -1,6 +1,10 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
+import {
+  formatPasswordExtractionError,
+  isArchivePasswordRequiredError,
+} from '../../shared/config/extractionErrorMessages'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { useToast } from '../../shared/components/ToastProvider'
 import { getPathState, itemPathCtx, pathStateKey } from './libraryItemState'
@@ -17,6 +21,16 @@ type Args = {
   ) => void
 }
 
+function formatLibraryExtractError(error: unknown, item: LibraryEntry): string {
+  const raw = error instanceof Error ? error.message : String(error ?? '')
+  if (isArchivePasswordRequiredError(raw)) {
+    const sourceName = item.kind === 'job' ? item.job?.sourceName : null
+    const { text, hint } = formatPasswordExtractionError(raw, item.title, sourceName)
+    return hint ? `${text} ${hint.url}` : text
+  }
+  return formatUserError(error)
+}
+
 export function useLibraryInstall(args: Args) {
   const { showError } = useToast()
   const { t } = useTranslation()
@@ -29,7 +43,7 @@ export function useLibraryInstall(args: Args) {
       await sourcesApi.extractLibraryFolder(item.title, item.destPath, jobId)
       void args.refreshPathState(item.title, item.destPath, jobId)
     } catch (error) {
-      const message = formatUserError(error)
+      const message = formatLibraryExtractError(error, item)
       if (message.trim()) showError(message)
     } finally {
       setInstallBusyId(null)
@@ -81,7 +95,7 @@ export function useLibraryInstall(args: Args) {
       args.watchForInstalledGame(item.title, item.destPath, key, setupPath, jobId)
       void args.refreshPathState(item.title, item.destPath, jobId)
     } catch (error) {
-      const message = formatUserError(error)
+      const message = formatLibraryExtractError(error, item)
       if (message.trim()) showError(message)
       args.removeInstallingKey(key)
     } finally {

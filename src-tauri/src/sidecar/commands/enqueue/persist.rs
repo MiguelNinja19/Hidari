@@ -60,6 +60,12 @@ pub(crate) fn persist_enqueued_job(
         .and_then(|v| v.as_i64())
         .unwrap_or(0),
       error_msg: None,
+      source_name: payload
+        .source_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string),
     };
     let _ = upsert_persisted_queue_job(&conn, &persisted);
   }

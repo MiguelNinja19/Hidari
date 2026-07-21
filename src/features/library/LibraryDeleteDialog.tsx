@@ -11,20 +11,21 @@ export function LibraryDeleteDialog({
   const { t } = useTranslation()
   const pending = controller.pendingDeleteItem
   const deleting = controller.deletingLibraryKey !== null
+  const external = pending?.external === true
 
   return (
     <ConfirmDialog
       open={pending !== null}
-      title={t('library.deleteConfirmTitle')}
+      title={external ? t('library.removeConfirmTitle') : t('library.deleteConfirmTitle')}
       description={
         pending
-          ? t('library.deleteConfirmBody', {
+          ? t(external ? 'library.removeConfirmBody' : 'library.deleteConfirmBody', {
               title: cleanTitleForDisplay(pending.title),
             })
           : ''
       }
-      confirmLabel={t('library.uninstall')}
-      busyLabel={t('library.deleting')}
+      confirmLabel={external ? t('library.removeFromLibrary') : t('library.uninstall')}
+      busyLabel={external ? t('library.removing') : t('library.deleting')}
       cancelLabel={t('common.cancel')}
       confirmVariant="danger"
       busy={deleting}

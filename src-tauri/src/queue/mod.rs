@@ -89,6 +89,31 @@ pub async fn clear_completed_jobs(app: AppHandle) -> Result<Vec<String>, String>
     )
     .map_err(|e| format!("could_not_clear_jobs: {e}"))?;
 
+  // Histórico só no SQLite (após fechar a app o sidecar já não os tem).
+  let mut stmt = conn
+    .prepare(
+      "SELECT id FROM persisted_queue_jobs \
+       WHERE status IN ('completed', 'cancelled', 'failed', 'skipped', 'extracted')",
+    )
+    .map_err(|e| format!("could_not_list_history_for_clear: {e}"))?;
+  let history_ids: Vec<String> = stmt
+    .query_map([], |row| row.get(0))
+    .map_err(|e| format!("could_not_query_history_for_clear: {e}"))?
+    .filter_map(Result::ok)
+    .collect();
+  drop(stmt);
+
+  let _ = conn.execute(
+    "DELETE FROM persisted_queue_jobs \
+     WHERE status IN ('completed', 'cancelled', 'failed', 'skipped', 'extracted')",
+    [],
+  );
+  for id in history_ids {
+    if !removed.contains(&id) {
+      removed.push(id);
+    }
+  }
+
   Ok(removed)
 }
 

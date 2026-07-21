@@ -15,10 +15,11 @@ type Args = {
   setInstallBusyId: (value: string | null) => void
   setPathStateByKey: PathStateSetter
   refreshPathState: (title: string, path: string, jobId?: string) => unknown
+  refreshLibraryScan: (options?: { background?: boolean }) => Promise<void>
 }
 
 export function useLibraryPathActions(args: Args) {
-  const { showError } = useToast()
+  const { showError, showSuccess } = useToast()
   const { t } = useTranslation()
   const handlePickGameInstallFolder = useCallback(async (
     title: string,
@@ -72,5 +73,42 @@ export function useLibraryPathActions(args: Args) {
     }
   }, [args, showError, t])
 
-  return { handlePickGameInstallFolder, handlePickLaunchExe }
+  const handleCreateDesktopShortcut = useCallback(async (item: LibraryEntry) => {
+    try {
+      await sourcesApi.createDesktopShortcut(item.title, item.destPath)
+      showSuccess(t('library.createShortcutSuccess'))
+    } catch (error) {
+      showError(formatUserError(error, t('library.createShortcutError')))
+    }
+  }, [showError, showSuccess, t])
+
+  const handleAddExternalGame = useCallback(async (path: string, title?: string) => {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    try {
+      const added = await sourcesApi.addExternalLibraryGame(trimmed, title)
+      await args.refreshLibraryScan({ background: true })
+      await args.refreshPathState(added.title, added.path)
+      showSuccess(t('library.addGameSuccess', { title: added.title }))
+    } catch (error) {
+      showError(formatUserError(error, t('library.addGameError')))
+      throw error
+    }
+  }, [args, showError, showSuccess, t])
+
+  const handleOpenOriginLauncher = useCallback(async (item: LibraryEntry) => {
+    try {
+      await sourcesApi.openOriginLauncher(item.destPath)
+    } catch (error) {
+      showError(formatUserError(error, t('library.openOriginLauncherError')))
+    }
+  }, [showError, t])
+
+  return {
+    handlePickGameInstallFolder,
+    handlePickLaunchExe,
+    handleCreateDesktopShortcut,
+    handleAddExternalGame,
+    handleOpenOriginLauncher,
+  }
 }

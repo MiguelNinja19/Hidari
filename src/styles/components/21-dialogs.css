@@ -29,3 +29,70 @@
     transform: rotate(360deg);
   }
 }
+
+/* Add external game — mesmo layout do ConfirmDialog */
+.library-add-game-dialog {
+  width: min(460px, 100%);
+}
+
+.library-add-game-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.library-add-game-dialog__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.library-add-game-dialog__label {
+  margin: 6px 0 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.library-add-game-dialog__label:first-child {
+  margin-top: 0;
+}
+
+.library-add-game-dialog__path-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.library-add-game-dialog__path-row .library-add-game-dialog__input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.library-add-game-dialog__input {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: var(--border-thin) solid var(--divider-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  box-sizing: border-box;
+}
+
+.library-add-game-dialog__input:focus {
+  outline: none;
+  border-color: var(--text-muted);
+}
+
+.library-add-game-dialog__input:disabled {
+  opacity: 0.65;
+}

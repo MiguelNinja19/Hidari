@@ -2,10 +2,29 @@ use crate::dto::SidecarJobProgressRow;
 use std::time::Instant;
 
 use super::constants::{
-  STALL_AFTER, STALL_KICK_COOLDOWN, STALL_MAX_KICKS_BEFORE_FAILOVER, STALL_MSG_FAILOVER,
-  STALL_MSG_RECOVERING, STALL_RETRY_COOLDOWN,
+  STALL_AFTER, STALL_AFTER_EARLY, STALL_KICK_COOLDOWN, STALL_MAX_KICKS_BEFORE_FAILOVER,
+  STALL_MSG_FAILOVER, STALL_MSG_RECOVERING, STALL_MSG_WAITING_PEERS, STALL_RETRY_COOLDOWN,
 };
 use super::types::StallTracker;
+
+/// Fase em que pause/resume atrapalha (metadados, peers, follow-torrent).
+fn is_early_torrent_phase(row: &SidecarJobProgressRow) -> bool {
+  if row.bytes_downloaded > 64 * 1024 {
+    return false;
+  }
+  if row.total_bytes <= 0 {
+    return true;
+  }
+  let msg = row.error_msg.as_deref().unwrap_or("");
+  msg.contains("Conectando peers")
+    || msg.contains("metadados")
+    || msg.contains("Metadados")
+    || msg.contains("aguardar conteúdo")
+    || msg.contains("conteúdo do torrent")
+    || msg.contains("Baixando torrent")
+    || msg.contains("A obter o conteúdo")
+    || msg.contains("A retomar download")
+}
 
 pub(super) fn handle_stalled(
   tracker: &mut StallTracker,
@@ -15,9 +34,14 @@ pub(super) fn handle_stalled(
   failover_ids: &mut Vec<String>,
 ) -> Option<String> {
   let stalled_for = now.duration_since(tracker.last_change);
-  if stalled_for < STALL_AFTER {
+  let early = is_early_torrent_phase(row);
+  let threshold = if early { STALL_AFTER_EARLY } else { STALL_AFTER };
+
+  if stalled_for < threshold {
     return if tracker.recovering {
       Some(STALL_MSG_RECOVERING.to_string())
+    } else if early && stalled_for >= STALL_AFTER {
+      Some(STALL_MSG_WAITING_PEERS.to_string())
     } else {
       None
     };
@@ -54,9 +78,10 @@ pub(super) fn handle_stalled(
   tracker.last_change = now;
   kick_ids.push(row.id.clone());
   log::info!(
-    "stall_kick id={} attempt={} (auto-resume, never give up)",
+    "stall_kick id={} attempt={} early={} (auto-resume, never give up)",
     row.id,
-    tracker.kick_count
+    tracker.kick_count,
+    early
   );
   Some(STALL_MSG_RECOVERING.to_string())
 }

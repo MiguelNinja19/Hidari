@@ -11,7 +11,7 @@ type DiscoverDetailDownloadOptionProps = {
   gameTitle: string
   busy: boolean
   downloadCoverUrl: string | null
-  onDownload: (title: string, url: string, coverUrl?: string | null) => Promise<void>
+  onDownload: (title: string, url: string, coverUrl?: string | null, sourceName?: string | null) => Promise<void>
   downloadLabel: string
 }
 
@@ -42,7 +42,7 @@ export function DiscoverDetailDownloadOption({
           type="button"
           className="discover-detail__option-action"
           disabled={busy}
-          onClick={() => void onDownload(opt.title, opt.url, downloadCoverUrl)}
+          onClick={() => void onDownload(opt.title, opt.url, downloadCoverUrl, opt.sourceName)}
         >
           {busy ? '…' : downloadLabel}
         </button>

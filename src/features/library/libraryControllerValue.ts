@@ -37,6 +37,9 @@ export type LibraryControllerValue = {
     jobId?: string,
   ) => Promise<void>
   handlePickLaunchExe: (item: LibraryEntry) => Promise<void>
+  handleCreateDesktopShortcut: (item: LibraryEntry) => Promise<void>
+  handleAddExternalGame: (path: string, title?: string) => Promise<void>
+  handleOpenOriginLauncher: (item: LibraryEntry) => Promise<void>
   handleDeleteLibraryItem: (item: LibraryEntry) => void
   handleConfirmDeleteLibraryItem: () => Promise<void>
   handleCancelDeleteLibraryItem: () => void

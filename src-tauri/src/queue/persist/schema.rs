@@ -14,10 +14,17 @@ pub fn ensure_persisted_queue_table(conn: &Connection) -> Result<(), String> {
          bytes_downloaded INTEGER NOT NULL DEFAULT 0,
          total_bytes INTEGER NOT NULL DEFAULT 0,
          error_msg TEXT,
+         source_name TEXT,
          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
        );
        CREATE INDEX IF NOT EXISTS idx_persisted_queue_status
          ON persisted_queue_jobs(status);",
     )
-    .map_err(|e| format!("could_not_create_persisted_queue_jobs: {e}"))
+    .map_err(|e| format!("could_not_create_persisted_queue_jobs: {e}"))?;
+  // Bases antigas criadas sem source_name.
+  let _ = conn.execute(
+    "ALTER TABLE persisted_queue_jobs ADD COLUMN source_name TEXT",
+    [],
+  );
+  Ok(())
 }

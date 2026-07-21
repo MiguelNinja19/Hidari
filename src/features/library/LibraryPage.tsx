@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isAppLanguage, APP_LOCALE, type AppLanguage } from '../../shared/config/locale'
+import { EmptyState } from '../../shared/components/EmptyState'
 import { SearchInput } from '../../shared/components/ui/SearchInput'
 import type { LibraryEntry } from './types'
 import {
@@ -14,6 +15,7 @@ import { VirtualizedLibraryGrid } from './VirtualizedLibraryGrid'
 import { LibrarySortToggle } from './LibrarySortToggle'
 import { LibraryPageDetailView } from './LibraryPageDetailView'
 import { LibraryInstallConfirm } from './LibraryInstallConfirm'
+import { LibraryAddGameModal } from './LibraryAddGameModal'
 import { buildLibraryGridModels } from './useLibraryGridModels'
 import { libraryBusyKey } from './libraryTileActions'
 
@@ -25,8 +27,29 @@ export function LibraryPage() {
   const onResumeItem = useLibraryResumeItem()
   const onOpenLocalPath = useOpenLocalPath()
   const [pendingInstall, setPendingInstall] = useState<LibraryEntry | null>(null)
+  const [addGameOpen, setAddGameOpen] = useState(false)
+  const [addGameBusy, setAddGameBusy] = useState(false)
   const { isFavorite, isBusy, toggleFavorite } = useFavoriteCatalog()
   const requestInstallConfirm = useCallback((item: LibraryEntry) => setPendingInstall(item), [])
+  const openAddGame = useCallback(() => setAddGameOpen(true), [])
+  const closeAddGame = useCallback(() => {
+    if (addGameBusy) return
+    setAddGameOpen(false)
+  }, [addGameBusy])
+  const submitAddGame = useCallback(
+    async (path: string, title?: string) => {
+      setAddGameBusy(true)
+      try {
+        await controller.handleAddExternalGame(path, title)
+        setAddGameOpen(false)
+      } catch {
+        // Erro já mostrado via toast no handler.
+      } finally {
+        setAddGameBusy(false)
+      }
+    },
+    [controller.handleAddExternalGame],
+  )
   const confirmInstallBusy =
     pendingInstall != null &&
     (controller.installBusyId === libraryBusyKey(pendingInstall) ||
@@ -59,6 +82,12 @@ export function LibraryPage() {
     )
   }
 
+  const hasFilter = controller.libraryFilter.trim().length > 0
+  const emptyTitle = hasFilter ? t('library.noResultsTitle') : t('library.emptyTitle')
+  const emptyDescription = hasFilter
+    ? t('library.noResultsDescription')
+    : t('library.emptyDescription')
+
   return (
     <section className="library-page">
       <header className="library-toolbar">
@@ -69,13 +98,42 @@ export function LibraryPage() {
           searchFocusId="library"
           onChange={controller.setLibraryFilter}
         />
+        <div className="library-toolbar__actions">
+          <button
+            type="button"
+            className="btn btn-outline btn--compact library-toolbar__add"
+            onClick={openAddGame}
+          >
+            {t('library.sidebarAdd')}
+          </button>
+        </div>
         <div className="library-toolbar__sort">
           <LibrarySortToggle value={controller.librarySort} onChange={controller.setLibrarySort} />
         </div>
       </header>
       {gridModels.length > 0 ? (
         <VirtualizedLibraryGrid models={gridModels} ariaLabel={t('nav.library')} />
-      ) : null}
+      ) : (
+        <EmptyState
+          title={emptyTitle}
+          description={emptyDescription}
+          action={
+            hasFilter
+              ? undefined
+              : {
+                  label: t('library.sidebarAdd'),
+                  onClick: openAddGame,
+                }
+          }
+        />
+      )}
+      <LibraryAddGameModal
+        open={addGameOpen}
+        busy={addGameBusy}
+        defaultPath={controller.defaultDownloadPath}
+        onClose={closeAddGame}
+        onSubmit={submitAddGame}
+      />
       <LibraryInstallConfirm
         pendingInstall={pendingInstall}
         confirmInstallBusy={confirmInstallBusy}

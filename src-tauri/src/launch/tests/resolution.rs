@@ -3,7 +3,7 @@ use crate::launch::*;
 use std::{fs, io::Write};
 
 #[test]
-fn resolves_title_subfolder_when_dest_is_parent_download_dir() {
+fn content_root_stays_on_dest_folder_not_download_parent_children() {
     let parent = std::env::temp_dir().join(format!("launcher_parent_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&parent);
     let game_dir = parent.join(format!("{GAME_A} [FitGirl Repack]"));
@@ -15,10 +15,16 @@ fn resolves_title_subfolder_when_dest_is_parent_download_dir() {
     fs::write(game_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
     fs::write(md5_dir.join("QuickSFV.EXE"), vec![0u8; 0x100]).unwrap();
 
-    let resolved = resolve_game_content_root(GAME_A, &parent.to_string_lossy());
-    assert_eq!(resolved, game_dir);
-    assert!(!job_has_game_executable(GAME_A, &parent.to_string_lossy()));
-    assert!(find_setup_executable(GAME_A, &parent.to_string_lossy())
+    // dest = pasta do jogo → fica nessa pasta; dest = parent → não escolhe outros jogos.
+    assert_eq!(
+        resolve_game_content_root(GAME_A, &game_dir.to_string_lossy()),
+        game_dir
+    );
+    assert_eq!(
+        resolve_game_content_root(GAME_A, &parent.to_string_lossy()),
+        parent
+    );
+    assert!(find_setup_executable(GAME_A, &game_dir.to_string_lossy())
         .unwrap()
         .ends_with("setup.exe"));
 
@@ -26,7 +32,7 @@ fn resolves_title_subfolder_when_dest_is_parent_download_dir() {
 }
 
 #[test]
-fn does_not_pick_other_game_setup_folder() {
+fn does_not_pick_other_game_from_download_parent() {
     let parent = std::env::temp_dir().join(format!("launcher_multi_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&parent);
     let game_a_dir = parent.join(format!("{GAME_A} [FitGirl Repack]"));
@@ -36,16 +42,14 @@ fn does_not_pick_other_game_setup_folder() {
     fs::write(game_a_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
     fs::write(game_b_dir.join("setup.exe"), vec![0u8; 60_000]).unwrap();
 
-    let resolved_b = resolve_game_content_root(GAME_B, &parent.to_string_lossy());
-    let resolved_a = resolve_game_content_root(GAME_A, &parent.to_string_lossy());
-    assert!(resolved_b
-        .to_string_lossy()
-        .to_lowercase()
-        .contains("pixel"));
-    assert!(resolved_a
-        .to_string_lossy()
-        .to_lowercase()
-        .contains("galaxy"));
+    assert_eq!(
+        resolve_game_content_root(GAME_B, &parent.to_string_lossy()),
+        parent
+    );
+    assert_eq!(
+        resolve_game_content_root(GAME_A, &game_a_dir.to_string_lossy()),
+        game_a_dir
+    );
 
     let _ = fs::remove_dir_all(&parent);
 }
@@ -87,7 +91,7 @@ fn does_not_pick_unrelated_game_exe_when_title_not_installed() {
 }
 
 #[test]
-fn resolves_installed_sibling_folder_instead_of_parent_scan() {
+fn does_not_scan_sibling_install_folders() {
     let parent = std::env::temp_dir().join(format!("launcher_sibling_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&parent);
     let repack_dir = parent.join(format!("{GAME_LEGACY} [FitGirl Repack]"));
@@ -102,11 +106,18 @@ fn resolves_installed_sibling_folder_instead_of_parent_scan() {
     fs::create_dir_all(&other_game).unwrap();
     fs::write(other_game.join("Launcher.exe"), pe_stub()).unwrap();
 
-    // A pasta do job continua a ser o repack; o exe instalado vem só do irmão com o nome do jogo.
+    // Só a pasta do job: não salta para irmãos nem outros jogos.
     let resolved = resolve_game_content_root(GAME_LEGACY, &repack_dir.to_string_lossy());
     assert_eq!(resolved, repack_dir);
+    assert!(resolve_launch_candidates(GAME_LEGACY, &repack_dir.to_string_lossy()).is_err());
 
-    let candidates = resolve_launch_candidates(GAME_LEGACY, &repack_dir.to_string_lossy()).unwrap();
+    // Root explícita deste jogo (locate / instalado) continua a funcionar.
+    let candidates = resolve_launch_candidates_with_extra_roots(
+        GAME_LEGACY,
+        &repack_dir.to_string_lossy(),
+        &[install_dir.clone()],
+    )
+    .unwrap();
     assert_eq!(candidates[0], install_dir.join("Crystal Quest Legacy.exe"));
 
     let _ = fs::remove_dir_all(&parent);

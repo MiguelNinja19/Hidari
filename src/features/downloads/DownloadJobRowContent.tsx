@@ -2,6 +2,10 @@ import type { TFunction } from 'i18next'
 import { downloadRowDetail } from '../../shared/utils/downloadRowDetail'
 import { formatDownloadError } from '../../shared/utils/downloadErrors'
 import {
+  formatPasswordExtractionError,
+  isArchivePasswordRequiredError,
+} from '../../shared/config/extractionErrorMessages'
+import {
   isAwaitingTorrentContent,
   isInsufficientGameDownload,
 } from '../../shared/utils/jobProgress'
@@ -31,14 +35,21 @@ export function DownloadJobRowContent({
   progressWidth,
 }: DownloadJobRowContentProps) {
   const verificationStatus = resolveJobVerificationStatus(job)
-  const errorText =
-    job.errorMsg &&
-    !job.errorMsg.includes('download_stalled_recovering') &&
-    !job.errorMsg.includes('download_failover') &&
+  const rawError = job.errorMsg?.trim() ?? ''
+  const showError =
+    Boolean(rawError) &&
+    !rawError.includes('download_stalled_recovering') &&
+    !rawError.includes('download_failover') &&
     !isAwaitingTorrentContent(job) &&
     !isInsufficientGameDownload(job)
-      ? formatDownloadError(job.errorMsg).trim()
-      : ''
+
+  const passwordError = showError && isArchivePasswordRequiredError(rawError)
+  const passwordInfo = passwordError
+    ? formatPasswordExtractionError(rawError, job.title, job.sourceName)
+    : null
+  const errorText = showError
+    ? (passwordInfo ? '' : formatDownloadError(rawError).trim())
+    : ''
 
   return (
     <div className="dl-row__main">
@@ -85,7 +96,23 @@ export function DownloadJobRowContent({
       </div>
 
       <p className="dl-row__meta">{downloadRowDetail(job, downloadNow)}</p>
-      {errorText ? <p className="dl-row__error">{errorText}</p> : null}
+      {passwordInfo ? (
+        <div className="dl-row__password">
+          <p className="dl-row__password-title">{passwordInfo.text}</p>
+          {passwordInfo.hint ? (
+            <a
+              className="dl-row__password-link"
+              href={passwordInfo.hint.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Abrir site {passwordInfo.hint.name}
+            </a>
+          ) : null}
+        </div>
+      ) : errorText ? (
+        <p className="dl-row__error">{errorText}</p>
+      ) : null}
     </div>
   )
 }

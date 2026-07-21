@@ -19,15 +19,16 @@ pub use crate::favorites::{
   toggle_favorite_catalog_entry,
 };
 pub use crate::library::{
-  delete_local_library_item, extract_library_folder, get_library_installed_locations,
-  get_library_note, inspect_library_path, inspect_library_paths, is_executable_running_at_path,
-  launch_game_from_path, launch_setup_from_path, scan_default_download_path, set_library_game_root,
-  set_library_launch_exe, set_library_note, uninstall_library_item,
+  add_external_library_game, create_library_desktop_shortcut, delete_local_library_item,
+  extract_library_folder, get_library_installed_locations, get_library_note, inspect_library_path,
+  inspect_library_paths, is_executable_running_at_path, launch_game_from_path,
+  launch_setup_from_path, open_library_origin_launcher, scan_default_download_path,
+  set_library_game_root, set_library_launch_exe, set_library_note, uninstall_library_item,
 };
 pub use crate::notifications::send_desktop_notification;
 pub use crate::queue::clear_completed_jobs;
 pub use crate::sidecar::{
   extract_job_archive, open_deep_link, open_local_path, remove_job_from_library, sidecar_cancel_job,
   sidecar_enqueue_job, sidecar_launch_job, sidecar_list_jobs, sidecar_open_job_folder,
-  sidecar_pause_job, sidecar_resume_job, sidecar_status,
+  sidecar_pause_job, sidecar_resume_job, sidecar_status, take_pending_deep_link,
 };

@@ -40,9 +40,10 @@ pub async fn process_job_post_download(
 ) -> Result<(), String> {
   let conn = open_database_connection(&app)?;
   let prior = get_extraction_status(&conn, &job_id);
+  // verified: continuar para extract/skip. failed: permitir nova tentativa manual.
   if matches!(
     prior.as_deref(),
-    Some("extracting") | Some("extracted") | Some("failed") | Some("verify_failed") | Some("verified")
+    Some("extracting") | Some("extracted") | Some("verify_failed") | Some("verified")
   ) {
     // verified: já passou verify; o watcher continua no extract/skip sem re-verify.
     if matches!(prior.as_deref(), Some("verified")) {
@@ -52,8 +53,12 @@ pub async fn process_job_post_download(
         maybe_cleanup_torrent_sidecar_files(&app, &dest_path, &title);
         return Ok(());
       }
-      if crate::archive::find_job_archive(&content_str).is_some() {
-        return super::process_job_extraction(app, job_id, title, content_str).await;
+      if crate::archive::find_job_archive_for_title(&content_str, &title).is_some()
+        || crate::archive::find_job_archive_for_title(&dest_path, &title).is_some()
+        || crate::archive::find_job_archive(&content_str).is_some()
+        || crate::archive::find_job_archive(&dest_path).is_some()
+      {
+        return super::process_job_extraction(app, job_id, title, dest_path).await;
       }
       let message = if crate::launch::find_setup_executable(&title, &content_str).is_some() {
         "Download concluído — clique em INSTALAR para executar o setup.exe."
@@ -66,13 +71,24 @@ pub async fn process_job_post_download(
     }
     return Ok(());
   }
-  // Allow re-processing wrongly skipped jobs when an archive is present.
-  if matches!(prior.as_deref(), Some("skipped")) {
+  // Allow re-processing wrongly skipped / failed jobs when an archive is present.
+  if matches!(prior.as_deref(), Some("skipped") | Some("failed")) {
     let content = crate::launch::resolve_game_content_root(&title, &dest_path);
     let content_str = content.to_string_lossy();
-    if crate::archive::find_job_archive(content_str.as_ref()).is_none() {
-      maybe_cleanup_torrent_sidecar_files(&app, &dest_path, &title);
-      return Ok(());
+    let has_archive = crate::archive::find_job_archive_for_title(content_str.as_ref(), &title)
+      .is_some()
+      || crate::archive::find_job_archive_for_title(&dest_path, &title).is_some()
+      || crate::archive::find_job_archive(content_str.as_ref()).is_some()
+      || crate::archive::find_job_archive(&dest_path).is_some();
+    if !has_archive {
+      if matches!(prior.as_deref(), Some("skipped")) {
+        maybe_cleanup_torrent_sidecar_files(&app, &dest_path, &title);
+        return Ok(());
+      }
+      // failed sem arquivo: cair no fluxo normal (verify) para mensagem atualizada
+    } else {
+      drop(conn);
+      return super::process_job_extraction(app, job_id, title, dest_path).await;
     }
   }
   drop(conn);
@@ -80,7 +96,9 @@ pub async fn process_job_post_download(
   let content = crate::launch::resolve_game_content_root(&title, &dest_path);
   let content_str = content.to_string_lossy().to_string();
 
-  match super::verify_download_payload(&content_str) {
+  match super::verify_download_payload(&content_str)
+    .or_else(|_| super::verify_download_payload(&dest_path))
+  {
     Ok(file) => {
       let conn = open_database_connection(&app)?;
       upsert_extraction_log(
@@ -95,11 +113,17 @@ pub async fn process_job_post_download(
     return Ok(());
   }
 
-  if crate::archive::find_job_archive(&content_str).is_some() {
-    return super::process_job_extraction(app, job_id, title, content_str).await;
+  if crate::archive::find_job_archive_for_title(&content_str, &title).is_some()
+    || crate::archive::find_job_archive_for_title(&dest_path, &title).is_some()
+    || crate::archive::find_job_archive(&content_str).is_some()
+    || crate::archive::find_job_archive(&dest_path).is_some()
+  {
+    return super::process_job_extraction(app, job_id, title, dest_path).await;
   }
 
-  let message = if crate::launch::find_setup_executable(&title, &content_str).is_some() {
+  let message = if crate::launch::find_setup_executable(&title, &content_str).is_some()
+    || crate::launch::find_setup_executable(&title, &dest_path).is_some()
+  {
     "Download concluído — clique em INSTALAR para executar o setup.exe."
   } else {
     "Download concluído — use INSTALAR se houver setup.exe, ou abra a pasta."

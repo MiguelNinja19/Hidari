@@ -30,10 +30,6 @@ export function useLibraryScan(args: Args) {
 
   const refreshLibraryScan = useCallback(
     (options?: { background?: boolean }) => {
-      if (!args.defaultDownloadPathRef.current.trim()) {
-        args.setLibraryScanSettled(true)
-        return Promise.resolve()
-      }
       const runScan = async (): Promise<void> => {
         if (inFlightRef.current) {
           queuedRef.current = true
@@ -46,8 +42,8 @@ export function useLibraryScan(args: Args) {
             const items = await sourcesApi.scanDefaultDownloadPath()
             args.setLocalLibraryItems(items)
             await args.inspect(items, args.jobsRef.current, {
-              // Background folder-watch: só unresolved. Entrada na aba: reinspecionar tudo.
-              onlyUnresolved: options?.background === true,
+              // Sempre só unresolved no scan da aba/watch — evita re-varrer pastas já resolvidas.
+              onlyUnresolved: true,
             })
           } catch (error) {
             showError(formatUserError(error, t('library.readPathError')))

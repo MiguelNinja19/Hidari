@@ -21,6 +21,8 @@ export type LibraryTileActionContext = {
   handleExtractItem: (item: LibraryEntry) => Promise<void>
   handlePickGameInstallFolder: LibraryControllerValue['handlePickGameInstallFolder']
   handlePickLaunchExe: (item: LibraryEntry) => Promise<void>
+  handleCreateDesktopShortcut: (item: LibraryEntry) => Promise<void>
+  handleOpenOriginLauncher: (item: LibraryEntry) => Promise<void>
   handleDeleteLibraryItem: (item: LibraryEntry) => void
   onResumeItem: (id: string) => Promise<void>
   onOpenLocalPath: (path: string) => Promise<void>

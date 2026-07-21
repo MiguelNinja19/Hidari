@@ -11,8 +11,8 @@ pub fn upsert_persisted_queue_job(
   conn
     .execute(
       "INSERT INTO persisted_queue_jobs \
-         (id, title, url, dest_path, status, priority, progress, bytes_downloaded, total_bytes, error_msg, updated_at) \
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, CURRENT_TIMESTAMP) \
+         (id, title, url, dest_path, status, priority, progress, bytes_downloaded, total_bytes, error_msg, source_name, updated_at) \
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, CURRENT_TIMESTAMP) \
        ON CONFLICT(id) DO UPDATE SET \
          title = excluded.title, \
          url = excluded.url, \
@@ -23,6 +23,7 @@ pub fn upsert_persisted_queue_job(
          bytes_downloaded = excluded.bytes_downloaded, \
          total_bytes = excluded.total_bytes, \
          error_msg = excluded.error_msg, \
+         source_name = COALESCE(excluded.source_name, persisted_queue_jobs.source_name), \
          updated_at = CURRENT_TIMESTAMP",
       params![
         job.id,
@@ -35,6 +36,7 @@ pub fn upsert_persisted_queue_job(
         job.bytes_downloaded,
         job.total_bytes,
         job.error_msg,
+        job.source_name,
       ],
     )
     .map_err(|e| format!("could_not_upsert_persisted_queue_job: {e}"))?;

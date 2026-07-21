@@ -43,14 +43,18 @@ pub(crate) fn dest_has_game_content(title: &str, dest_path: &str) -> bool {
   {
     return true;
   }
-  if let Some(archive) = crate::archive::find_job_archive(content_str.as_ref()) {
+  if let Some(archive) = crate::archive::find_job_archive(content_str.as_ref())
+    .or_else(|| crate::archive::find_job_archive(dest_path))
+  {
     if std::fs::metadata(archive).map(|meta| meta.len()).unwrap_or(0)
       >= MIN_DOWNLOAD_VERIFY_BYTES
     {
       return true;
     }
   }
-  let Some(payload) = crate::archive::find_download_payload(content_str.as_ref()) else {
+  let Some(payload) = crate::archive::find_download_payload(content_str.as_ref())
+    .or_else(|| crate::archive::find_download_payload(dest_path))
+  else {
     return false;
   };
   if payload

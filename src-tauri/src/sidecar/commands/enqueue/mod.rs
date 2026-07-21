@@ -22,7 +22,12 @@ pub async fn sidecar_enqueue_job(
   let conn = open_database_connection(&app)?;
   let settings = load_enqueue_settings(&conn, &payload)?;
   drop(conn);
-  let dest_path = crate::path_security::validate_enqueue_dest_path(&app, &settings.dest_path)?;
+  // Sempre pasta por jogo — senão o dest fica J:\dddd e a lógica de extract/restore baralha-se.
+  let dest_path = crate::archive::resolve_enqueue_dest_folder(&settings.dest_path, &payload.title);
+  let dest_path = crate::path_security::validate_enqueue_dest_path(
+    &app,
+    &dest_path.to_string_lossy(),
+  )?;
   let job_url = enrich_magnet_url_with_title(&payload.url, Some(&payload.title));
 
   let body = {
@@ -52,6 +57,21 @@ pub async fn sidecar_enqueue_job(
 
   persist_enqueued_job(&app, &job, &payload, &job_url, &dest_path);
   spawn_cover_download_if_needed(&app, &payload);
+
+  let mut job = job;
+  if let Some(source_name) = payload
+    .source_name
+    .as_deref()
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+  {
+    if let Some(map) = job.as_object_mut() {
+      map.insert(
+        "sourceName".to_string(),
+        serde_json::Value::String(source_name.to_string()),
+      );
+    }
+  }
 
   Ok(job)
 }

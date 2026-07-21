@@ -13,6 +13,7 @@ pub fn folder_has_playable_game(title: &str, folder: &Path) -> bool {
   }
 }
 
+#[allow(dead_code)]
 pub(crate) fn folder_has_install_or_game(title: &str, folder: &Path) -> bool {
   #[cfg(target_os = "macos")]
   if folder_has_playable_game_mac_depth(title, folder, SCAN_DEPTH_FAST) {

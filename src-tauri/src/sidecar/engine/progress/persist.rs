@@ -1,7 +1,5 @@
 use crate::db::open_database_connection;
-use crate::queue::persist::{
-  is_fully_transferred_bytes, update_persisted_queue_progress,
-};
+use crate::queue::persist::update_persisted_queue_progress;
 use rusqlite::params;
 use tauri::AppHandle;
 
@@ -21,15 +19,12 @@ pub(crate) fn persist_progress_batch(
          updated_at = CURRENT_TIMESTAMP WHERE id = ?6",
         params![status, progress, bytes, total, error_msg, id.parse::<i64>().unwrap_or(0)],
       );
-      let persist_status = if is_fully_transferred_bytes(bytes, total) && status == "seeding" {
-        "completed".to_string()
-      } else {
-        status
-      };
+      // Manter "seeding" no SQLite — se gravarmos "completed", o restore
+      // deixa de retomar e a lista some ao reabrir a app.
       let _ = update_persisted_queue_progress(
         &conn,
         &id,
-        &persist_status,
+        &status,
         progress,
         bytes,
         total,

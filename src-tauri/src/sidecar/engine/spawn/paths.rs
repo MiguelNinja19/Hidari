@@ -5,10 +5,23 @@ use tauri::{AppHandle, Manager};
 pub fn resolve_engine_path(app: &AppHandle) -> PathBuf {
   let exe_name = config::download_engine_binary_name();
   let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-  let mut engine_candidates: Vec<PathBuf> = vec![
-    manifest_dir.join("binaries").join(&exe_name),
-    manifest_dir.join(&exe_name),
-  ];
+  let mut engine_candidates: Vec<PathBuf> = Vec::new();
+  // Em dev: preferir o release local do download-engine (FIFO / fixes).
+  #[cfg(debug_assertions)]
+  {
+    engine_candidates.push(
+      manifest_dir
+        .join("..")
+        .join("..")
+        .join("download-engine")
+        .join("target")
+        .join("release")
+        .join(&exe_name),
+    );
+    engine_candidates.push(manifest_dir.join("binaries").join(format!("{exe_name}.new")));
+  }
+  engine_candidates.push(manifest_dir.join("binaries").join(&exe_name));
+  engine_candidates.push(manifest_dir.join(&exe_name));
   if let Ok(resource_dir) = app.path().resource_dir() {
     engine_candidates.push(resource_dir.join("binaries").join(&exe_name));
     engine_candidates.push(resource_dir.join(&exe_name));

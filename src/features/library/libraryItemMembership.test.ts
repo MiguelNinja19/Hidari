@@ -53,6 +53,17 @@ describe('jobBelongsInLibrary', () => {
     } as DownloadJob)).toBe(true)
   })
 
+  it('rejeita extract falhado (ex.: senha) — fica só em Downloads', () => {
+    expect(jobBelongsInLibrary({
+      status: 'completed',
+      url: 'magnet:?xt=urn:btih:abc',
+      totalBytes: 80_000_000,
+      bytesDownloaded: 80_000_000,
+      extractionStatus: 'failed',
+      errorMsg: 'archive_password_required',
+    } as DownloadJob)).toBe(false)
+  })
+
   it('rejeita completed/skipped a meio do download', () => {
     const mid = {
       status: 'completed',

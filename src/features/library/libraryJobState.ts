@@ -23,12 +23,9 @@ export function jobBelongsInLibrary(job: DownloadJob): boolean {
   ) {
     return false
   }
-  // Extract failed mas transferência completa: continua na biblioteca.
-  if (
-    job.extractionStatus === 'failed' &&
-    isDownloadFullyTransferred(job)
-  ) {
-    return true
+  // Extract falhou (ex.: senha) ou ainda só há arquivo — fica em Downloads, não na biblioteca.
+  if (job.extractionStatus === 'failed') {
+    return false
   }
   if (isInsufficientGameDownload(job)) {
     return false
@@ -37,8 +34,8 @@ export function jobBelongsInLibrary(job: DownloadJob): boolean {
   const done = Number(job.bytesDownloaded) || 0
   if (total >= MIN_READY_DOWNLOAD_BYTES && done < total * 0.995) return false
   if (LIBRARY_JOB_STATUSES.has(job.status)) return true
-  // failed de extract com overlay status failed mas bytes ok
-  if (job.status === 'failed' && isDownloadFullyTransferred(job)) return true
+  // failed de extract com overlay status failed mas bytes ok — já coberto acima
+  if (job.status === 'failed' && isDownloadFullyTransferred(job)) return false
   return (
     isDownloadFullyTransferred(job) &&
     ['downloading', 'pending', 'retrying', 'paused'].includes(job.status)

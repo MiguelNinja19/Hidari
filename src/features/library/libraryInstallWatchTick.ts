@@ -1,5 +1,6 @@
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import {
+  INSTALL_WATCH_INSPECT_EVERY_TICKS,
   INSTALL_WATCH_MAX_TICKS,
   INSTALL_WATCH_POST_CLOSE_TICKS,
   INSTALL_WATCH_START_GRACE_TICKS,
@@ -44,15 +45,25 @@ async function updateInstallerState(watch: InstallWatch) {
   )
 }
 
+function shouldInspectThisTick(watch: InstallWatch): boolean {
+  // Primeiro tick e após fechar o instalador: sempre.
+  if (watch.ticks <= 1) return true
+  if (watch.installerClosedTick !== null) return true
+  // Enquanto o setup corre (ou ainda não abriu): inspect raro — evita freeze periódico.
+  return watch.ticks % INSTALL_WATCH_INSPECT_EVERY_TICKS === 0
+}
+
 export async function tickInstallWatch(args: TickArgs) {
   const watch = args.watches.get(args.watchKey)
   if (!watch) return
   watch.ticks += 1
   try {
-    const state = await args.refreshPathState(args.title, args.destPath, args.jobId)
-    if (state.hasGame) {
-      args.stopInstallWatch(args.watchKey)
-      return
+    if (shouldInspectThisTick(watch)) {
+      const state = await args.refreshPathState(args.title, args.destPath, args.jobId)
+      if (state.hasGame) {
+        args.stopInstallWatch(args.watchKey)
+        return
+      }
     }
   } catch {
     // Continue monitoring transient inspection failures.

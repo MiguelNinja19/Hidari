@@ -54,6 +54,7 @@ export function useLibraryControllerState(
     setInstallBusyId: install.setInstallBusyId,
     setPathStateByKey: path.setPathStateByKey,
     refreshPathState: path.installWatch.refreshPathState,
+    refreshLibraryScan,
   })
   const deletion = useLibraryDelete({
     jobs: args.jobs, defaultDownloadPath: args.defaultDownloadPath,

@@ -17,13 +17,16 @@ export const LIBRARY_SCAN_DEBOUNCE_MS = 450
 export const STARTUP_JOBS_DEFER_MS = 0
 
 /** Pausa entre lotes de inspeção de pastas da biblioteca (ms). */
-export const LIBRARY_INSPECT_BATCH_PAUSE_MS = 32
+export const LIBRARY_INSPECT_BATCH_PAUSE_MS = 120
 
-/** Tamanho do lote de inspeção de pastas (maior = menos round-trips IPC). */
-export const LIBRARY_INSPECT_BATCH_SIZE = 12
+/** Tamanho do lote de inspeção (menor = UI mais responsiva). */
+export const LIBRARY_INSPECT_BATCH_SIZE = 4
 
 /** Intervalo de watch após abrir instalador (ms). */
-export const INSTALL_WATCH_INTERVAL_MS = 2000
+export const INSTALL_WATCH_INTERVAL_MS = 3000
+
+/** Reinspecionar pasta a cada N ticks enquanto o setup corre. */
+export const INSTALL_WATCH_INSPECT_EVERY_TICKS = 3
 
 /** Máximo de ticks do watch de instalação (~15 min). */
 export const INSTALL_WATCH_MAX_TICKS = 450

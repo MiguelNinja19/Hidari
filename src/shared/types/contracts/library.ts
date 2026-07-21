@@ -28,4 +28,6 @@ export type LocalLibraryItem = {
   isDir: boolean
   sizeBytes: number
   modifiedAt: number
+  /** Importado pelo utilizador (não veio do download Hidari). */
+  external?: boolean
 }

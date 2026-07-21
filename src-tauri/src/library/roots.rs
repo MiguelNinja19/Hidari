@@ -68,6 +68,7 @@ pub fn remember_library_game_root(
         ],
     )
     .map_err(|error| format!("could_not_save_library_game_root: {error}"))?;
+    crate::path_security::invalidate_managed_roots_cache();
     Ok(())
 }
 

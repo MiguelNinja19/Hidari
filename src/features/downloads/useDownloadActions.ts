@@ -3,6 +3,10 @@ import type { TFunction } from 'i18next'
 import type { AppDispatch } from '../../app/store'
 import type { DownloadJob } from '../../shared/types/contracts'
 import { queueApi } from '../../shared/api/tauri/queueApi'
+import {
+  formatPasswordExtractionError,
+  isArchivePasswordRequiredError,
+} from '../../shared/config/extractionErrorMessages'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import {
   cancelJob,
@@ -11,6 +15,19 @@ import {
   removeJobLocally,
   resumeJob,
 } from '../queue/queueSlice'
+
+function formatQueueActionError(
+  error: unknown,
+  job: DownloadJob | undefined,
+  fallback: string,
+): string {
+  const raw = error instanceof Error ? error.message : String(error ?? '')
+  if (isArchivePasswordRequiredError(raw)) {
+    const { text, hint } = formatPasswordExtractionError(raw, job?.title, job?.sourceName)
+    return hint ? `${text} ${hint.url}` : text
+  }
+  return formatUserError(error, fallback)
+}
 
 export function useDownloadActions(
   jobs: DownloadJob[],
@@ -24,11 +41,13 @@ export function useDownloadActions(
     try {
       await action()
     } catch (error) {
-      showError(formatUserError(error, t('downloads.operationError')))
+      const job = jobs.find((item) => item.id === id)
+      const message = formatQueueActionError(error, job, t('downloads.operationError'))
+      if (message.trim()) showError(message)
     } finally {
       setActionBusyId(null)
     }
-  }, [showError, t])
+  }, [jobs, showError, t])
   const runAll = async (ids: string[], action: (id: string) => Promise<unknown>, errorKey: string) => {
     if (ids.length === 0) return
     setActionBusyId('__all__')

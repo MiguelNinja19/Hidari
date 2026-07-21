@@ -14,7 +14,12 @@ export function useDiscoverEnqueue(
   showError: (message: string) => void,
   t: TFunction,
 ) {
-  return useCallback(async (title: string, url: string, coverUrl?: string | null) => {
+  return useCallback(async (
+    title: string,
+    url: string,
+    coverUrl?: string | null,
+    sourceName?: string | null,
+  ) => {
     discover.setDiscoverBusy(url)
     try {
       const fromDb = await sourcesApi.getDefaultDownloadPath()
@@ -27,6 +32,7 @@ export function useDiscoverEnqueue(
         url,
         destPath: defaultDownloadPath.trim() || fromDb || undefined,
         coverUrl: coverUrl ?? discover.discoverPickGame?.coverUrl ?? undefined,
+        sourceName: sourceName ?? undefined,
       })).unwrap()
       discover.closeDiscoverPicker()
       onGoDownloads()

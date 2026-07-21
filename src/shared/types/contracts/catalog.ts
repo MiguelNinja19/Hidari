@@ -58,4 +58,6 @@ export type DeepLinkPayload = {
   searchQuery?: string | null
   groupKey?: string | null
   title?: string | null
+  /** Pasta do jogo para `hidari://launch` */
+  path?: string | null
 }

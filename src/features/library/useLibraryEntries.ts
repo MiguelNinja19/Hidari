@@ -6,6 +6,7 @@ import type { LibrarySort } from '../../shared/config/appSettings'
 import type { PathStateMap } from './libraryControllerTypes'
 import { scoreLibraryEntry, sortLibraryEntries } from './libraryEntryHelpers'
 import { createLibraryEntries } from './libraryEntryFiltering'
+import { filterLibraryEntriesWithContent } from './libraryContentFilter'
 
 type Args = {
   jobs: DownloadJob[]
@@ -38,8 +39,9 @@ export function useLibraryEntries(args: Args) {
         args.hiddenLibraryKeys.has(key),
       ),
     )
-    if (!normalizedFilter) return merged
-    return merged.filter((item) =>
+    const withContent = filterLibraryEntriesWithContent(merged, args.pathStateByKey)
+    if (!normalizedFilter) return withContent
+    return withContent.filter((item) =>
       item.title.toLowerCase().includes(normalizedFilter),
     )
   }, [args])

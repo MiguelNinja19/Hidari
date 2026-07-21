@@ -16,6 +16,9 @@ pub struct LocalLibraryItemDto {
   pub is_dir: bool,
   pub size_bytes: u64,
   pub modified_at: u64,
+  /// Importado pelo utilizador (não veio do download Hidari).
+  #[serde(default)]
+  pub external: bool,
 }
 
 #[derive(Debug, Deserialize)]

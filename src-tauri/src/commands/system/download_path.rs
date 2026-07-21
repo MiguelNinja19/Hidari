@@ -17,6 +17,7 @@ pub fn set_default_download_path(
       params![path],
     )
     .map_err(|error| format!("could_not_set_default_download_path: {error}"))?;
+  crate::path_security::invalidate_managed_roots_cache();
   Ok(())
 }
 

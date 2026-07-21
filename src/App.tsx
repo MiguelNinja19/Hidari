@@ -22,7 +22,7 @@ function App() {
   const sourcesCount = useAppSelector((state) => state.sources.items.length)
   const activeDownloadsCount = useAppSelector(selectActiveDownloadsCount)
   const { defaultDownloadPath } = useAppSettings()
-  const { showSuccess } = useToast()
+  const { showSuccess, showError } = useToast()
   const { activeTab, setActiveTab, navigateDiscover, navigateDownloads } = useNavigation()
   const discoverBridgeRef = useRef<DiscoverBridge>(null)
   const [, setDownloadsBooting] = useState(false)
@@ -37,6 +37,7 @@ function App() {
     discoverBridgeRef,
     navigateDiscover,
     showSuccess,
+    showError,
   })
 
   const tabStyle = (tab: NavTab): CSSProperties | undefined =>

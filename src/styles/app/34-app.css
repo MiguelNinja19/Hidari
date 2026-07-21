@@ -63,6 +63,19 @@
   border-left: var(--border-width) solid var(--divider);
 }
 
+.library-toolbar__actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  background: var(--bg-app);
+  border-left: var(--border-width) solid var(--divider);
+  padding-inline: 8px;
+}
+
+.library-toolbar__add {
+  white-space: nowrap;
+}
+
 .library-toolbar__sort-select {
   min-height: 36px;
   padding: 0 12px;

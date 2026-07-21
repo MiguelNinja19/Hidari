@@ -27,6 +27,34 @@ pub fn find_setup_executable_with_extra_roots(
     dest_path: &str,
     extra_roots: &[PathBuf],
 ) -> Option<PathBuf> {
+    find_setup_executable_with_extra_roots_depth(
+        title,
+        dest_path,
+        extra_roots,
+        SCAN_DEPTH_FULL,
+    )
+}
+
+/// Variante barata para refresh da biblioteca (sem varrer depth FULL).
+pub fn find_setup_executable_shallow(
+    title: &str,
+    dest_path: &str,
+    extra_roots: &[PathBuf],
+) -> Option<PathBuf> {
+    find_setup_executable_with_extra_roots_depth(
+        title,
+        dest_path,
+        extra_roots,
+        SCAN_DEPTH_FAST,
+    )
+}
+
+fn find_setup_executable_with_extra_roots_depth(
+    title: &str,
+    dest_path: &str,
+    extra_roots: &[PathBuf],
+    max_depth: usize,
+) -> Option<PathBuf> {
     let roots = merge_launch_roots(title, dest_path, extra_roots);
 
     // Caminho rápido: quase todos os repacks têm setup.exe na raiz.
@@ -45,15 +73,23 @@ pub fn find_setup_executable_with_extra_roots(
     }
 
     // Só varre pastas se a raiz não tiver setup.exe.
-    for max_depth in [SCAN_DEPTH_FAST, SCAN_DEPTH_FULL] {
+    let depths: &[usize] = if max_depth <= SCAN_DEPTH_FAST {
+        &[SCAN_DEPTH_FAST]
+    } else {
+        &[SCAN_DEPTH_FAST, SCAN_DEPTH_FULL]
+    };
+    for &depth in depths {
+        if depth > max_depth {
+            continue;
+        }
         let mut matches: Vec<(usize, PathBuf)> = Vec::new();
         for root in &roots {
             if !root.exists() {
                 continue;
             }
             let mut local: Vec<(usize, PathBuf)> = Vec::new();
-            collect_executable_candidates(root, 0, max_depth, &mut local);
-            for (depth, path) in local {
+            collect_executable_candidates(root, 0, depth, &mut local);
+            for (d, path) in local {
                 let file_name = path
                     .file_name()
                     .and_then(|value| value.to_str())
@@ -65,7 +101,7 @@ pub fn find_setup_executable_with_extra_roots(
                 if !is_usable_setup_file(&path) {
                     continue;
                 }
-                matches.push((depth, path));
+                matches.push((d, path));
             }
         }
         if let Some(setup) = pick_shallowest_setup(&mut matches) {

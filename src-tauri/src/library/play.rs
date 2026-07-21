@@ -22,6 +22,44 @@ fn preferred_launch_exe(payload: &LaunchGamePayload, cached: Option<PathBuf>) ->
         .or(cached)
 }
 
+fn is_shortcut_launch_target(path: &Path) -> bool {
+    path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("url") || ext.eq_ignore_ascii_case("lnk"))
+}
+
+fn read_internet_shortcut_url(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed
+            .strip_prefix("URL=")
+            .or_else(|| trimmed.strip_prefix("url="))
+        {
+            let url = rest.trim();
+            if !url.is_empty() {
+                return Some(url.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Abre o jogo via atalho (.url → steam://…, .lnk) sem bloquear o UI.
+fn try_launch_shortcut(path: &Path) -> Result<(), String> {
+    if path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("url"))
+    {
+        if let Some(url) = read_internet_shortcut_url(path) {
+            return launch::open_shell_target(&url);
+        }
+    }
+    launch::open_shell_target(&path.to_string_lossy())
+}
+
 fn maybe_remember_install_root(
     app: &AppHandle,
     conn: &rusqlite::Connection,
@@ -62,30 +100,63 @@ fn record_play_stats(conn: &rusqlite::Connection, dest_path: &str, title: &str) 
     );
 }
 
+fn persist_shortcut_launch(app: &AppHandle, payload: &LaunchGamePayload, launched: &Path) {
+    let Ok(conn) = open_database_connection(app) else {
+        return;
+    };
+    let _ = upsert_library_launch_exe(&conn, &payload.path, &payload.title, launched);
+    record_play_stats(&conn, &payload.path, &payload.title);
+}
+
+fn persist_exe_launch(app: &AppHandle, payload: &LaunchGamePayload, launched: &Path) {
+    let Ok(conn) = open_database_connection(app) else {
+        return;
+    };
+    let _ = upsert_library_launch_exe(&conn, &payload.path, &payload.title, launched);
+    maybe_remember_install_root(app, &conn, &payload.path, &payload.title, launched);
+    record_play_stats(&conn, &payload.path, &payload.title);
+}
+
 #[tauri::command]
 pub async fn launch_game_from_path(
     app: AppHandle,
     payload: LaunchGamePayload,
 ) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let _ = crate::path_security::validate_managed_path(&app, &payload.path)?;
+    let _ = crate::path_security::validate_managed_path(&app, &payload.path)?;
+    let path_as_file = PathBuf::from(payload.path.trim());
+
+    // Caminho rápido (atalho externo): ShellExecute já; sem fila spawn_blocking.
+    if is_shortcut_launch_target(&path_as_file) {
+        try_launch_shortcut(&path_as_file)?;
+        persist_shortcut_launch(&app, &payload, &path_as_file);
+        return Ok(path_as_file.to_string_lossy().to_string());
+    }
+
+    let preferred = {
         let conn = open_database_connection(&app)?;
         let cached = read_library_launch_exe(&conn, &payload.path, &payload.title);
-        let preferred = preferred_launch_exe(&payload, cached);
+        preferred_launch_exe(&payload, cached)
+    };
 
-        // Caminho rápido: .exe conhecido → lançar já (sem varrer pastas / sem roots).
-        if let Some(ref exe) = preferred {
-            if launch::is_executable_running(exe) {
-                return Ok(exe.to_string_lossy().to_string());
-            }
-            if launch::try_launch_executable(exe).is_ok() {
-                let _ = upsert_library_launch_exe(&conn, &payload.path, &payload.title, exe);
-                maybe_remember_install_root(&app, &conn, &payload.path, &payload.title, exe);
-                record_play_stats(&conn, &payload.path, &payload.title);
-                return Ok(exe.to_string_lossy().to_string());
-            }
+    if let Some(ref exe) = preferred {
+        if is_shortcut_launch_target(exe) {
+            try_launch_shortcut(exe)?;
+            persist_shortcut_launch(&app, &payload, exe);
+            return Ok(exe.to_string_lossy().to_string());
         }
+        // Já a correr: não relançar (nem esperar scan).
+        if launch::is_executable_running(exe) {
+            return Ok(exe.to_string_lossy().to_string());
+        }
+        if launch::try_launch_executable(exe).is_ok() {
+            persist_exe_launch(&app, &payload, exe);
+            return Ok(exe.to_string_lossy().to_string());
+        }
+    }
 
+    // Só varrer pastas quando não há alvo conhecido — isto pode ser lento.
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = open_database_connection(&app)?;
         let roots = launch_extra_roots(
             &app,
             &payload.title,

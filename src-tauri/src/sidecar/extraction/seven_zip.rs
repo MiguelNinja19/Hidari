@@ -71,11 +71,39 @@ pub fn run_7z_extract(seven_zip: &Path, archive: &Path, dest: &Path) -> Result<(
   if output.status.success() {
     Ok(())
   } else {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if is_password_required_output(&stderr, &stdout) {
+      return Err(format!(
+        "archive_password_required: stderr={stderr} stdout={stdout}"
+      ));
+    }
     Err(format!(
-      "7z_extract_failed: status={} stderr={} stdout={}",
-      output.status,
-      String::from_utf8_lossy(&output.stderr),
-      String::from_utf8_lossy(&output.stdout)
+      "7z_extract_failed: status={} stderr={stderr} stdout={stdout}",
+      output.status
     ))
   }
+}
+
+fn is_password_required_output(stderr: &str, stdout: &str) -> bool {
+  let combined = format!("{stderr}\n{stdout}").to_ascii_lowercase();
+  if combined.contains("wrong password")
+    || combined.contains("enter password")
+    || combined.contains("password required")
+    || combined.contains("cannot open encrypted")
+    || combined.contains("data error in encrypted")
+    || combined.contains("encrypted file is corrupt")
+    || combined.contains("headers error in encrypted")
+    || (combined.contains("encrypted") && combined.contains("password"))
+  {
+    return true;
+  }
+  // Online-Fix / RAR com senha: 7za costuma só dizer "Cannot open the file as archive".
+  let looks_like_archive = combined.contains(".rar")
+    || combined.contains(".zip")
+    || combined.contains(".7z")
+    || combined.contains("extracting archive:");
+  looks_like_archive
+    && (combined.contains("cannot open the file as archive")
+      || combined.contains("can't open as archive"))
 }

@@ -11,7 +11,7 @@ type DiscoverDetailDownloadsProps = {
   pickOptions: DownloadOption[]
   busyUrl: string | null
   downloadCoverUrl: string | null
-  onDownload?: (title: string, url: string, coverUrl?: string | null) => Promise<void>
+  onDownload?: (title: string, url: string, coverUrl?: string | null, sourceName?: string | null) => Promise<void>
 }
 
 export function DiscoverDetailDownloads({

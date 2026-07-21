@@ -1,13 +1,13 @@
-.library-card__menu-item--danger:hover:not(:disabled) {
-  color: #fecaca;
-  background: rgba(127, 29, 29, 0.4);
-  border-color: #7f1d1d;
+.library-card__menu-item--danger:hover:not(:disabled),
+.library-card__menu-item--danger:focus-visible:not(:disabled) {
+  color: #fafafa;
+  background: #ef4444;
+  outline: none;
 }
 
 .library-card__menu-item--danger:active:not(:disabled) {
   color: #ffffff;
-  background: #7f1d1d;
-  border-color: #7f1d1d;
+  background: #dc2626;
 }
 
 .discover-card--skeleton {

@@ -62,6 +62,8 @@ export function buildLibraryGridModels({
       handleExtractItem: controller.handleExtractItem,
       handlePickGameInstallFolder: controller.handlePickGameInstallFolder,
       handlePickLaunchExe: controller.handlePickLaunchExe,
+      handleCreateDesktopShortcut: controller.handleCreateDesktopShortcut,
+      handleOpenOriginLauncher: controller.handleOpenOriginLauncher,
       handleDeleteLibraryItem: controller.handleDeleteLibraryItem,
       onResumeItem,
       onOpenLocalPath,

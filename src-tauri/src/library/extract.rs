@@ -33,12 +33,17 @@ pub async fn extract_library_folder(
         .map(str::to_string)
         .unwrap_or_else(|| folder_extraction_job_id(&payload.path));
     let app_clone = app.clone();
-    let result = if archive::find_job_archive(&content_path).is_some() {
+    // Sempre passar o path original do job — resolve_game_content_root corre outra vez dentro.
+    let result = if archive::find_job_archive_for_title(&content_path, &payload.title).is_some()
+        || archive::find_job_archive_for_title(&payload.path, &payload.title).is_some()
+        || archive::find_job_archive(&content_path).is_some()
+        || archive::find_job_archive(&payload.path).is_some()
+    {
         process_job_extraction(
             app_clone.clone(),
             job_id.clone(),
             payload.title,
-            content_path,
+            payload.path.clone(),
         )
         .await
     } else {
@@ -46,7 +51,7 @@ pub async fn extract_library_folder(
             app_clone.clone(),
             job_id.clone(),
             payload.title,
-            content_path,
+            payload.path.clone(),
         )
         .await
     };

@@ -36,7 +36,12 @@ export async function inspectLibraryPaths(
     candidates.set(key, { title: job.title, path: job.destPath, jobId: job.id })
   }
   for (const item of folderItems) {
-    if (!item.isDir) continue
+    // Pastas + atalhos/exe importados (dest_path = ficheiro).
+    const lower = item.path.toLowerCase()
+    const isShortcutFile =
+      !item.isDir &&
+      (lower.endsWith('.url') || lower.endsWith('.lnk') || lower.endsWith('.exe'))
+    if (!item.isDir && !isShortcutFile) continue
     const key = pathStateKey(item.path, { title: item.name })
     if (candidates.has(key)) continue
     if (onlyUnresolved && refs.pathStateByKeyRef.current[key] !== undefined) continue

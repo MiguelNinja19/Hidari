@@ -52,11 +52,7 @@ export function DownloadJobRowActions(props: DownloadJobRowActionsProps) {
         : null}
       {jobCanExtract(job)
         ? actionButton(
-            extracting || busy
-              ? t('downloads.extracting')
-              : job.extractionStatus === 'failed'
-                ? t('downloads.retryExtract')
-                : t('common.extract'),
+            extracting || busy ? t('downloads.extracting') : t('common.extract'),
             () => void onExtractJob(job.id),
             'set-btn set-btn--compact set-btn--primary',
             busy || extracting,

@@ -37,6 +37,9 @@ export const tauriClient = {
       handler(event.payload),
     )
   },
+  listenJobsRestored(handler: () => void): Promise<() => void> {
+    return safeListen<Record<string, never>>('queue://jobs-restored', () => handler())
+  },
   listenDeepLink(handler: (event: DeepLinkPayload) => void): Promise<() => void> {
     return safeListen<DeepLinkPayload>('app://deep-link', (event) => handler(event.payload))
   },

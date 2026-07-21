@@ -46,6 +46,19 @@ async function deletePaths(paths: string[], title: string) {
 
 export async function executeLibraryDelete(args: Args) {
   const { item } = args
+
+  // Jogos externos: só tirar da biblioteca Hidari (não desinstalar no Steam/disco).
+  if (item.external) {
+    const errors: unknown[] = []
+    try {
+      await sourcesApi.deleteLocalLibraryItem(item.destPath, item.title)
+    } catch (error) {
+      if (!isBenignDeleteError(error)) errors.push(error)
+    }
+    const scanned = await sourcesApi.scanDefaultDownloadPath()
+    return { errors, scanned }
+  }
+
   // Sempre tenta desinstalar do sistema (unins.exe); se não houver pasta, é no-op.
   try {
     await sourcesApi.uninstallLibraryItem(

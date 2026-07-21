@@ -61,6 +61,7 @@ pub(crate) async fn enqueue_replacement(
           "download_failover: A tentar outra fonte ({})",
           alt.source_name
         )),
+        source_name: Some(alt.source_name.clone()),
       };
       let _ = upsert_persisted_queue_job(&conn, &persisted);
     }

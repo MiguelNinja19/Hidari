@@ -28,6 +28,10 @@ export const catalogApi = {
     tauriClient.invoke<GameDetail>('get_game_detail', { payload }),
   checkCatalogChanges: () => tauriClient.invoke<CatalogChange[]>('check_catalog_changes'),
   openDeepLink: (url: string) => tauriClient.invoke<void>('open_deep_link', { url }),
+  takePendingDeepLink: () =>
+    tauriClient.invoke<import('../../types/contracts').DeepLinkPayload | null>(
+      'take_pending_deep_link',
+    ),
   listGameCovers: () => tauriClient.invoke<GameCover[]>('list_game_covers'),
   ensureGameCoverCached: (title: string) =>
     tauriClient.invoke<string | null>('ensure_game_cover_cached', { title }),

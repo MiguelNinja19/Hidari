@@ -12,6 +12,7 @@ pub struct PersistedQueueJob {
   pub bytes_downloaded: i64,
   pub total_bytes: i64,
   pub error_msg: Option<String>,
+  pub source_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const QUEUE_EVENT_JOB_PROGRESS: &str = "queue://job-progress";
+pub const QUEUE_EVENT_JOBS_RESTORED: &str = "queue://jobs-restored";
 pub const APP_EVENT_DEEP_LINK: &str = "app://deep-link";
 pub const EXTRACT_EVENT_STATUS: &str = "extract://status";
 
@@ -29,6 +30,8 @@ pub struct DeepLinkEventPayload {
   pub search_query: Option<String>,
   pub group_key: Option<String>,
   pub title: Option<String>,
+  /// Pasta do jogo (destPath) para `hidari://launch?...&path=...`
+  pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,6 +42,7 @@ pub struct SidecarEnqueuePayload {
   pub dest_path: Option<String>,
   pub priority: Option<i32>,
   pub cover_url: Option<String>,
+  pub source_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

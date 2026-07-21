@@ -24,6 +24,8 @@ export type DownloadJob = {
   seedEnabled?: boolean
   errorMsg: string | null
   extractionStatus?: string | null
+  /** Nome da fonte do catálogo (ex.: FitGirl), quando conhecido. */
+  sourceName?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -34,6 +36,7 @@ export type EnqueueJobInput = {
   destPath?: string
   priority?: number
   coverUrl?: string | null
+  sourceName?: string | null
 }
 
 export type JobProgressEvent = {
