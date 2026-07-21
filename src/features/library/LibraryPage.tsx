@@ -101,7 +101,7 @@ export function LibraryPage() {
         <div className="library-toolbar__actions">
           <button
             type="button"
-            className="btn btn-outline btn--compact library-toolbar__add"
+            className="library-toolbar__add"
             onClick={openAddGame}
           >
             {t('library.sidebarAdd')}
@@ -121,8 +121,16 @@ export function LibraryPage() {
             hasFilter
               ? undefined
               : {
-                  label: t('library.sidebarAdd'),
+                  label: t('library.emptyImportAction'),
                   onClick: openAddGame,
+                }
+          }
+          secondaryAction={
+            hasFilter
+              ? undefined
+              : {
+                  label: t('library.emptyCatalogAction'),
+                  onClick: controller.onGoDiscover,
                 }
           }
         />

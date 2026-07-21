@@ -2,11 +2,51 @@ use super::cover::{apply_genre_from_steam_or_cache, attach_cover_urls, fill_miss
 use super::downloads::resolve_downloads;
 use super::find_by_key::find_catalog_game_by_group_key;
 use super::find_by_title::find_catalog_game_by_title;
-use crate::catalog::steam_details::resolve_steam_details_for_app;
+use crate::catalog::steam_details::{resolve_steam_details_for_app, SteamGameDetails};
 use crate::db::{get_disabled_hydra_source_ids_from_conn, open_database_connection};
-use crate::dto::{GameDetailDto, GetGameDetailPayload};
+use crate::dto::{CatalogGameDto, GameDetailDto, GetGameDetailPayload};
 use crate::sources::list_hydra_sources;
 use tauri::AppHandle;
+
+fn steam_only_game(title: &str, steam: &SteamGameDetails) -> CatalogGameDto {
+  CatalogGameDto {
+    id: format!("steam:{}", steam.app_id),
+    title: title.to_string(),
+    genre: steam.genres.join(", "),
+    cover_url: None,
+    local_cover_path: None,
+    source: "steam".to_string(),
+    option_count: Some(0),
+    group_key: Some(format!("steam:{}", steam.app_id)),
+  }
+}
+
+fn detail_from_steam(
+  app: &AppHandle,
+  title: &str,
+  steam: SteamGameDetails,
+) -> GameDetailDto {
+  let steam_app_id = Some(steam.app_id);
+  let synopsis = steam.synopsis.clone();
+  let screenshots = steam.screenshots.clone();
+  let trailer_url = steam.trailer_url.clone();
+  let trailer_thumbnail = steam.trailer_thumbnail.clone();
+  let mut game = steam_only_game(title, &steam);
+  let steam_opt = Some(steam);
+  apply_genre_from_steam_or_cache(app, &mut game, &steam_opt);
+  attach_cover_urls(app, &mut game);
+  fill_missing_cover(app, &mut game, &steam_opt, steam_app_id);
+  GameDetailDto {
+    game,
+    synopsis,
+    screenshots,
+    trailer_url,
+    trailer_thumbnail,
+    steam_app_id,
+    downloads: Vec::new(),
+    in_library: false,
+  }
+}
 
 #[tauri::command]
 pub async fn get_game_detail(
@@ -38,7 +78,7 @@ pub async fn get_game_detail(
     .collect();
   drop(conn);
 
-  let game = if let Some(group_key) = payload_group_key.as_deref() {
+  let catalog_game = if let Some(group_key) = payload_group_key.as_deref() {
     find_catalog_game_by_group_key(&app, &active_sources, group_key).or_else(|| {
       payload_title
         .as_deref()
@@ -48,15 +88,29 @@ pub async fn get_game_detail(
     find_catalog_game_by_title(&app, &active_sources, title)
   } else {
     None
-  }
-  .ok_or_else(|| "Jogo não encontrado no catálogo.".to_string())?;
+  };
+
+  let include_steam = payload.include_steam.unwrap_or(false);
+  let language = payload.language.as_deref();
+
+  // Jogos externos (Steam/.exe) têm capa via índice Steam, mas podem não estar no catálogo Hydra.
+  // Sem este fallback, «Ver detalhes» falhava apesar da capa existir.
+  let Some(game) = catalog_game else {
+    let title = payload_title
+      .ok_or_else(|| "Jogo não encontrado no catálogo.".to_string())?;
+    if !include_steam {
+      return Err("Jogo não encontrado no catálogo.".to_string());
+    }
+    let steam = resolve_steam_details_for_app(&app, &title, language)
+      .await
+      .ok_or_else(|| "Jogo não encontrado no catálogo.".to_string())?;
+    return Ok(detail_from_steam(&app, &title, steam));
+  };
 
   let resolved_group_key = game.group_key.clone().or(payload_group_key);
   let downloads =
     resolve_downloads(&app, &game, &active_sources, resolved_group_key.as_deref()).await;
 
-  let include_steam = payload.include_steam.unwrap_or(false);
-  let language = payload.language.as_deref();
   let steam = if include_steam {
     resolve_steam_details_for_app(&app, &game.title, language).await
   } else {

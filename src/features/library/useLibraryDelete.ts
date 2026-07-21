@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AppDispatch } from '../../app/store'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
-import type { DownloadJob, LocalLibraryItem } from '../../shared/types/contracts'
+import type { DownloadJob } from '../../shared/types/contracts'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { formatLibraryDeleteError, isFileLockDeleteError } from '../../shared/utils/libraryDelete'
 import { findRelatedLibraryJobs } from '../../shared/utils/libraryDedupe'
@@ -87,12 +87,17 @@ export function useLibraryDelete(args: Args) {
         showError(formatUserError(error, t('library.deleteError')))
         void args.dispatch(fetchJobs())
       }
-      const scanned = await sourcesApi.scanDefaultDownloadPath()
-        .catch(() => [] as LocalLibraryItem[])
-      const visible = isFileLockDeleteError(error)
-        ? withoutDeletedTitle(scanned, item.title)
-        : scanned
-      args.setLocalLibraryItems(visible)
+      // Se o scan falhar, manter a lista actual — nunca limpar a biblioteca para [].
+      try {
+        const scanned = await sourcesApi.scanDefaultDownloadPath()
+        args.setLocalLibraryItems(
+          isFileLockDeleteError(error)
+            ? withoutDeletedTitle(scanned, item.title)
+            : scanned,
+        )
+      } catch {
+        // Mantém localLibraryItems já em memória.
+      }
       prompt.clearDeletePrompt()
     } finally {
       setDeletingLibraryKey(null)

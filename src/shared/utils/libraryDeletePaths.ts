@@ -2,7 +2,7 @@ import type { LibraryEntry } from '../../features/library/types'
 import type { DownloadJob, LocalLibraryItem } from '../types/contracts'
 import { resolveDeletePath } from './archive'
 import { libraryTitlesMatch } from './libraryDedupe'
-import { normalizeLibraryPath } from './jobExtraction'
+import { jobPathsOverlap, normalizeLibraryPath } from './jobExtraction'
 
 function pathBaseName(path: string): string {
   const normalized = path.replace(/[/\\]+$/, '')
@@ -23,6 +23,7 @@ export function resolveLibraryDeletePaths(
 ): string[] {
   const paths = new Set<string>()
   const defaultRoot = normalizeLibraryPath(defaultDownloadPath)
+  const itemPath = normalizeLibraryPath(item.destPath)
   const pushPath = (rawPath: string) => {
     const resolved = resolveDeletePath(rawPath)
     if (!resolved.trim()) return
@@ -34,10 +35,16 @@ export function resolveLibraryDeletePaths(
   pushPath(item.destPath)
   for (const folder of folders) {
     if (!folder.isDir) continue
-    if (
-      libraryTitlesMatch(folder.name, item.title) ||
-      relatedJobs.some((job) => libraryTitlesMatch(folder.name, job.title))
-    ) {
+    const folderPath = normalizeLibraryPath(folder.path)
+    if (defaultRoot && folderPath === defaultRoot) continue
+    // Só pastas na árvore do item / jobs relacionados — nunca só pelo título.
+    if (itemPath && jobPathsOverlap(folder.path, item.destPath)) {
+      if (libraryTitlesMatch(folder.name, item.title) || folderPath === itemPath) {
+        pushPath(folder.path)
+        continue
+      }
+    }
+    if (relatedJobs.some((job) => jobPathsOverlap(folder.path, job.destPath))) {
       pushPath(folder.path)
     }
   }

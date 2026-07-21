@@ -46,10 +46,16 @@ export function findRelatedLibraryJobs(
 
   return jobs.filter((job) => {
     if (job.status === 'cancelled') return false
-    if (libraryTitlesMatch(job.title, item.title)) return true
+    // Entrada da fila: só o próprio job (e cópias no mesmo path).
+    if (item.kind === 'job' && job.id === item.id) return true
     const jobPath = normalizeLibraryPath(job.destPath)
+    if (!jobPath || !basePath) return false
+    // Nunca associar pela raiz de downloads — apagava a fila toda.
+    if (defaultRoot && (jobPath === defaultRoot || basePath === defaultRoot)) {
+      return item.kind === 'job' && job.id === item.id
+    }
     if (jobPath === basePath) return true
-    if (defaultRoot && jobPath === defaultRoot) return false
+    // Só path relacionado (pasta do jogo), nunca só título.
     return jobPathsOverlap(item.destPath, job.destPath)
   })
 }

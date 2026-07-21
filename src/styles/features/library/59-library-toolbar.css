@@ -4,6 +4,12 @@
   padding-bottom: 8px;
 }
 
+.library-toolbar__actions {
+  border-bottom: none;
+  min-height: 46px;
+  padding: 0;
+}
+
 .library-toolbar__sort {
   border-bottom: none;
   min-height: 46px;

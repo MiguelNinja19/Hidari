@@ -21,17 +21,26 @@ type Args = {
 
 export function applyDeletedLocalState(args: Args) {
   const deletePath = resolveDeletePath(args.item.destPath)
+  const deleteNorm = normalizeLibraryPath(deletePath)
   args.setHiddenLibraryKeys((prev) => new Set([...prev, ...args.hideKeys]))
   args.setLocalLibraryItems((prev) => prev.filter((folder) => {
     if (!folder.isDir) return true
-    if (libraryTitlesMatch(folder.name, args.item.title)) return false
-    if (resolveDeletePath(folder.path).toLowerCase() === deletePath.toLowerCase()) {
+    const folderNorm = normalizeLibraryPath(folder.path)
+    if (folderNorm === deleteNorm) return false
+    if (args.relatedJobs.some((job) =>
+      folderNorm === normalizeLibraryPath(job.destPath),
+    )) {
       return false
     }
-    return !args.relatedJobs.some((job) =>
-      libraryTitlesMatch(folder.name, job.title) ||
-      normalizeLibraryPath(folder.path) === normalizeLibraryPath(job.destPath),
-    )
+    // Só esconde pastas com o mesmo título se estiverem na árvore do path apagado.
+    if (
+      libraryTitlesMatch(folder.name, args.item.title) &&
+      deleteNorm &&
+      (folderNorm.startsWith(`${deleteNorm}/`) || deleteNorm.startsWith(`${folderNorm}/`))
+    ) {
+      return false
+    }
+    return true
   }))
   for (const job of args.relatedJobs) args.dispatch(removeJobLocally(job.id))
   args.setPathStateByKey((prev) => {

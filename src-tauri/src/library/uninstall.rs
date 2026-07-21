@@ -1,7 +1,5 @@
-use super::delete::purge_library_item_db;
 use super::install_locations::collect_library_installed_locations;
 use super::uninstall_helpers::uninstall_install_folder;
-use crate::db::open_database_connection;
 use crate::dto::LaunchGamePayload;
 use tauri::AppHandle;
 
@@ -24,6 +22,8 @@ pub async fn get_library_installed_locations(
 pub async fn uninstall_library_item(app: AppHandle, payload: LaunchGamePayload) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let locations = collect_library_installed_locations(&app, &payload.title, &payload.path);
+        // Só corre o uninstaller. A limpeza da DB / fila fica no delete da biblioteca
+        // (paths concretos) — purge aqui apagava downloads não relacionados.
         let errors: Vec<_> = locations
             .iter()
             .filter_map(|folder| {
@@ -32,9 +32,6 @@ pub async fn uninstall_library_item(app: AppHandle, payload: LaunchGamePayload) 
                     .map(|error| format!("{}: {error}", folder.to_string_lossy()))
             })
             .collect();
-        if let Ok(conn) = open_database_connection(&app) {
-            purge_library_item_db(&conn, payload.path.trim(), payload.title.trim());
-        }
         if errors.is_empty() {
             Ok(())
         } else {

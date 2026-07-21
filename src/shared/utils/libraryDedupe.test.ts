@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LibraryEntry } from '../../features/library/types'
-import { dedupeLibraryEntries } from './libraryDedupe'
+import type { DownloadJob } from '../types/contracts'
+import { dedupeLibraryEntries, findRelatedLibraryJobs } from './libraryDedupe'
 import { libraryGameKey, libraryTitlesMatch } from './normalizeTitleKey'
 
 describe('libraryGameKey', () => {
@@ -117,5 +118,70 @@ describe('dedupeLibraryEntries', () => {
     expect(result).toHaveLength(2)
     expect(result.some((item) => item.external)).toBe(true)
     expect(result.some((item) => !item.external)).toBe(true)
+  })
+})
+
+describe('findRelatedLibraryJobs', () => {
+  const makeJob = (partial: Partial<DownloadJob> & Pick<DownloadJob, 'id' | 'title' | 'destPath'>): DownloadJob =>
+    ({
+      url: '',
+      status: 'completed',
+      priority: 0,
+      progress: 100,
+      bytesDownloaded: 0,
+      totalBytes: 0,
+      errorMsg: null,
+      createdAt: '',
+      updatedAt: '',
+      ...partial,
+    })
+
+  it('não associa jobs só pelo título', () => {
+    const item: LibraryEntry = {
+      id: 'folder-1',
+      title: 'Terraria',
+      status: 'installed',
+      destPath: 'D:\\Games\\Terraria',
+      kind: 'folder',
+    }
+    const jobs = [
+      makeJob({ id: 'a', title: 'Terraria', destPath: 'D:\\Games\\Other\\Terraria' }),
+      makeJob({ id: 'b', title: 'Hades', destPath: 'D:\\Games\\Hades' }),
+    ]
+    expect(findRelatedLibraryJobs(item, jobs, 'D:\\Games')).toHaveLength(0)
+  })
+
+  it('associa job no mesmo path ou pasta filha', () => {
+    const item: LibraryEntry = {
+      id: 'folder-1',
+      title: 'Terraria',
+      status: 'installed',
+      destPath: 'D:\\Games\\Terraria',
+      kind: 'folder',
+    }
+    const jobs = [
+      makeJob({ id: 'same', title: 'Terraria', destPath: 'D:\\Games\\Terraria' }),
+      makeJob({ id: 'child', title: 'Terraria files', destPath: 'D:\\Games\\Terraria\\setup' }),
+      makeJob({ id: 'other', title: 'Hades', destPath: 'D:\\Games\\Hades' }),
+    ]
+    const related = findRelatedLibraryJobs(item, jobs, 'D:\\Games')
+    expect(related.map((job) => job.id).sort()).toEqual(['child', 'same'])
+  })
+
+  it('não associa pela raiz de downloads', () => {
+    const item: LibraryEntry = {
+      id: 'job-1',
+      title: 'Stardew Valley',
+      status: 'completed',
+      destPath: 'D:\\Games',
+      kind: 'job',
+    }
+    const jobs = [
+      makeJob({ id: 'job-1', title: 'Stardew Valley', destPath: 'D:\\Games' }),
+      makeJob({ id: 'job-2', title: 'Hades', destPath: 'D:\\Games\\Hades' }),
+      makeJob({ id: 'job-3', title: 'Terraria', destPath: 'D:\\Games\\Terraria' }),
+    ]
+    const related = findRelatedLibraryJobs(item, jobs, 'D:\\Games')
+    expect(related.map((job) => job.id)).toEqual(['job-1'])
   })
 })

@@ -29,7 +29,7 @@ export function InstallSettingsSection(props: Props) {
       description={t('settings.installDesc')}
       actions={
         <button
-          className="set-btn set-btn--primary set-card__action"
+          className="set-btn set-btn--secondary set-card__action"
           type="button"
           onClick={() => void props.handleSaveInstallSettings()}
         >
