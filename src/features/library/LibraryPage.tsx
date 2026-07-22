@@ -12,7 +12,7 @@ import {
 } from './LibraryController'
 import { useFavoriteCatalog } from '../favorites/FavoriteCatalogProvider'
 import { VirtualizedLibraryGrid } from './VirtualizedLibraryGrid'
-import { LibrarySortToggle } from './LibrarySortToggle'
+import { LibraryToolbarMenu } from './LibraryToolbarMenu'
 import { LibraryPageDetailView } from './LibraryPageDetailView'
 import { LibraryInstallConfirm } from './LibraryInstallConfirm'
 import { LibraryAddGameModal } from './LibraryAddGameModal'
@@ -95,18 +95,11 @@ export function LibraryPage() {
           searchFocusId="library"
           onChange={controller.setLibraryFilter}
         />
-        <div className="library-toolbar__actions">
-          <button
-            type="button"
-            className="library-toolbar__add"
-            onClick={openAddGame}
-          >
-            {t('library.sidebarAdd')}
-          </button>
-        </div>
-        <div className="library-toolbar__sort">
-          <LibrarySortToggle value={controller.librarySort} onChange={controller.setLibrarySort} />
-        </div>
+        <LibraryToolbarMenu
+          sort={controller.librarySort}
+          onSortChange={controller.setLibrarySort}
+          onImportGame={openAddGame}
+        />
       </header>
       {gridModels.length > 0 ? (
         <VirtualizedLibraryGrid models={gridModels} ariaLabel={t('nav.library')} />
