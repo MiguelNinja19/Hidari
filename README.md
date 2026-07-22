@@ -22,7 +22,7 @@
 
 **Hidari** is inspired by [Hydra Launcher](https://github.com/hydralauncher/hydra) (`.json` / HydraLinks sources, local search, torrent/HTTP), but runs as a **native Tauri** app — React UI, Rust backend, no Electron.
 
-The name plays on **Hydra**: shared catalogs, its own identity (logo with an “H” and hydras). Not an official Hydra product.
+
 
 | | |
 |---|---|
