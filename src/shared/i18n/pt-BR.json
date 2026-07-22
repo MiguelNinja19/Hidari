@@ -121,7 +121,7 @@
     "deleteConfirmBody": "Desinstalar \"{{title}}\" remove o jogo da biblioteca, a pasta de download e o registo na fila. Cancelar não altera nada.",
     "deleting": "A desinstalar…",
     "deleteError": "Falha ao desinstalar.",
-    "uninstallError": "Não foi possível desinstalar completamente os ficheiros do jogo.",
+    "uninstallError": "A desinstalação foi cancelada ou não concluiu. O jogo mantém-se na biblioteca e no disco.",
     "verifyPathError": "Falha ao verificar a pasta de downloads.",
     "readPathError": "Falha ao ler a pasta de downloads.",
     "viewDetails": "Ver detalhes",

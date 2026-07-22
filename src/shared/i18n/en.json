@@ -121,7 +121,7 @@
     "deleteConfirmBody": "Uninstalling \"{{title}}\" removes it from the library, its download folder, and the queue entry. Cancel leaves everything unchanged.",
     "deleting": "Uninstalling…",
     "deleteError": "Failed to uninstall.",
-    "uninstallError": "Could not fully uninstall the installed game files.",
+    "uninstallError": "Uninstall was cancelled or did not finish. The game stays in your library and on disk.",
     "verifyPathError": "Failed to verify the download folder.",
     "readPathError": "Failed to read the download folder.",
     "viewDetails": "View details",

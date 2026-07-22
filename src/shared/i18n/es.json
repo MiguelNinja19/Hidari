@@ -110,7 +110,7 @@
     "deleteLocatingInstall": "Buscando el desinstalador…",
     "deleting": "Desinstalando…",
     "deleteError": "Error al desinstalar.",
-    "uninstallError": "No se pudieron desinstalar por completo los archivos del juego.",
+    "uninstallError": "La desinstalación se canceló o no terminó. El juego sigue en la biblioteca y en el disco.",
     "verifyPathError": "Error al verificar la carpeta de descargas.",
     "readPathError": "Error al leer la carpeta de descargas.",
     "viewDetails": "Ver detalles",

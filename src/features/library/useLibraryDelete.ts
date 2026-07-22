@@ -70,6 +70,12 @@ export function useLibraryDelete(args: Args) {
         onUninstallError: (error) =>
           showError(formatUserError(error, t('library.uninstallError'))),
       })
+      if (result.aborted) {
+        // Uninstall cancelado/falhou — manter o jogo na biblioteca.
+        args.setLocalLibraryItems(result.scanned)
+        prompt.clearDeletePrompt()
+        return
+      }
       args.setLocalLibraryItems(withoutDeletedTitle(result.scanned, item.title))
       if (result.errors.length > 0) {
         if (!result.errors.some(isFileLockDeleteError)) throw result.errors[0]

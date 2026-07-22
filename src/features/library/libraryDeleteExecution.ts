@@ -18,6 +18,13 @@ type Args = {
   onUninstallError: (error: unknown) => void
 }
 
+export type LibraryDeleteResult = {
+  errors: unknown[]
+  scanned: LocalLibraryItem[]
+  /** Uninstall cancelado/falhou — biblioteca e pastas não foram alteradas. */
+  aborted: boolean
+}
+
 async function removeRelatedJobs(jobs: DownloadJob[], dispatch: AppDispatch) {
   for (const job of jobs) {
     try {
@@ -44,7 +51,7 @@ async function deletePaths(paths: string[], title: string) {
   return errors
 }
 
-export async function executeLibraryDelete(args: Args) {
+export async function executeLibraryDelete(args: Args): Promise<LibraryDeleteResult> {
   const { item } = args
 
   // Jogos externos: só tirar da biblioteca Hidari (não desinstalar no Steam/disco).
@@ -56,19 +63,39 @@ export async function executeLibraryDelete(args: Args) {
       if (!isBenignDeleteError(error)) errors.push(error)
     }
     const scanned = await sourcesApi.scanDefaultDownloadPath()
-    return { errors, scanned }
+    return { errors, scanned, aborted: false }
   }
 
-  // Sempre tenta desinstalar do sistema (unins.exe); se não houver pasta, é no-op.
+  const jobId = item.kind === 'job' ? item.id : undefined
+
+  // Se houver instalação no sistema, o uninstaller tem de concluir.
+  // Cancelar / falhar → abortar: o jogo mantém-se na biblioteca e no disco.
   try {
-    await sourcesApi.uninstallLibraryItem(
+    const installedBefore = await sourcesApi.getLibraryInstalledLocations(
       item.title,
       item.destPath,
-      item.kind === 'job' ? item.id : undefined,
+      jobId,
     )
+    if (installedBefore.length > 0) {
+      await sourcesApi.uninstallLibraryItem(item.title, item.destPath, jobId)
+      const stillInstalled = await sourcesApi.getLibraryInstalledLocations(
+        item.title,
+        item.destPath,
+        jobId,
+      )
+      if (stillInstalled.length > 0) {
+        const error = new Error('uninstall_cancelled_or_incomplete')
+        args.onUninstallError(error)
+        const scanned = await sourcesApi.scanDefaultDownloadPath().catch(() => args.localLibraryItems)
+        return { errors: [error], scanned, aborted: true }
+      }
+    }
   } catch (error) {
     args.onUninstallError(error)
+    const scanned = await sourcesApi.scanDefaultDownloadPath().catch(() => args.localLibraryItems)
+    return { errors: [error], scanned, aborted: true }
   }
+
   const folders = await sourcesApi.scanDefaultDownloadPath()
     .catch(() => args.localLibraryItems)
   const paths = resolveLibraryDeletePaths(
@@ -85,5 +112,5 @@ export async function executeLibraryDelete(args: Args) {
     if (!isBenignDeleteError(error)) errors.push(error)
   }
   const scanned = await sourcesApi.scanDefaultDownloadPath()
-  return { errors, scanned }
+  return { errors, scanned, aborted: false }
 }

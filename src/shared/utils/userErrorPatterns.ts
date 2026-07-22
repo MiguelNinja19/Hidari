@@ -5,6 +5,19 @@ type ErrorPattern = {
 
 export const APP_ERROR_PATTERNS: ErrorPattern[] = [
   {
+    match: (m) =>
+      m.includes('uninstall_cancelled_or_incomplete') ||
+      m.includes('uninstaller_exit_code') ||
+      m.includes('could_not_run_uninstaller'),
+    message:
+      'A desinstalação foi cancelada ou não concluiu. O jogo mantém-se na biblioteca e no disco.',
+  },
+  {
+    match: (m) => m.includes('uninstall_partial_failure'),
+    message:
+      'A desinstalação foi cancelada ou não concluiu. O jogo mantém-se na biblioteca e no disco.',
+  },
+  {
     match: (m) => m.includes('path_outside_default_download_path'),
     message: 'A pasta está fora do diretório de downloads configurado em Configurações.',
   },

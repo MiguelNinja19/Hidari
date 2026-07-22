@@ -123,13 +123,18 @@ pub(crate) fn uninstall_install_folder(folder: &Path) -> Result<(), String> {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| folder.to_path_buf());
-        if let Err(error) = run_inno_uninstaller(&uninstaller) {
-            return remove_with_retries(&uninstall_root, 4)
-                .map_err(|delete_error| format!("{error} | {delete_error}"));
-        }
+        // Cancelar o uninstaller NÃO pode apagar a pasta à força — o passo seguinte
+        // na UI removia o jogo da biblioteca mesmo com os ficheiros no disco.
+        run_inno_uninstaller(&uninstaller)?;
         let _ = remove_with_retries(&uninstall_root, 6);
         if folder != uninstall_root {
             let _ = remove_with_retries(folder, 2);
+        }
+        // Se o unins*.exe ainda existe, o utilizador cancelou ou a desinstalação falhou.
+        if find_inno_uninstaller(&uninstall_root).is_some()
+            || find_inno_uninstaller(folder).is_some()
+        {
+            return Err("uninstall_cancelled_or_incomplete".to_string());
         }
         return Ok(());
     }
