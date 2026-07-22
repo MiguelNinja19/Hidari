@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src/assets/logo.webp"
 OUT = ROOT / "hidari-icon-1024.png"
 DOCS_OUT = ROOT / "docs/assets/hidari-logo.webp"
+DOCS_PNG = ROOT / "docs/assets/hidari-logo.png"
 BG_RGB = (255, 255, 255)
 
 
@@ -16,9 +17,28 @@ def load_logo_rgba() -> Image.Image:
   return Image.open(SRC).convert("RGBA")
 
 
+def cleaned_logo_rgba() -> Image.Image:
+  """Remove fringe clara semi-transparente que fica feia em fundos escuros."""
+  src = load_logo_rgba()
+  px = src.load()
+  w, h = src.size
+  out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+  opx = out.load()
+  for y in range(h):
+    for x in range(w):
+      r, g, b, a = px[x, y]
+      lum = (r + g + b) / 3
+      if a >= 200 or (a >= 130 and lum < 195):
+        opx[x, y] = (r, g, b, 255)
+  mask = out.getchannel("A")
+  mask = mask.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.MinFilter(3))
+  out.putalpha(mask)
+  return out
+
+
 def square_from_logo(size: int = 1024) -> Image.Image:
   """Encaixa a logo num quadrado branco (ícone do SO)."""
-  src = load_logo_rgba()
+  src = cleaned_logo_rgba()
   canvas = Image.new("RGBA", (size, size), (*BG_RGB, 255))
 
   pad = int(size * 0.08)
@@ -34,11 +54,32 @@ def square_from_logo(size: int = 1024) -> Image.Image:
 
 
 def export_docs_logo() -> None:
-  """Copia a logo oficial para a documentação (mantém transparência)."""
+  """Logo do README/docs: touro sobre cartão branco arredondado (legível no dark mode)."""
   DOCS_OUT.parent.mkdir(parents=True, exist_ok=True)
-  src = load_logo_rgba()
-  src.save(DOCS_OUT, "WEBP", quality=95, method=6)
+  logo = cleaned_logo_rgba()
+  pad = 48
+  radius = 56
+  canvas_size = max(logo.width, logo.height) + pad * 2
+
+  scale = 3
+  big = canvas_size * scale
+  plate = Image.new("L", (big, big), 0)
+  ImageDraw.Draw(plate).rounded_rectangle(
+    (0, 0, big - 1, big - 1), radius=radius * scale, fill=255
+  )
+  plate = plate.resize((canvas_size, canvas_size), Image.Resampling.LANCZOS)
+
+  out = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+  white = Image.new("RGBA", (canvas_size, canvas_size), (*BG_RGB, 255))
+  out = Image.composite(white, out, plate)
+  ox = (canvas_size - logo.width) // 2
+  oy = (canvas_size - logo.height) // 2
+  out.paste(logo, (ox, oy), logo)
+
+  out.save(DOCS_OUT, "WEBP", quality=95, method=6)
+  out.save(DOCS_PNG, "PNG", optimize=True)
   print("saved", DOCS_OUT)
+  print("saved", DOCS_PNG)
 
 
 def main() -> None:
