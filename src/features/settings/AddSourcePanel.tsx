@@ -41,7 +41,7 @@ export function AddSourcePanel(props: Props) {
         {method === 'json' ? (
           <button
             type="button"
-            className="set-btn set-btn--primary set-add__submit"
+            className="set-btn set-btn--secondary set-add__submit"
             disabled={props.addingSource}
             onClick={() => void props.onImportSource()}
           >

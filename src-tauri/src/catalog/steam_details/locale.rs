@@ -1,5 +1,6 @@
 const DEFAULT_STEAM_STORE_LOCALE: &str = "english";
-const APP_LANGUAGE_SETTING_KEY: &str = "hidari.language";
+const APP_LANGUAGE_SETTING_KEY: &str = "hidari_language";
+const APP_LANGUAGE_SETTING_KEY_LEGACY: &str = "hidari.language";
 
 pub fn steam_store_locale_for_language(code: &str) -> &'static str {
   let normalized = code.trim().to_ascii_lowercase().replace('_', "-");
@@ -14,6 +15,7 @@ pub fn steam_store_locale_for_language(code: &str) -> &'static str {
 
 pub(crate) fn read_app_steam_locale(conn: &rusqlite::Connection) -> String {
   crate::db::read_app_setting(conn, APP_LANGUAGE_SETTING_KEY)
+    .or_else(|| crate::db::read_app_setting(conn, APP_LANGUAGE_SETTING_KEY_LEGACY))
     .map(|code| steam_store_locale_for_language(&code).to_string())
     .unwrap_or_else(|| DEFAULT_STEAM_STORE_LOCALE.to_string())
 }

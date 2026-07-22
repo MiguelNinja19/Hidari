@@ -374,7 +374,7 @@ Keys in `src/shared/config/appSettings.ts`; persistence via `get_app_setting` / 
 | `after_install_action` | Action after install |
 | `remove_temp_files` | Remove temporary files |
 | `download_speed_limit_bps` | Speed limit |
-| `hidari.language` | UI language (`en` / `pt-BR` / `es` / `ru`) — also synced from `localStorage` |
+| `hidari_language` | UI language (`en` / `pt-BR` / `es` / `ru`) — also synced from `localStorage` |
 | `minimize_to_tray` | Close to tray |
 | `notify_ready_to_install` | Desktop notify when ready to install |
 | `notify_ready_to_play` | Desktop notify when ready to play |
@@ -383,7 +383,7 @@ Keys in `src/shared/config/appSettings.ts`; persistence via `get_app_setting` / 
 
 ### Language
 
-Default UI language is **English** (`APP_LOCALE = 'en'` in `src/shared/config/locale.ts`). Preference is stored in `localStorage` (`hidari.language`) and mirrored to SQLite for Steam synopsis locale. Fallback / Steam store default without a setting: English.
+Default UI language is **English** (`APP_LOCALE = 'en'` in `src/shared/config/locale.ts`). Preference is stored in `localStorage` (`hidari_language`) and mirrored to SQLite for Steam synopsis locale. On first launch (or one-time migration), the NSIS installer LCID under `HKCU\Software\Hidari\Hidari\Installer Language` is applied when no preference exists. Fallback / Steam store default without a setting: English.
 
 Source on/off state does **not** live in `hydra_download_sources`: only the denylist above. Bootstrap loads `disabled_hydra_source_ids` immediately on startup (before other deferred settings) so toggles do not overwrite an empty list.
 

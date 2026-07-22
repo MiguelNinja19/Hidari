@@ -10,25 +10,40 @@ export type AppLanguage = (typeof APP_LANGUAGES)[number]['code']
 /** Locale padrão da interface (inglês). */
 export const APP_LOCALE: AppLanguage = 'en'
 
-export const LANGUAGE_STORAGE_KEY = 'hidari.language'
+/** Chave válida para SQLite (`[A-Za-z0-9_]`). */
+export const LANGUAGE_STORAGE_KEY = 'hidari_language'
+
+/** Chave antiga em localStorage / tentativas de mirror SQLite. */
+const LANGUAGE_STORAGE_KEY_LEGACY = 'hidari.language'
+
+/** One-shot: aplicar idioma do instalador NSIS após o bug do default EN. */
+export const INSTALLER_LANGUAGE_MIGRATION_KEY = 'hidari_installer_lang_v1'
 
 export function isAppLanguage(value: string | null | undefined): value is AppLanguage {
   return APP_LANGUAGES.some((lang) => lang.code === value)
 }
 
-export function readStoredLanguage(): AppLanguage {
+/** Valor guardado, ou `null` se ainda não houver preferência. */
+export function peekStoredLanguage(): AppLanguage | null {
   try {
-    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY)
+    const stored =
+      localStorage.getItem(LANGUAGE_STORAGE_KEY) ??
+      localStorage.getItem(LANGUAGE_STORAGE_KEY_LEGACY)
     if (isAppLanguage(stored)) return stored
   } catch {
     /* ignore */
   }
-  return APP_LOCALE
+  return null
+}
+
+export function readStoredLanguage(): AppLanguage {
+  return peekStoredLanguage() ?? APP_LOCALE
 }
 
 export function persistLanguage(code: AppLanguage): void {
   try {
     localStorage.setItem(LANGUAGE_STORAGE_KEY, code)
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY_LEGACY)
   } catch {
     /* ignore */
   }

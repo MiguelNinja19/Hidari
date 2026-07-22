@@ -34,7 +34,7 @@ export function AddSourceUrlPanel(props: Props) {
         />
         <button
           type="button"
-          className="set-btn set-btn--primary set-add__submit"
+          className="set-btn set-btn--secondary set-add__submit"
           disabled={props.addingSource || !canAdd}
           onClick={() => void props.onAddSourceByUrl()}
         >

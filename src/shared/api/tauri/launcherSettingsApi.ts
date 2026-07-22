@@ -12,6 +12,8 @@ export const launcherSettingsApi = {
     tauriClient.invoke<string | null>('get_app_setting', { payload: { key } }),
   setAppSetting: (key: string, value: string) =>
     tauriClient.invoke<void>('set_app_setting', { payload: { key, value } }),
+  getInstallerLanguage: () =>
+    tauriClient.invoke<string | null>('get_installer_language'),
   getDiskFreeBytesForPath: (path: string) =>
     tauriClient.invoke<number | null>('get_disk_free_bytes_for_path', { payload: { path } }),
 }

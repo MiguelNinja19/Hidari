@@ -24,6 +24,7 @@ macro_rules! app_invoke_handler {
       get_seed_torrents_enabled,
       get_app_setting,
       set_app_setting,
+      get_installer_language,
       get_disk_free_bytes_for_path,
       scan_default_download_path,
       delete_local_library_item,

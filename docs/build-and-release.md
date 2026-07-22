@@ -73,6 +73,7 @@ A pasta `.tauri/` está no `.gitignore`. A privada não se “descarrega” de l
 - Instaladores tipicamente em:
   - `src-tauri/target/release/bundle/nsis/Hidari_*_x64-setup.exe` (recomendado)
   - `src-tauri/target/release/bundle/msi/Hidari_*_x64_*.msi`
+- Na release do GitHub publicamos nomes simples: `Hidari-setup.exe` e `Hidari.msi`.
 
 Se `createUpdaterArtifacts` estiver a `true` e existir `pubkey` sem `TAURI_SIGNING_PRIVATE_KEY`, o Tauri pode **criar os instaladores e falhar no fim** com:
 
