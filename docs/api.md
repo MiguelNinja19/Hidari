@@ -19,6 +19,7 @@ TypeScript contracts: `src/shared/types/contracts/` (`queue.ts`, `catalog.ts`, `
 | `get_paths` | — (invoke) | Data, config, and cache directories |
 | `get_app_setting` | `sourcesApi` | Read setting by key (e.g. `disabled_hydra_source_ids`) |
 | `set_app_setting` | `sourcesApi` | Write setting |
+| `get_installer_language` | `sourcesApi` | Windows: NSIS installer LCID → app language (`en` / `pt-BR` / `es` / `ru`); otherwise `null` |
 | `get_disk_free_bytes_for_path` | `sourcesApi` | Free disk space |
 | `open_deep_link` | — | Handle deep-link URL (`hidari://`) |
 | `open_local_path` | — | Open folder in Explorer |

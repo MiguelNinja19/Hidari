@@ -66,19 +66,18 @@ npm run tauri:dev
 3. **Downloads** — watch progress; post-download is **automatic**
 4. **Library** — **Install** (`setup.exe` repacks, Windows) → choose/locate game folder → **Play**. On **macOS**, **Play** targets native `.app` games; Windows repacks → open folder.
 
-> First launch uses **English** as the default UI language. Change it anytime under **Settings → Language**.
+> First launch uses the **Windows installer language** when available; otherwise **English**. Change it anytime under **Settings → Language**.
 
 ### How to add sources
 
 Catalog sources are `.json` files in the Hydra / HydraLinks format.
 
 1. Go to **Settings** → **Catalog sources**.
-2. Click **Add source** to open the guide modal, then **Open sources** to open [https://library.hydra.wiki/sources/](https://library.hydra.wiki/sources/) in your browser, pick a source, and copy its `.json` URL.
-3. Choose one method:
-   - **By URL** — paste e.g. `https://hydralinks.cloud/sources/fitgirl.json` → **Add**.
-   - **By file** — **Import .json** → pick a local `.json`. The app copies it to an internal folder; the original can be removed.
-4. Keep the source **enabled** (toggle). Discover only searches active sources.
-5. Use **Sync** / **Sync all** if the listed game count is missing or outdated.
+2. Use the inline **URL** / **JSON** panel (not a modal):
+   - **URL** — paste e.g. `https://hydralinks.cloud/sources/fitgirl.json` → **Add**. Use **Open URL site** to browse [https://library.hydra.wiki/sources/](https://library.hydra.wiki/sources/).
+   - **JSON** — **Choose file** → pick a local `.json`. The app copies it to an internal folder; the original can be removed.
+3. Keep the source **enabled** (toggle). Discover only searches active sources.
+4. Click **Sync** if the listed game count is missing or outdated.
 
 Example public catalog URLs follow the pattern:
 

@@ -36,10 +36,10 @@ The name plays on **Hydra**: shared catalogs, its own identity (logo with an “
 
 ## Features
 
-1. **Settings** — download folder, import/sync sources, enable/disable sources, speed, seed, language (default **English**)  
+1. **Settings** — download folder, import/sync sources, enable/disable sources, speed, seed, language (default **English**; Windows installer language is applied on first launch)  
 2. **Discover** — search the local catalog (Enter or button) → pick a link → enqueue  
 3. **Downloads** — live progress; automatic post-download  
-4. **Library** — **Install** (`setup`) then **Play** (not Play while only the installer is present)  
+4. **Library** — **Install** (`setup`) then **Play** (not Play while only the installer is present); import external games from the toolbar  
 
 ```
 Settings → Discover → Downloads → Library → Play
@@ -53,12 +53,11 @@ Settings → Discover → Downloads → Library → Play
 Sources are Hydra-style `.json` catalogs (HydraLinks). Without at least one **active** source, Discover search stays empty.
 
 1. Open **Settings** → section **Catalog sources**.
-2. Click **Add source** to open the modal — then **Open sources** to browse [library.hydra.wiki/sources](https://library.hydra.wiki/sources/) and copy a source `.json` link.
-3. Add it in one of two ways:
-   - **URL** — paste the link and click **Add**.
-   - **File** — click **Import .json** and choose a local catalog (it is copied into the app cache; you can delete the original afterward).
-4. Leave the source **on** (switch). Only enabled sources are searched.
-5. If the game count looks empty, click **Sync** (or **Sync all**).
+2. Add a source in one of two ways (inline panel, not a modal):
+   - **URL** — paste a `.json` link and click **Add** (use **Open URL site** to browse [library.hydra.wiki/sources](https://library.hydra.wiki/sources/)).
+   - **JSON** — click **Choose file** and pick a local catalog (it is copied into the app cache; you can delete the original afterward).
+3. Leave the source **on** (switch). Only enabled sources are searched.
+4. If the game count looks empty, click **Sync**.
 
 Browse sources: [https://library.hydra.wiki/sources/](https://library.hydra.wiki/sources/).
 Public JSON catalogs are typically under `https://hydralinks.cloud/sources/…`.

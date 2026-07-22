@@ -32,9 +32,9 @@ Discover → Downloads → Library → Play
 | **Discover**  | Search active-source catalogs (Enter or Search)  |
 | **Downloads** | Active queue (transfer, automatic post-download) |
 | **Library**   | Install (`setup`) then Play; deduped cards       |
-| **Settings**  | Folder, sources, speed, seed, language (default EN), notifications |
+| **Settings**  | Folder, sources, speed, seed, language (default EN; installer language on Windows), notifications |
 
-Default UI language: **English**. Catalog-update desktop notifications default to **off**.
+Default UI language: **English** (or the language chosen in the Windows NSIS installer on first launch). Catalog-update desktop notifications default to **off**.
 
 ## Why Tauri?
 
