@@ -46,7 +46,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "publisher": "Hidari",
     "shortDescription": "Hidari — launcher de jogos",
     "longDescription": "Hidari é um launcher de jogos com catálogo, downloads e biblioteca local.",
