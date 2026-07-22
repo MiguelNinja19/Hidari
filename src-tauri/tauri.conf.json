@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Hidari",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.hidari.app",
   "build": {
     "frontendDist": "../dist",
@@ -39,14 +39,14 @@
       "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1ODhFMjU2Q0QxRDM2NUEKUldSYU5oM05WdUtJdFV4SnZzR053TzlaQmtPQXlvVkR3dzFxRG5zS01RT1NCUk91ZHFXbkdOTFoK",
       "endpoints": [
-        "https://github.com/melx-999/Hydrax/releases/latest/download/latest.json"
+        "https://github.com/melx-999/Hidari/releases/latest/download/latest.json"
       ]
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "publisher": "Hidari",
     "shortDescription": "Hidari — launcher de jogos",
     "longDescription": "Hidari é um launcher de jogos com catálogo, downloads e biblioteca local.",
