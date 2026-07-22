@@ -48,10 +48,10 @@ describe('formatDownloadError', () => {
 
   it('traduz download parado / a retomar', () => {
     expect(formatDownloadError('download_stalled_recovering: x')).toBe(
-      'Sem atividade — a retomar automaticamente…',
+      'Sem atividade — a retomar…',
     )
     expect(formatDownloadError('download_stalled: x')).toBe(
-      'Sem atividade — a retomar automaticamente…',
+      'Sem atividade — a retomar…',
     )
   })
 
@@ -60,7 +60,7 @@ describe('formatDownloadError', () => {
       formatDownloadError(
         'aria2 rpc error: {"code":1,"message":"InfoHash e0110d3fc68ad66cfa4851b86a6f05ac274e3ddd is already registered."}',
       ),
-    ).toContain('já está na fila')
+    ).toContain('já na fila')
   })
 
   it('traduz payload demasiado pequeno (metadados/.torrent)', () => {

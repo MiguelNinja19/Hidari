@@ -1,4 +1,4 @@
-import { Suspense, lazy, type CSSProperties } from 'react'
+import { Suspense, lazy } from 'react'
 import type { AppDispatch } from './store'
 import { CoversProvider } from '../features/covers/CoversProvider'
 import { LibraryTab } from '../features/library/LibraryTab'
@@ -13,7 +13,7 @@ const DownloadsTab = lazy(() =>
 type AppQueueTabsProps = {
   activeTab: NavTab
   mountedTabs: Record<NavTab, boolean>
-  tabStyle: (tab: NavTab) => CSSProperties | undefined
+  tabClassName: (tab: NavTab) => string
   jobs: DownloadJob[]
   queueCoverCatalog: Array<{
     id: string
@@ -35,7 +35,7 @@ type AppQueueTabsProps = {
 export function AppQueueTabs({
   activeTab,
   mountedTabs,
-  tabStyle,
+  tabClassName,
   jobs,
   queueCoverCatalog,
   queueCoverTitles,
@@ -49,7 +49,7 @@ export function AppQueueTabs({
   return (
     <CoversProvider catalogGames={queueCoverCatalog} jobs={jobs} eager preloadTitles={queueCoverTitles}>
       {mountedTabs.library ? (
-        <div style={tabStyle('library')}>
+        <div className={tabClassName('library')}>
           <LibraryTab
             activeTab={activeTab}
             jobs={jobs}
@@ -62,7 +62,7 @@ export function AppQueueTabs({
         </div>
       ) : null}
       {mountedTabs.downloads ? (
-        <div style={tabStyle('downloads')}>
+        <div className={tabClassName('downloads')}>
           <Suspense fallback={<AppTabFallback />}>
             <DownloadsTab jobs={jobs} queueError={queueError} />
           </Suspense>

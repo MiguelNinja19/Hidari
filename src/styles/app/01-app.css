@@ -1,8 +1,8 @@
 :root {
   font-family: var(--sans);
   color-scheme: dark;
-  --display: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
-  --sans: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --display: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
   --bg-base: #000000;
   --bg-app: #000000;

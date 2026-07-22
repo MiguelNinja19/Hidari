@@ -4,7 +4,7 @@
  */
 
 :root {
-  --font-body: "Inter Variable", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --font-display: var(--font-body);
   --display: var(--font-body);
   --sans: var(--font-body);
@@ -34,13 +34,13 @@
   --install-text: #ffffff;
 
   /* Botões — Configurações (sólidos, legíveis no tema escuro) */
-  --settings-btn-action: #3d6a9e;
-  --settings-btn-action-hover: #4a7db8;
-  --settings-btn-action-text: #f4f7fb;
-  --settings-btn-muted-bg: #161616;
-  --settings-btn-muted-border: #434343;
-  --settings-btn-muted-text: #e0e0e0;
-  --settings-btn-muted-hover-bg: #222222;
+  --settings-btn-action: #f2f2f2;
+  --settings-btn-action-hover: #ffffff;
+  --settings-btn-action-text: #0a0a0a;
+  --settings-btn-muted-bg: transparent;
+  --settings-btn-muted-border: #3a3a3a;
+  --settings-btn-muted-text: #e8e8e8;
+  --settings-btn-muted-hover-bg: rgba(255, 255, 255, 0.06);
   --settings-btn-muted-hover-border: #5a5a5a;
   --settings-btn-danger-bg: #6b2828;
   --settings-btn-danger-border: #8a3535;
@@ -96,4 +96,3 @@
   --space-panel-x: 40px;
   --space-panel-y: 32px;
 }
-

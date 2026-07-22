@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from 'react'
+import { useRef, useState } from 'react'
 import { useAppDispatch, useAppSelector } from './app/hooks'
 import { useAppSettings } from './app/context/AppSettingsContext'
 import { useNavigation } from './app/context/NavigationContext'
@@ -40,8 +40,8 @@ function App() {
     showError,
   })
 
-  const tabStyle = (tab: NavTab): CSSProperties | undefined =>
-    activeTab === tab ? undefined : { display: 'none' }
+  const tabClassName = (tab: NavTab) =>
+    activeTab === tab ? 'app-tab-panel app-tab-panel--active' : 'app-tab-panel'
 
   return (
     <FavoriteCatalogProvider>
@@ -63,7 +63,7 @@ function App() {
         <AppTabPanels
           activeTab={activeTab}
           mountedTabs={mountedTabs}
-          tabStyle={tabStyle}
+          tabClassName={tabClassName}
           discoverBridgeRef={discoverBridgeRef}
           jobs={jobs}
           queueCoverCatalog={queueCoverCatalog}

@@ -25,7 +25,7 @@ export function applyExtractStatusEvent(job: DownloadJob, payload: ExtractStatus
       (job.bytesDownloaded > 0 && job.bytesDownloaded < 5 * 1024 * 1024)
     if (awaiting || tiny) {
       job.progress = 0
-      job.errorMsg = job.errorMsg?.trim() || 'A obter o conteúdo do torrent…'
+      job.errorMsg = job.errorMsg?.trim() || 'A obter conteúdo…'
     } else {
       job.progress = 100
       if (job.errorMsg && /conteúdo|metadados|aguardar/i.test(job.errorMsg)) {

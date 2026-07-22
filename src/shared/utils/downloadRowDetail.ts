@@ -13,20 +13,20 @@ export function downloadRowDetail(job: DownloadJob, downloadNow: number): string
   if (isAwaitingTorrentContent(job) || isTorrentMetadataPhase(job) || isInsufficientGameDownload(job)) {
     const soft = job.errorMsg?.trim() ?? ''
     if (soft.includes('conteúdo') || soft.includes('metadados') || soft.includes('aguardar')) {
-      return soft.length < 120 ? soft : 'A obter o conteúdo do torrent…'
+      return soft.length < 120 ? soft : 'A obter conteúdo…'
     }
-    return 'A obter o conteúdo do torrent…'
+    return 'A obter conteúdo…'
   }
 
   const softError = job.errorMsg?.trim() ?? ''
   if (softError.includes('download_failover')) {
-    return 'A tentar outra fonte do catálogo…'
+    return 'A tentar outra fonte…'
   }
   if (
     softError.includes('download_stalled_recovering') ||
     softError.includes('download_stalled')
   ) {
-    return 'Sem atividade — a retomar automaticamente…'
+    return 'Sem atividade — a retomar…'
   }
 
   if (['downloading', 'retrying', 'seeding'].includes(job.status)) {
@@ -51,7 +51,7 @@ export function downloadRowDetail(job: DownloadJob, downloadNow: number): string
   }
 
   if (job.status === 'extracting') {
-    return 'Extraindo arquivos…'
+    return 'Extraindo…'
   }
 
   if (isGameContentReady(job)) {
@@ -60,7 +60,7 @@ export function downloadRowDetail(job: DownloadJob, downloadNow: number): string
 
   if (job.status === 'completed' || job.status === 'seeding' || job.status === 'skipped') {
     if (isAwaitingTorrentContent(job) || isInsufficientGameDownload(job)) {
-      return 'A obter o conteúdo do torrent…'
+      return 'A obter conteúdo…'
     }
     return 'Pronto para instalar'
   }

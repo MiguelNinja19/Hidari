@@ -84,9 +84,6 @@ export function LibraryPage() {
 
   const hasFilter = controller.libraryFilter.trim().length > 0
   const emptyTitle = hasFilter ? t('library.noResultsTitle') : t('library.emptyTitle')
-  const emptyDescription = hasFilter
-    ? t('library.noResultsDescription')
-    : t('library.emptyDescription')
 
   return (
     <section className="library-page">
@@ -116,16 +113,8 @@ export function LibraryPage() {
       ) : (
         <EmptyState
           title={emptyTitle}
-          description={emptyDescription}
+          description={hasFilter ? t('library.noResultsDescription') : undefined}
           action={
-            hasFilter
-              ? undefined
-              : {
-                  label: t('library.emptyImportAction'),
-                  onClick: openAddGame,
-                }
-          }
-          secondaryAction={
             hasFilter
               ? undefined
               : {

@@ -1,17 +1,12 @@
 import { resolveSourcePasswordHint, type SourcePasswordHint } from './sourcePasswordHints'
 
 export const EXTRACTION_ERROR_MESSAGES = {
-  cannotOpen:
-    'Arquivo inválido ou incompleto. Verifique o download (e se faltam partes .r00 / .part2) e tente extrair de novo.',
-  unsupportedMethod:
-    'Este arquivo usa um formato que o extrator não consegue abrir. Tente extrair com o WinRAR/7-Zip do sistema ou use Instalar se houver setup.exe.',
-  busy: 'Já existe uma extração em andamento. Aguarde terminar.',
-  noArchive:
-    'Não encontrei .zip/.rar/.7z nesta pasta do download. Se o arquivo tiver senha, abra a pasta e extraia com WinRAR/7-Zip (o launcher não pede senha). Se houver setup.exe, use Instalar.',
-  passwordRequired:
-    'Abra a pasta e extraia com WinRAR ou 7-Zip usando a senha do site da fonte.',
-  generic:
-    'Não foi possível extrair o arquivo. Confirme que o download terminou e tente novamente.',
+  cannotOpen: 'Arquivo inválido ou incompleto',
+  unsupportedMethod: 'Formato não suportado',
+  busy: 'Extração em andamento',
+  noArchive: 'Nenhum arquivo encontrado',
+  passwordRequired: 'Extraia com senha manualmente',
+  generic: 'Falha ao extrair',
 } as const
 
 export function isArchivePasswordRequiredError(message: string): boolean {
@@ -47,19 +42,19 @@ export function formatExtractionError(message: string): string | null {
   }
   if (msg.includes('7z_extract_failed')) return EXTRACTION_ERROR_MESSAGES.generic
   if (msg.includes('download_failover')) {
-    return 'A tentar outra fonte do catálogo automaticamente…'
+    return 'A tentar outra fonte…'
   }
   if (msg.includes('download_stalled_recovering') || msg.includes('download_stalled')) {
-    return 'Sem atividade — a retomar automaticamente…'
+    return 'Sem atividade — a retomar…'
   }
   if (msg.includes('already registered') || /infohash\s+[a-f0-9]+\s+is already registered/i.test(msg)) {
-    return 'Este torrent já está na fila ou a ser transferido. Abra Downloads ou cancele o job anterior e tente de novo.'
+    return 'Torrent já na fila'
   }
   if (msg.includes('download_payload_too_small') || msg.includes('verify_too_small')) {
-    return 'Ainda só há metadados do torrent — a iniciar o download do jogo…'
+    return 'A obter metadados…'
   }
   if (msg.includes('verify_failed') || msg.includes('verify_no_file')) {
-    return 'O download parece incompleto ou corrompido. Retome ou baixe de novo.'
+    return 'Download incompleto ou corrompido'
   }
   return null
 }

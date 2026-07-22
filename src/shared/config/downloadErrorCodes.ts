@@ -4,21 +4,19 @@ export { EXTRACTION_ERROR_MESSAGES, formatExtractionError } from './extractionEr
 
 /** Mensagens para códigos de saída comuns do aria2 (ver manual aria2c). */
 export const ARIA2_EXIT_MESSAGES: Record<number, string> = {
-  3: 'Recurso não encontrado. O torrent ou link pode estar indisponível.',
-  6: 'Problema de rede durante o download. Verifique a conexão e tente retomar.',
-  8: 'O servidor não permite retomar este download. Pode ser necessário começar de novo.',
-  9: 'Disco sem espaço livre. Libere espaço ou altere a pasta de destino em Configurações.',
-  11: 'O aria2 já está transferindo o mesmo arquivo em outro job.',
-  12: 'Este torrent já está sendo transferido em outro job.',
-  13:
-    'Já existem arquivos deste download na pasta de destino (sem arquivo .aria2 para retomar). ' +
-    'Exclua a subpasta do jogo, ou escolha outra pasta, e enfileire novamente.',
-  15: 'Não foi possível abrir o arquivo de destino. Verifique as permissões da pasta.',
-  16: 'Não foi possível criar o arquivo de destino. Verifique as permissões da pasta.',
-  19: 'Falha ao resolver o endereço (DNS). Verifique a conexão com a internet.',
-  25: 'Arquivo .torrent inválido ou corrompido.',
-  26: 'Torrent incompleto ou corrompido — tente outra fonte.',
-  27: 'Link magnet inválido ou incompleto.',
+  3: 'Recurso não encontrado',
+  6: 'Problema de rede',
+  8: 'Retoma não permitida',
+  9: 'Disco sem espaço',
+  11: 'Já a transferir ficheiro',
+  12: 'Torrent já em transferência',
+  13: 'Ficheiros já existem',
+  15: 'Falha ao abrir ficheiro',
+  16: 'Falha ao criar ficheiro',
+  19: 'Falha de DNS',
+  25: 'Torrent inválido',
+  26: 'Torrent incompleto',
+  27: 'Magnet inválido',
 }
 
 const TORRENT_EXIT_PREFIX = /torrent_client_exit_code:\s*exit code:\s*(\d+)/i

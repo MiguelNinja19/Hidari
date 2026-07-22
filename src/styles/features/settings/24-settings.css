@@ -44,7 +44,7 @@
 .settings-block__head-actions .btn-primary:active:not(:disabled),
 .settings-page .btn-primary:hover:not(:disabled),
 .settings-page .btn-primary:active:not(:disabled) {
-  color: #ffffff;
+  color: #0a0a0a;
   background: var(--settings-btn-action-hover);
   border-color: var(--settings-btn-action-hover);
   box-shadow: none;

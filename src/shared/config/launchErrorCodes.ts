@@ -2,25 +2,16 @@ import { formatExtractionError } from './downloadErrorCodes'
 
 /** Códigos estáveis devolvidos pelo backend como `launch_error:<code>|...` */
 export const LAUNCH_ERROR_MESSAGES: Record<string, string> = {
-  path_not_found:
-    'Pasta do jogo não encontrada. Confirme o caminho de download em Configurações.',
-  needs_install:
-    'O jogo ainda não está instalado. Clique em INSTALAR para executar o instalador na pasta do download.',
-  repack_needs_setup:
-    'Este repack precisa de setup.exe (ex.: FitGirl). Instale manualmente ou escolha outro torrent.',
-  no_executable:
-    'Nenhum executável de jogo encontrado na pasta. Instale o jogo com o setup.exe primeiro.',
-  win32_blocked:
-    'Não foi possível iniciar o jogo automaticamente. Abra a pasta, execute o setup se existir, ou inicie o .exe principal manualmente.',
-  file_corrupt:
-    'O Windows bloqueou o arquivo. Abra a pasta do jogo, execute setup.exe manualmente ou mova o jogo para outro disco (ex.: C:).',
-  no_valid_executable: 'Nenhum executável válido encontrado na pasta do jogo.',
-  mac_windows_repack_only:
-    'Este download é um repack Windows (.exe). No Mac, abra a pasta do jogo manualmente. Jogar funciona para jogos nativos (.app).',
-  archive_not_found:
-    'Instalador não encontrado na pasta. Verifique se o download terminou e se há setup.exe.',
-  seven_zip_missing:
-    '7-Zip não encontrado. No Windows: npm run setup:binaries. No Linux/macOS: apt install p7zip-full ou brew install sevenzip.',
+  path_not_found: 'Pasta não encontrada',
+  needs_install: 'Jogo ainda não instalado',
+  repack_needs_setup: 'Precisa de setup.exe',
+  no_executable: 'Nenhum executável encontrado',
+  win32_blocked: 'Falha ao iniciar jogo',
+  file_corrupt: 'Windows bloqueou ficheiro',
+  no_valid_executable: 'Executável inválido',
+  mac_windows_repack_only: 'Repack só no Windows',
+  archive_not_found: 'Instalador não encontrado',
+  seven_zip_missing: '7-Zip não encontrado',
 }
 
 const LAUNCH_ERROR_PREFIX = /^launch_error:([a-z_]+)\|/
@@ -38,7 +29,7 @@ export function formatLaunchError(error: unknown): string {
     return LAUNCH_ERROR_MESSAGES.repack_needs_setup!
   }
   if (msg.includes('Setup encontrado') || msg.includes('skipped') || msg.includes('Instalador encontrado')) {
-    return 'Clique em INSTALAR no cartão do jogo — não é necessário extrair manualmente.'
+    return 'Use o botão Instalar'
   }
   if (msg.includes('Nenhum instalador') || msg.includes('setup.exe')) {
     return LAUNCH_ERROR_MESSAGES.archive_not_found!
@@ -65,5 +56,5 @@ export function formatLaunchError(error: unknown): string {
   if (/\bexit(?:\s*code)?\s*:?\s*-?\d+\b/i.test(msg)) {
     return ''
   }
-  return msg.replace(/^could_not_launch_game:\s*/i, '') || 'Não foi possível iniciar o jogo.'
+  return msg.replace(/^could_not_launch_game:\s*/i, '') || 'Falha ao iniciar'
 }

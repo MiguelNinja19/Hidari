@@ -1,4 +1,4 @@
-import { Suspense, lazy, type CSSProperties, type RefObject } from 'react'
+import { Suspense, lazy, type RefObject } from 'react'
 import type { AppDispatch } from './store'
 import { DiscoverTab, type DiscoverBridge } from '../features/discover/DiscoverTab'
 import { FavoritesTab } from '../features/favorites/FavoritesTab'
@@ -14,7 +14,7 @@ const SettingsTab = lazy(() =>
 type AppTabPanelsProps = {
   activeTab: NavTab
   mountedTabs: Record<NavTab, boolean>
-  tabStyle: (tab: NavTab) => CSSProperties | undefined
+  tabClassName: (tab: NavTab) => string
   discoverBridgeRef: RefObject<DiscoverBridge>
   jobs: DownloadJob[]
   queueCoverCatalog: Array<{
@@ -36,12 +36,12 @@ type AppTabPanelsProps = {
 }
 
 export function AppTabPanels(props: AppTabPanelsProps) {
-  const { mountedTabs, tabStyle, discoverBridgeRef, navigateDownloads, setActiveTab } = props
+  const { mountedTabs, tabClassName, discoverBridgeRef, navigateDownloads, setActiveTab } = props
   const showQueueCovers = mountedTabs.library || mountedTabs.downloads
 
   return (
     <>
-      <div style={tabStyle('discover')}>
+      <div className={tabClassName('discover')}>
         <DiscoverTab
           onGoSettings={() => setActiveTab('settings')}
           onGoDownloads={navigateDownloads}
@@ -51,13 +51,13 @@ export function AppTabPanels(props: AppTabPanelsProps) {
         />
       </div>
       {mountedTabs.favorites ? (
-        <div style={tabStyle('favorites')}>
+        <div className={tabClassName('favorites')}>
           <FavoritesTab />
         </div>
       ) : null}
       {showQueueCovers ? <AppQueueTabs {...props} /> : null}
       {mountedTabs.settings ? (
-        <div style={tabStyle('settings')}>
+        <div className={tabClassName('settings')}>
           <Suspense fallback={<AppTabFallback />}>
             <SettingsTab />
           </Suspense>

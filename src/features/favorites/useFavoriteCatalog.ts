@@ -53,7 +53,7 @@ export function useFavoriteCatalogState(
       setEntries([])
       setKeys(new Set())
       setTitles(new Set())
-      onErrorRef.current?.(formatUserError(error, 'Could not load favorites.'))
+      onErrorRef.current?.(formatUserError(error, 'Favorites load failed'))
     } finally {
       setLoading(false)
     }
@@ -88,7 +88,7 @@ export function useFavoriteCatalogState(
         const index = applyFavoriteEntries(listed, setEntries, setKeys, setTitles)
         return gameIsFavorite(game, index.keys, index.titles)
       } catch (error) {
-        onErrorRef.current?.(formatUserError(error, 'Could not update favorite.'))
+        onErrorRef.current?.(formatUserError(error, 'Favorite update failed'))
         return null
       } finally {
         setBusyKey(null)

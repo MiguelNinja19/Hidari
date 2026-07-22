@@ -9,45 +9,43 @@ export const APP_ERROR_PATTERNS: ErrorPattern[] = [
       m.includes('uninstall_cancelled_or_incomplete') ||
       m.includes('uninstaller_exit_code') ||
       m.includes('could_not_run_uninstaller'),
-    message:
-      'A desinstalação foi cancelada ou não concluiu. O jogo mantém-se na biblioteca e no disco.',
+    message: 'Desinstalação cancelada',
   },
   {
     match: (m) => m.includes('uninstall_partial_failure'),
-    message:
-      'A desinstalação foi cancelada ou não concluiu. O jogo mantém-se na biblioteca e no disco.',
+    message: 'Desinstalação cancelada',
   },
   {
     match: (m) => m.includes('path_outside_default_download_path'),
-    message: 'A pasta está fora do diretório de downloads configurado em Configurações.',
+    message: 'Pasta fora dos downloads',
   },
   {
     match: (m) => m.includes('local_item_not_found'),
-    message: 'Não encontrámos essa pasta na biblioteca.',
+    message: 'Pasta não encontrada',
   },
   {
     match: (m) => m.includes('inspect_library_path'),
-    message: 'Não foi possível verificar a instalação do jogo.',
+    message: 'Falha ao verificar instalação',
   },
   {
     match: (m) => m.includes('scan_default_download_path') || m.includes('default_download_path'),
-    message: 'Não foi possível ler a pasta de downloads. Verifique o caminho em Configurações.',
+    message: 'Falha ao ler pasta',
   },
   {
     match: (m) => m.includes('game_not_found') || m.includes('catalog_game_not_found'),
-    message: 'Jogo não encontrado no catálogo.',
+    message: 'Jogo não encontrado',
   },
   {
     match: (m) => m.includes('search') && m.includes('failed'),
-    message: 'Não foi possível pesquisar o catálogo. Tente outra vez.',
+    message: 'Falha na pesquisa',
   },
   {
     match: (m) => m.includes('enqueue') || m.includes('add_job'),
-    message: 'Não foi possível adicionar o download à fila.',
+    message: 'Falha ao enfileirar',
   },
   {
     match: (m) => m.includes('network') || m.includes('fetch') || m.includes('timeout'),
-    message: 'Falha de ligação. Verifique a internet e tente novamente.',
+    message: 'Falha de ligação',
   },
 ]
 

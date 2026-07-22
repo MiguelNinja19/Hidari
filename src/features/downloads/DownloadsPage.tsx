@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '../../shared/components/EmptyState'
 import type { DownloadJob } from '../../shared/types/contracts'
 import type { ResolvedCover } from '../covers/useGameCovers'
 import { useDownloadClock } from './useDownloadClock'
@@ -22,16 +23,18 @@ type DownloadsPageProps = {
   onResumeAll: () => Promise<void>
   onOpenJobFolder: (jobId: string) => void
   onGoLibrary: () => void
+  onGoDiscover: () => void
   resolveCover: (title: string, catalogCoverUrl?: string | null) => ResolvedCover
   invalidateLocalCover: (title: string, coverUrl?: string | null) => void
 }
 
 export function DownloadsPage(props: DownloadsPageProps) {
   const { t } = useTranslation()
-  const { jobs, actionBusyId, onClearCompleted, onPauseAll, onResumeAll } = props
+  const { jobs, actionBusyId, onClearCompleted, onPauseAll, onResumeAll, onGoDiscover } = props
   const downloadNow = useDownloadClock(jobs)
   const activeJobs = jobs
   const sections = buildJobSections(activeJobs, t)
+  const isEmpty = activeJobs.length === 0
   const inProgressCount = activeJobs.filter((job) => !isUiFinishedJob(job)).length
   const finishedCount = activeJobs.filter(
     (job) => isUiFinishedJob(job) && !isSeedingJob(job),
@@ -68,6 +71,15 @@ export function DownloadsPage(props: DownloadsPageProps) {
         onPauseAll={onPauseAll}
         onClearCompleted={onClearCompleted}
       />
+      {isEmpty ? (
+        <EmptyState
+          title={t('downloads.emptyTitle')}
+          action={{
+            label: t('downloads.emptyAction'),
+            onClick: onGoDiscover,
+          }}
+        />
+      ) : null}
       {sections.length > 0 ? (
         <div className="dl-page__sections">
           {sections.map((section) => (

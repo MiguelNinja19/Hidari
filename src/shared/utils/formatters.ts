@@ -35,7 +35,7 @@ export function jobStatusLabel(job: DownloadJob) {
     case 'downloading':
       return 'Transferindo'
     case 'seeding':
-      return 'Download completo · fazendo seed'
+      return 'Completo · a semear'
     case 'retrying':
       return 'Tentando novamente'
     case 'paused':

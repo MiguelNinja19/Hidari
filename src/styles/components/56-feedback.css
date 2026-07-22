@@ -2,6 +2,6 @@
   border: none;
   box-shadow: none;
   background: transparent;
-  padding: 48px 24px;
+  padding: 96px 32px;
+  min-height: min(46vh, 340px);
 }
-

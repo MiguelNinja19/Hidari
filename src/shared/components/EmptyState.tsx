@@ -15,30 +15,28 @@ export function EmptyState({ title, description, action, secondaryAction }: Empt
 
   return (
     <div className="empty-state">
-      <h2 className="empty-state__title">{title}</h2>
+      <div className="empty-state__bar" role="group" aria-label={title}>
+        <h2 className="empty-state__title">{title}</h2>
+        {hasActions ? (
+          <div className="empty-state__actions">
+            {action ? (
+              <button className="empty-state__action" type="button" onClick={action.onClick}>
+                {action.label}
+              </button>
+            ) : null}
+            {secondaryAction ? (
+              <button
+                className="empty-state__action empty-state__action--secondary"
+                type="button"
+                onClick={secondaryAction.onClick}
+              >
+                {secondaryAction.label}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       {description ? <p className="empty-state__desc">{description}</p> : null}
-      {hasActions ? (
-        <div className="empty-state__actions">
-          {action ? (
-            <button
-              className="btn btn-outline btn--compact"
-              type="button"
-              onClick={action.onClick}
-            >
-              {action.label}
-            </button>
-          ) : null}
-          {secondaryAction ? (
-            <button
-              className="btn btn-outline btn--compact"
-              type="button"
-              onClick={secondaryAction.onClick}
-            >
-              {secondaryAction.label}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   )
 }

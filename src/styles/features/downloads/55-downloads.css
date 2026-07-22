@@ -4,10 +4,11 @@
   padding: 14px 12px;
   background: transparent;
   border-bottom: var(--border-thin) solid var(--divider);
+  transition: background 0.16s ease;
 }
 
 .download-row:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.035);
   box-shadow: none;
 }
 

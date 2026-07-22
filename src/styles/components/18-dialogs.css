@@ -96,4 +96,3 @@
 .pick-modal--detail.pick-modal--single:has(.pick-modal__synopsis--aside) {
   width: min(520px, 100%);
 }
-

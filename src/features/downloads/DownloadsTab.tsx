@@ -23,7 +23,7 @@ export function DownloadsTab({
   queueError,
 }: DownloadsTabProps) {
   const dispatch = useAppDispatch()
-  const { navigateLibrary } = useNavigation()
+  const { navigateLibrary, navigateDiscover } = useNavigation()
   const { resolveCover, invalidateLocalCover } = useCovers()
   const { showError } = useToast()
   const { t } = useTranslation()
@@ -38,6 +38,7 @@ export function DownloadsTab({
       formatProgressPercent={formatProgressPercent}
       {...actions}
       onGoLibrary={navigateLibrary}
+      onGoDiscover={navigateDiscover}
       resolveCover={resolveCover}
       invalidateLocalCover={invalidateLocalCover}
     />

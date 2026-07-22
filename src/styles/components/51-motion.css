@@ -13,6 +13,28 @@
   }
 }
 
+/* ── Tab panels ─────────────────────────────────────────────────────────── */
+
+.app-tab-panel {
+  display: none;
+}
+
+.app-tab-panel--active {
+  display: block;
+  animation: tab-panel-in 0.2s ease-out;
+}
+
+@keyframes tab-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .loader__bar,
   .game-tile:hover .game-tile__cover-wrap,
@@ -26,7 +48,8 @@
   .discover-card--explore .discover-card__cover .game-card__media,
   .discover-card--explore .discover-card__cover img,
   .app-toast--enter,
-  .app-toast--exit {
+  .app-toast--exit,
+  .app-tab-panel--active {
     animation: none;
     transform: none;
     filter: none;
@@ -38,4 +61,3 @@
     border-top-color: rgba(255, 255, 255, 0.7);
   }
 }
-

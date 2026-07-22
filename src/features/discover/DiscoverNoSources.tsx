@@ -11,7 +11,6 @@ export function DiscoverNoSources({ onGoSettings }: DiscoverNoSourcesProps) {
   return (
     <EmptyState
       title={t('discover.noActiveSources')}
-      description={t('discover.enableSourcesHint')}
       action={{
         label: t('discover.openSettings'),
         onClick: onGoSettings,

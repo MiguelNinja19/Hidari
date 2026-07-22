@@ -1,6 +1,7 @@
 use crate::title::{
-  catalog_game_display_title_from_group_key, catalog_game_group_key, extract_catalog_base_title,
+  catalog_game_display_title_from_group_key, catalog_game_group_key,
 };
+use crate::title::base::extract_catalog_base_title;
 
 #[test]
 fn catalog_game_display_title_strips_editions() {

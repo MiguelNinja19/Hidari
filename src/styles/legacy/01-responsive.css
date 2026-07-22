@@ -16,11 +16,11 @@
 /* ── Médio: sidebar mais compacta, com labels ─────────────────────────── */
 @media (max-width: 960px) {
   .nova-shell {
-    grid-template-columns: 168px minmax(0, 1fr) !important;
+    grid-template-columns: 176px minmax(0, 1fr) !important;
   }
 
   .sidebar {
-    padding: 12px 8px;
+    padding: 14px 10px 12px;
   }
 
   .sidebar__nav {
@@ -28,9 +28,9 @@
   }
 
   .sidebar-link {
-    min-height: 34px;
-    padding: 7px 9px;
-    gap: 8px;
+    min-height: 36px;
+    padding: 8px 10px;
+    gap: 10px;
     border-radius: 0;
   }
 
@@ -62,22 +62,19 @@
     align-self: stretch;
     flex-direction: row;
     flex-wrap: nowrap;
-    align-items: center;
+    align-items: stretch;
     padding: 6px 8px;
-    gap: 0;
+    gap: 4px;
     border-right: none;
     border-bottom: var(--border-thin, 1px) solid var(--sidebar-edge);
     position: relative;
     z-index: 40;
-    background: #000000;
+    background: #050505;
   }
 
-  .sidebar__nav {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    width: 100%;
-    justify-content: stretch;
-    gap: 4px;
+  .sidebar__nav,
+  .sidebar__footer {
+    display: contents;
   }
 
   .sidebar-link {

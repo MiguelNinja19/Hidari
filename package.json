@@ -23,8 +23,8 @@
     "postinstall": "node scripts/setup-binaries.mjs"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.2.8",
     "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
     "@reduxjs/toolkit": "^2.11.2",
     "@tanstack/react-virtual": "^3.14.6",
     "@tauri-apps/api": "^2.10.1",
