@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/assets/hidari-logo.webp" alt="Hidari" width="200" />
+  <img src="./docs/assets/hidari-logo.png" alt="Hidari" width="200" />
 </p>
 
 <h1 align="center">Hidari</h1>

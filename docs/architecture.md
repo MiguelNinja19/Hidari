@@ -3,7 +3,7 @@
 Single reference for structure, data flows, business rules, database, and Steam API usage.
 
 <p align="center">
-  <img src="./assets/hidari-logo.webp" alt="Hidari" width="140" />
+  <img src="./assets/hidari-logo.png" alt="Hidari" width="140" />
 </p>
 
 **Hidari** is a Tauri launcher inspired by the Hydra ecosystem (JSON sources/catalogs). The UI is React; the Rust backend handles SQLite, downloads (sidecar), covers, and game launching.

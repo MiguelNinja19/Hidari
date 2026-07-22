@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/hidari-logo.webp" alt="Hidari" width="180" />
+  <img src="./assets/hidari-logo.png" alt="Hidari" width="180" />
 </p>
 
 # Documentation — Hidari
