@@ -3,7 +3,6 @@ import { useAppSelector } from '../../app/hooks'
 import { ConfirmDialog } from '../../shared/components/ConfirmDialog'
 import { useErrorToast } from '../../shared/hooks/useErrorToast'
 import { SettingsPage } from './SettingsPage'
-import { useCoverPrecache } from './useCoverPrecache'
 import { useDownloadSettings } from './useDownloadSettings'
 import { useInstallSettings } from './useInstallSettings'
 import { useNotificationSettings } from './useNotificationSettings'
@@ -21,7 +20,6 @@ export function SettingsTab() {
   const install = useInstallSettings()
   const downloads = useDownloadSettings()
   const notifications = useNotificationSettings()
-  const covers = useCoverPrecache()
   const adding = useSourceAdding()
   const management = useSourceManagement()
   const sync = useSourceSync()
@@ -32,7 +30,6 @@ export function SettingsTab() {
         {...install}
         {...downloads}
         {...notifications}
-        {...covers}
         {...adding}
         {...management}
         {...sync}

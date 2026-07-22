@@ -15,15 +15,26 @@ function FavoritesPageInner({ active }: { active: boolean }) {
   const { showError } = useToast()
   const { resolveCoversBatch } = useCovers()
   const {
-    refresh: refreshFavoriteIndex,
+    entries,
+    loading,
+    refresh: refreshFavorites,
     isFavorite,
     isBusy,
     toggleFavorite,
   } = useFavoriteCatalog()
 
   const page = useFavoritesPage({
-    active, defaultDownloadPath, navigateDownloads, showError,
-    refreshFavoriteIndex, isBusy, toggleFavorite, resolveCoversBatch, t,
+    active,
+    entries,
+    loading,
+    defaultDownloadPath,
+    navigateDownloads,
+    showError,
+    refreshFavorites,
+    isBusy,
+    toggleFavorite,
+    resolveCoversBatch,
+    t,
   })
 
   if (page.detail) {

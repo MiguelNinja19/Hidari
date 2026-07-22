@@ -4,7 +4,7 @@ import { formatUserError } from '../../shared/utils/formatUserError'
 import {
   favoriteCatalogKeyForGame,
 } from '../../shared/utils/favoriteCatalogKey'
-import type { CatalogGame } from '../../shared/types/contracts'
+import type { CatalogGame, FavoriteCatalogEntry } from '../../shared/types/contracts'
 import { buildFavoriteIndex, gameIsFavorite } from './favoriteCatalogIndex'
 import type { FavoriteCatalogApi, UseFavoriteCatalogOptions } from './favoriteCatalogTypes'
 
@@ -17,6 +17,19 @@ function resolveOnError(
   return arg?.onError
 }
 
+function applyFavoriteEntries(
+  entries: FavoriteCatalogEntry[],
+  setEntries: (entries: FavoriteCatalogEntry[]) => void,
+  setKeys: (keys: Set<string>) => void,
+  setTitles: (titles: Set<string>) => void,
+) {
+  const index = buildFavoriteIndex(entries)
+  setEntries(entries)
+  setKeys(index.keys)
+  setTitles(index.titles)
+  return index
+}
+
 /** Estado interno — usar via FavoriteCatalogProvider. */
 export function useFavoriteCatalogState(
   onErrorOrOptions?: ((message: string) => void) | UseFavoriteCatalogOptions,
@@ -25,6 +38,7 @@ export function useFavoriteCatalogState(
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
 
+  const [entries, setEntries] = useState<FavoriteCatalogEntry[]>([])
   const [keys, setKeys] = useState<Set<string>>(() => new Set())
   const [titles, setTitles] = useState<Set<string>>(() => new Set())
   const [busyKey, setBusyKey] = useState<string | null>(null)
@@ -33,11 +47,10 @@ export function useFavoriteCatalogState(
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const entries = await sourcesApi.listFavoriteCatalogEntries()
-      const index = buildFavoriteIndex(entries)
-      setKeys(index.keys)
-      setTitles(index.titles)
+      const listed = await sourcesApi.listFavoriteCatalogEntries()
+      applyFavoriteEntries(listed, setEntries, setKeys, setTitles)
     } catch (error) {
+      setEntries([])
       setKeys(new Set())
       setTitles(new Set())
       onErrorRef.current?.(formatUserError(error, 'Could not load favorites.'))
@@ -69,13 +82,11 @@ export function useFavoriteCatalogState(
       if (busyKey === key) return null
       setBusyKey(key)
       try {
-        const next = await sourcesApi.toggleFavoriteCatalogEntry(game.title, key)
-        // Re-read DB so legacy/duplicate rows cannot leave a stale index.
-        const entries = await sourcesApi.listFavoriteCatalogEntries()
-        const index = buildFavoriteIndex(entries)
-        setKeys(index.keys)
-        setTitles(index.titles)
-        return next
+        await sourcesApi.toggleFavoriteCatalogEntry(game.title, key)
+        // Re-read DB so legacy/duplicate rows cannot leave a stale index/list.
+        const listed = await sourcesApi.listFavoriteCatalogEntries()
+        const index = applyFavoriteEntries(listed, setEntries, setKeys, setTitles)
+        return gameIsFavorite(game, index.keys, index.titles)
       } catch (error) {
         onErrorRef.current?.(formatUserError(error, 'Could not update favorite.'))
         return null
@@ -89,11 +100,12 @@ export function useFavoriteCatalogState(
   return useMemo(
     () => ({
       loading,
+      entries,
       refresh,
       isFavorite,
       isBusy,
       toggleFavorite,
     }),
-    [loading, refresh, isFavorite, isBusy, toggleFavorite],
+    [loading, entries, refresh, isFavorite, isBusy, toggleFavorite],
   )
 }

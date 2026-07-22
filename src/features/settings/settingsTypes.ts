@@ -1,4 +1,4 @@
-import type { CoverPrecacheStatus, Source } from '../../shared/types/contracts'
+import type { Source } from '../../shared/types/contracts'
 
 export type SettingsPageProps = {
   defaultDownloadPath: string
@@ -23,13 +23,11 @@ export type SettingsPageProps = {
   onImportSource: () => Promise<void>
   onOpenHydraLinksSite: () => Promise<void>
   onDeleteSource: (sourceId: string, sourceName: string) => void | Promise<void>
-  onSyncSource: (sourceId: string, sourceName: string) => Promise<void>
   onSyncAllSources: () => Promise<void>
   onToggleSourceEnabled: (sourceId: string, enable: boolean) => Promise<void>
   disabledSourceIds: string[]
   disabledSourcesReady: boolean
   deletingSourceId: string | null
-  syncingSourceId: string | null
   syncingAllSources: boolean
   handleToggleRemoveTemp: (next: boolean) => Promise<void>
   handleToggleSeed: (enabled: boolean) => Promise<void>
@@ -44,9 +42,4 @@ export type SettingsPageProps = {
   handleToggleNotifyCatalogChanges: (enabled: boolean) => Promise<void>
   handleTestNotification: () => Promise<void>
   notifyTestBusy?: boolean
-  coverPrecacheStatus: CoverPrecacheStatus | null
-  coverPrecacheBusy: boolean
-  onStartCoverPrecache: () => Promise<void>
-  onStopCoverPrecache: () => Promise<void>
-  onRetryUnresolvedCovers: () => Promise<void>
 }

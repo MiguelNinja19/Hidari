@@ -56,7 +56,11 @@ export function useFavoriteDetail(t: TFunction) {
     setDetail(null)
   }, [])
   const openGame = useCallback((game: CatalogGame) => {
-    openDetail({ catalogKey: game.id, title: game.title, addedAt: '' })
+    openDetail({
+      catalogKey: game.groupKey?.trim() || game.id,
+      title: game.title,
+      addedAt: '',
+    })
   }, [openDetail])
 
   return { detail, setDetail, openDetail, openGame, closeDetail }

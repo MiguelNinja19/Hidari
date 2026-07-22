@@ -8,9 +8,8 @@ type Props = Pick<
   | 'disabledSourceIds'
   | 'disabledSourcesReady'
   | 'deletingSourceId'
-  | 'syncingSourceId'
+  | 'syncingAllSources'
   | 'onToggleSourceEnabled'
-  | 'onSyncSource'
   | 'onDeleteSource'
 >
 
@@ -29,8 +28,8 @@ export function SourceSettingsList(props: Props) {
   return (
     <ul className="set-sources" role="list">
       {props.sources.map((source) => {
-        const syncing = props.syncingSourceId === source.id
         const deleting = props.deletingSourceId === source.id
+        const busy = deleting || props.syncingAllSources
         const enabled = !props.disabledSourceIds.includes(source.id)
         return (
           <li
@@ -55,7 +54,7 @@ export function SourceSettingsList(props: Props) {
               <button
                 type="button"
                 className={enabled ? 'switch-btn switch-btn--on' : 'switch-btn'}
-                disabled={!props.disabledSourcesReady || deleting}
+                disabled={!props.disabledSourcesReady || busy}
                 aria-pressed={enabled}
                 aria-label={t(enabled ? 'settings.disableSource' : 'settings.enableSource', {
                   name: source.name,
@@ -64,24 +63,8 @@ export function SourceSettingsList(props: Props) {
               />
               <button
                 type="button"
-                className={`set-btn set-btn--sync set-btn--compact${syncing ? ' is-busy' : ''}`}
-                disabled={syncing || deleting}
-                aria-busy={syncing}
-                onClick={() => void props.onSyncSource(source.id, source.name)}
-              >
-                {syncing ? (
-                  <>
-                    <span className="set-btn__spinner" aria-hidden />
-                    {t('settings.syncing')}
-                  </>
-                ) : (
-                  t('common.sync')
-                )}
-              </button>
-              <button
-                type="button"
                 className="set-btn set-btn--danger set-btn--compact"
-                disabled={syncing || deleting}
+                disabled={busy}
                 aria-label={t('common.delete')}
                 onClick={() => void props.onDeleteSource(source.id, source.name)}
               >

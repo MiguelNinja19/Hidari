@@ -1,5 +1,4 @@
 import { CatalogSettingsSection } from './CatalogSettingsSection'
-import { CoverSettingsSection } from './CoverSettingsSection'
 import { DownloadSettingsSection } from './DownloadSettingsSection'
 import { InstallSettingsSection } from './InstallSettingsSection'
 import { LanguageSettingsSection } from './LanguageSettingsSection'
@@ -16,7 +15,6 @@ export function SettingsPage(props: SettingsPageProps) {
         <InstallSettingsSection {...props} />
         <TraySettingsSection {...props} />
         <NotificationSettingsSection {...props} />
-        <CoverSettingsSection {...props} />
         <CatalogSettingsSection {...props} />
       </div>
     </section>

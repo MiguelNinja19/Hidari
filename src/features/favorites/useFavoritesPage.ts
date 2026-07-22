@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import type { TFunction } from 'i18next'
 import { useAppDispatch } from '../../app/hooks'
 import { sourcesApi } from '../../shared/api/tauri/sourcesApi'
 import type { CatalogGame, FavoriteCatalogEntry } from '../../shared/types/contracts'
 import { formatUserError } from '../../shared/utils/formatUserError'
 import { enqueueJob } from '../queue/queueSlice'
-import { favoriteToCatalogGame, sameFavoriteGame } from './favoritePageModels'
+import { favoriteToCatalogGame } from './favoritePageModels'
 import { useFavoriteDetail } from './useFavoriteDetail'
 
 type Args = {
   active: boolean
+  entries: FavoriteCatalogEntry[]
+  loading: boolean
   defaultDownloadPath: string
   navigateDownloads: () => void
   showError: (message: string) => void
-  refreshFavoriteIndex: () => Promise<void>
+  refreshFavorites: () => Promise<void>
   isBusy: (game: CatalogGame) => boolean
   toggleFavorite: (game: CatalogGame) => Promise<boolean | null>
   resolveCoversBatch: (titles: string[]) => void
@@ -22,27 +24,14 @@ type Args = {
 
 export function useFavoritesPage(args: Args) {
   const dispatch = useAppDispatch()
-  const [entries, setEntries] = useState<FavoriteCatalogEntry[]>([])
-  const [loading, setLoading] = useState(true)
   const detailState = useFavoriteDetail(args.t)
-  const refreshList = useCallback(async () => {
-    setLoading(true)
-    try {
-      setEntries(await sourcesApi.listFavoriteCatalogEntries())
-    } catch (error) {
-      setEntries([])
-      args.showError(formatUserError(error, args.t('discover.favoriteError')))
-    } finally {
-      setLoading(false)
-    }
-  }, [args.showError, args.t])
+
   useEffect(() => {
     if (!args.active || detailState.detail) return
-    void refreshList()
-    void args.refreshFavoriteIndex()
-  }, [args.active, args.refreshFavoriteIndex, detailState.detail, refreshList])
+    void args.refreshFavorites()
+  }, [args.active, args.refreshFavorites, detailState.detail])
 
-  const games = useMemo(() => entries.map(favoriteToCatalogGame), [entries])
+  const games = useMemo(() => args.entries.map(favoriteToCatalogGame), [args.entries])
   useEffect(() => {
     if (games.length > 0) args.resolveCoversBatch(games.slice(0, 24).map((game) => game.title))
   }, [args.resolveCoversBatch, games])
@@ -50,10 +39,7 @@ export function useFavoritesPage(args: Args) {
   const toggle = useCallback(async (game: CatalogGame, closeIfRemoved = false) => {
     if (args.isBusy(game)) return
     const next = await args.toggleFavorite(game)
-    if (next === false) {
-      setEntries((prev) => prev.filter((entry) => !sameFavoriteGame(entry, game)))
-      if (closeIfRemoved) detailState.closeDetail()
-    }
+    if (next === false && closeIfRemoved) detailState.closeDetail()
   }, [args.isBusy, args.toggleFavorite, detailState.closeDetail])
 
   const download = useCallback(async (title: string, url: string, coverUrl?: string | null) => {
@@ -81,5 +67,12 @@ export function useFavoritesPage(args: Args) {
     }
   }, [args.defaultDownloadPath, args.navigateDownloads, args.showError, args.t, detailState, dispatch])
 
-  return { entries, games, loading, ...detailState, toggle, download }
+  return {
+    entries: args.entries,
+    games,
+    loading: args.loading,
+    ...detailState,
+    toggle,
+    download,
+  }
 }

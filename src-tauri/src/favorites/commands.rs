@@ -62,13 +62,19 @@ pub fn toggle_favorite_catalog_entry(
         return Ok(false);
     }
 
-    conn.execute(
+    match conn.execute(
         "INSERT INTO favorite_catalog_entries (catalog_key, title, added_at) \
        VALUES (?1, ?2, CURRENT_TIMESTAMP)",
         params![&key, title],
-    )
-    .map_err(|e| format!("could_not_add_favorite: {e}"))?;
-    Ok(true)
+    ) {
+        Ok(_) => Ok(true),
+        // Race / identity miss: row already there under this key → treat as remove.
+        Err(e) if e.to_string().contains("UNIQUE constraint failed") => {
+            delete_favorite_rows(&conn, &key, title)?;
+            Ok(false)
+        }
+        Err(e) => Err(format!("could_not_add_favorite: {e}")),
+    }
 }
 
 #[tauri::command]
