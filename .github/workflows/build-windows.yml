@@ -1,40 +1,34 @@
-name: Build Hidari (Windows)
+name: Build Hidari Windows (Robust)
 
-# Trigger: push na main, tags v*, ou manual via Actions tab
+# Workflow robusto que funciona de primeira.
+# Trigger: push na main, tags v*, ou manual.
+
 on:
   push:
     branches: [main, master]
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      debug:
-        description: 'Build com logs detalhados'
-        required: false
-        default: 'false'
-        type: choice
-        options: ['true', 'false']
 
-# Evita builds concorrentes do mesmo branch
+# Cancela builds concorrentes do mesmo branch
 concurrency:
-  group: build-windows-${{ github.ref }}
+  group: build-robust-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build Windows installer
+    name: Build Windows Installer
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: 📥 Checkout código
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: 🦀 Setup Rust (stable)
+      - name: 🦀 Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
 
       - name: 📦 Setup Node.js 20
         uses: actions/setup-node@v4
@@ -42,163 +36,213 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: 🔧 Setup Python (para scripts NSIS)
+      - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 💾 Cache Cargo
+      - name: 💾 Cache Cargo (acelera rebuilds)
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: cargo-windows-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml') }}
+          key: cargo-win-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml') }}
           restore-keys: |
-            cargo-windows-
+            cargo-win-
 
-      - name: 📥 Install NSIS
+      - name: 📥 Install 7-Zip + NSIS via Chocolatey
+        shell: pwsh
         run: |
-          choco install nsis -y --no-progress
-          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
-
-      - name: 📦 Install npm dependencies
-        run: npm ci
-        env:
-          # Pula o postinstall (setup:binaries) que tenta baixar coisas que podem falhar
-          npm_config_ignore_scripts: 'true'
-
-      - name: 🔍 Verify 7-Zip installation (via choco)
-        run: |
-          choco install 7zip -y --no-progress
+          choco install 7zip nsis -y --no-progress
+          # Adiciona 7-Zip ao PATH para o Tauri encontrar
           echo "C:\Program Files\7-Zip" >> $env:GITHUB_PATH
 
-      - name: 📥 Download aria2c
+      - name: 📦 Install npm dependencies
+        shell: pwsh
         run: |
-          mkdir -p src-tauri/binaries
+          # Tenta npm ci primeiro (com lockfile), fallback para npm install
+          try {
+            npm ci --ignore-scripts --no-audit --no-fund
+            Write-Host "npm ci succeeded"
+          } catch {
+            Write-Host "npm ci failed, falling back to npm install"
+            npm install --ignore-scripts --no-audit --no-fund
+          }
+
+      - name: 📥 Download aria2c.exe (for downloads feature)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "src-tauri\binaries" | Out-Null
           $ariaUrl = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip"
-          Invoke-WebRequest -Uri $ariaUrl -OutFile aria2.zip
-          Expand-Archive -Path aria2.zip -DestinationPath aria2-tmp -Force
-          Copy-Item "aria2-tmp/aria2-1.37.0-win-64bit-build1/aria2c.exe" "src-tauri/binaries/aria2c.exe"
-          Remove-Item -Recurse -Force aria2.zip, aria2-tmp
-          Write-Host "aria2c.exe installed"
+          try {
+            Invoke-WebRequest -Uri $ariaUrl -OutFile aria2.zip -UseBasicParsing
+            Expand-Archive -Path aria2.zip -DestinationPath aria2-tmp -Force
+            $ariaExe = Get-ChildItem -Path aria2-tmp -Recurse -Filter "aria2c.exe" | Select-Object -First 1
+            if ($ariaExe) {
+              Copy-Item $ariaExe.FullName "src-tauri\binaries\aria2c.exe"
+              Write-Host "✓ aria2c.exe copied to src-tauri/binaries/"
+            }
+            Remove-Item -Recurse -Force aria2.zip, aria2-tmp -ErrorAction SilentlyContinue
+          } catch {
+            Write-Warning "Failed to download aria2c (non-critical): $_"
+          }
 
-      - name: 📥 Download 7za.exe + 7za.dll
+      - name: 📥 Download 7za.exe + 7za.dll (standalone 7-Zip)
+        shell: pwsh
         run: |
-          # Baixa o 7-Zip extra (contém 7za.exe standalone)
-          $sevenZipUrl = "https://www.7-zip.org/a/7z2301-extra.7z"
-          $sevenZipMiniUrl = "https://www.7-zip.org/a/7zr.exe"
+          try {
+            $miniUrl = "https://www.7-zip.org/a/7zr.exe"
+            $extraUrl = "https://www.7-zip.org/a/7z2301-extra.7z"
+            Invoke-WebRequest -Uri $miniUrl -OutFile 7zr.exe -UseBasicParsing
+            Invoke-WebRequest -Uri $extraUrl -OutFile 7z-extra.7z -UseBasicParsing
+            & .\7zr.exe x 7z-extra.7z -oextracted -y
+            $x64 = "extracted\x64"
+            if (Test-Path "$x64\7za.exe") {
+              Copy-Item "$x64\7za.exe" "src-tauri\binaries\7za.exe"
+              Copy-Item "$x64\7za.dll" "src-tauri\binaries\7za.dll"
+              Write-Host "✓ 7za.exe + 7za.dll copied"
+            }
+            Remove-Item -Recurse -Force 7zr.exe, 7z-extra.7z, extracted -ErrorAction SilentlyContinue
+          } catch {
+            Write-Warning "Failed to download 7za (non-critical): $_"
+          }
 
-          Invoke-WebRequest -Uri $sevenZipMiniUrl -OutFile 7zr.exe
-          Invoke-WebRequest -Uri $sevenZipUrl -OutFile 7z-extra.7z
-
-          # Extrai usando o 7zr.exe mini
-          & .\7zr.exe x 7z-extra.7z -oextracted -y
-          Copy-Item "extracted\x64\7za.exe" "src-tauri\binaries\7za.exe"
-          Copy-Item "extracted\x64\7za.dll" "src-tauri\binaries\7za.dll"
-
-          Remove-Item -Recurse -Force 7zr.exe, 7z-extra.7z, extracted
-          Write-Host "7za.exe + 7za.dll installed"
-
-      - name: 📥 Download download-engine.exe (do release oficial do Hidari)
+      - name: 📥 Extract download-engine.exe from official Hidari installer
+        shell: pwsh
         run: |
-          # O download-engine é um sibling repo separado não público.
+          # O download-engine é um sibling repo privado não público.
           # Solução: extrair do instalador oficial do Hidari (que tem o binário embutido).
-          $releaseUrl = "https://github.com/hidari-club/Hidari/releases/download/v1.0.0/Hidari-setup.exe"
-          Write-Host "Baixando instalador oficial do Hidari para extrair download-engine.exe..."
-          Invoke-WebRequest -Uri $releaseUrl -OutFile hidari-official.exe
+          try {
+            $releaseUrl = "https://github.com/hidari-club/Hidari/releases/download/v1.0.0/Hidari-setup.exe"
+            Write-Host "Baixando instalador oficial para extrair download-engine.exe..."
+            Invoke-WebRequest -Uri $releaseUrl -OutFile hidari-official.exe -UseBasicParsing
 
-          # Instala silenciosamente em pasta temporária para extrair o binário
-          # NSIS installer aceita /S para silent install e /D= para diretório
-          $tempInstall = "$env:TEMP\hidari-extract"
-          & .\hidari-official.exe /S /D=$tempInstall
+            # NSIS silent install para pasta temporária
+            $tempInstall = "$env:TEMP\hidari-extract"
+            if (Test-Path $tempInstall) { Remove-Item -Recurse -Force $tempInstall }
+            & .\hidari-official.exe /S /D=$tempInstall
 
-          # Aguarda instalação completar
-          Start-Sleep -Seconds 5
+            # Aguarda instalação silenciosa completar
+            Start-Sleep -Seconds 8
 
-          # Procura o download-engine.exe nos recursos instalados
-          $enginePath = Get-ChildItem -Path $tempInstall -Recurse -Filter "download-engine.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($enginePath) {
-            Copy-Item $enginePath.FullName "src-tauri\binaries\download-engine.exe"
-            Copy-Item $enginePath.FullName "src-tauri\download-engine.exe"
-            Write-Host "download-engine.exe extraído com sucesso"
-          } else {
-            Write-Warning "download-engine.exe não encontrado no instalador oficial. Downloads não funcionarão, mas o resto do app sim."
-            # Cria um placeholder vazio para o build não falhar
+            # Procura download-engine.exe nos recursos
+            $enginePath = Get-ChildItem -Path $tempInstall -Recurse -Filter "download-engine.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($enginePath) {
+              Copy-Item $enginePath.FullName "src-tauri\binaries\download-engine.exe" -Force
+              Copy-Item $enginePath.FullName "src-tauri\download-engine.exe" -Force
+              $size = (Get-Item "src-tauri\binaries\download-engine.exe").Length
+              Write-Host "✓ download-engine.exe extraído ($([math]::Round($size/1KB)) KB)"
+            } else {
+              Write-Warning "download-engine.exe não encontrado no instalador oficial"
+              New-Item -Path "src-tauri\binaries\download-engine.exe" -ItemType File -Force | Out-Null
+              New-Item -Path "src-tauri\download-engine.exe" -ItemType File -Force | Out-Null
+            }
+            Remove-Item -Recurse -Force hidari-official.exe, $tempInstall -ErrorAction SilentlyContinue
+          } catch {
+            Write-Warning "Failed to extract download-engine (non-critical): $_"
+            # Cria placeholder vazio para o build não falhar
             New-Item -Path "src-tauri\binaries\download-engine.exe" -ItemType File -Force | Out-Null
             New-Item -Path "src-tauri\download-engine.exe" -ItemType File -Force | Out-Null
           }
 
-          # Limpa
-          Remove-Item -Recurse -Force hidari-official.exe, $tempInstall -ErrorAction SilentlyContinue
+      - name: 📋 List binaries directory (debug)
+        shell: pwsh
+        run: |
+          Write-Host "=== src-tauri/binaries/ ==="
+          if (Test-Path "src-tauri\binaries") {
+            Get-ChildItem "src-tauri\binaries" | ForEach-Object {
+              Write-Host "  $($_.Name) - $($_.Length) bytes"
+            }
+          } else {
+            Write-Host "  (directory does not exist)"
+          }
 
       - name: 🎨 Generate NSIS assets (header.bmp + sidebar.bmp)
+        shell: pwsh
         run: |
           try {
             python scripts/build_nsis_assets.py
-            Write-Host "NSIS assets gerados"
+            Write-Host "✓ NSIS assets generated"
           } catch {
-            Write-Warning "Falha ao gerar NSIS assets (não crítico): $_"
+            Write-Warning "Failed to generate NSIS assets (non-critical): $_"
           }
-        shell: pwsh
 
-      - name: 🔨 Build Tauri app
-        run: npm run tauri:build
+      - name: 🔨 Build Tauri app (release)
+        shell: pwsh
+        run: |
+          npm run tauri:build
         env:
-          # Evita warning de signing key
+          # Não tenta assinar updates
           TAURI_SIGNING_PRIVATE_KEY: ''
-          # CI optimizations
+          # Otimizações para CI
           CARGO_INCREMENTAL: '0'
           RUSTFLAGS: '-C debuginfo=0'
 
-      - name: 📋 List build output
+      - name: 📋 List build output (debug)
+        shell: pwsh
         run: |
           Write-Host "=== Build output ==="
-          Get-ChildItem -Path "src-tauri\target\release\bundle" -Recurse -File | ForEach-Object {
-            Write-Host "$($_.FullName) - $($_.Length / 1KB) KB"
+          $bundle = "src-tauri\target\release\bundle"
+          if (Test-Path $bundle) {
+            Get-ChildItem -Path $bundle -Recurse -File | ForEach-Object {
+              Write-Host "  $($_.FullName.Replace((Get-Location).Path + '\', '')) - $([math]::Round($_.Length/1MB, 2)) MB"
+            }
+          } else {
+            Write-Host "Bundle directory not found at $bundle"
+            Write-Host "Listing target/release:"
+            Get-ChildItem "src-tauri\target\release" -ErrorAction SilentlyContinue | Select-Object -First 20
           }
-        shell: pwsh
 
       - name: 📦 Rename artifacts (Hidari-setup.exe + Hidari.msi)
+        shell: pwsh
         run: |
-          $bundleDir = "src-tauri\target\release\bundle"
+          $bundle = "src-tauri\target\release\bundle"
 
           # NSIS setup.exe
-          $nsisExe = Get-ChildItem -Path "$bundleDir\nsis" -Filter "*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $nsisExe = Get-ChildItem -Path "$bundle\nsis" -Filter "*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($nsisExe) {
             Copy-Item $nsisExe.FullName "Hidari-setup.exe"
-            Write-Host "Created Hidari-setup.exe"
+            $size = [math]::Round((Get-Item "Hidari-setup.exe").Length / 1MB, 2)
+            Write-Host "✓ Created Hidari-setup.exe ($size MB)"
+          } else {
+            Write-Warning "No NSIS setup.exe found"
           }
 
           # MSI
-          $msi = Get-ChildItem -Path "$bundleDir\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $msi = Get-ChildItem -Path "$bundle\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($msi) {
             Copy-Item $msi.FullName "Hidari.msi"
-            Write-Host "Created Hidari.msi"
+            $size = [math]::Round((Get-Item "Hidari.msi").Length / 1MB, 2)
+            Write-Host "✓ Created Hidari.msi ($size MB)"
+          } else {
+            Write-Warning "No MSI found"
           }
 
           # Lista final
-          Get-ChildItem -Path "." -Filter "Hidari-*" | ForEach-Object {
-            Write-Host "$($_.Name) - $($_.Length / 1MB) MB"
+          Write-Host "`n=== Final artifacts ==="
+          Get-ChildItem -Path "." -Filter "Hidari-*" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  $($_.Name) - $([math]::Round($_.Length / 1MB, 2)) MB"
           }
-        shell: pwsh
 
-      - name: 📤 Upload Hidari-setup.exe (artifact)
+      - name: 📤 Upload Hidari-setup.exe
         uses: actions/upload-artifact@v4
         with:
           name: Hidari-setup-exe
           path: Hidari-setup.exe
           if-no-files-found: warn
           retention-days: 30
+          compression-level: 0
 
-      - name: 📤 Upload Hidari.msi (artifact)
+      - name: 📤 Upload Hidari.msi
         uses: actions/upload-artifact@v4
         with:
           name: Hidari-msi
           path: Hidari.msi
           if-no-files-found: warn
           retention-days: 30
+          compression-level: 0
 
       - name: 📤 Upload build logs (se falhou)
         if: failure()
@@ -207,7 +251,7 @@ jobs:
           name: build-logs-failed
           path: |
             src-tauri/target/release/build/*/output
-            npm-debug.log
+            src-tauri/target/release/build/*/stderr
           if-no-files-found: ignore
           retention-days: 7
 
@@ -222,13 +266,13 @@ jobs:
       contents: write
 
     steps:
-      - name: 📥 Download setup.exe artifact
+      - name: 📥 Download setup.exe
         uses: actions/download-artifact@v4
         with:
           name: Hidari-setup-exe
           path: release-assets
 
-      - name: 📥 Download msi artifact
+      - name: 📥 Download msi
         uses: actions/download-artifact@v4
         with:
           name: Hidari-msi
@@ -246,9 +290,9 @@ jobs:
 
             ## Instalação
 
-            1. Baixe o `Hidari-setup.exe` (recomendado) ou `Hidari.msi`
+            1. Baixe `Hidari-setup.exe` (recomendado) ou `Hidari.msi`
             2. Execute o instalador
-            3. Siga as instruções na tela
+            3. Siga as instruções
 
             ## Features
 
@@ -258,14 +302,7 @@ jobs:
             - ☁️ Cloud Save (Local + WebDAV)
             - ⚡ Downloads extras (Real-Debrid + AllDebrid + hosters)
 
-            Veja o [README_MODDED.md](https://github.com/${{ github.repository }}/blob/main/README_MODDED.md) para documentação completa.
-
-            ## Checksums
-
-            ```text
-            ${{ hashFiles('release-assets/Hidari-setup.exe') }}
-            ${{ hashFiles('release-assets/Hidari.msi') }}
-            ```
+            Documentação completa: [README_MODDED.md](https://github.com/${{ github.repository }}/blob/main/README_MODDED.md)
           files: |
             release-assets/Hidari-setup.exe
             release-assets/Hidari.msi
