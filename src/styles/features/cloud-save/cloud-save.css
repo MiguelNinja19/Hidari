@@ -1,0 +1,409 @@
+/* === Cloud Save Panel === */
+
+.cloud-save-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-elevated, #1e293b);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.cloud-save-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cloud-save-panel__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.cloud-save-panel__refresh {
+  background: transparent;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.15));
+  color: var(--text-secondary, #cbd5e1);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cloud-save-panel__refresh:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cloud-save-panel__refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cloud-save-panel__error {
+  padding: 10px 12px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+.cloud-save-panel__save-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cloud-save-panel__label {
+  font-size: 12px;
+  color: var(--text-secondary, #cbd5e1);
+  font-weight: 500;
+}
+
+.cloud-save-panel__folder-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cloud-save-panel__folder-path {
+  flex: 1;
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+  font-size: 11px;
+  color: var(--text-primary, #f1f5f9);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 6px 10px;
+  border-radius: 4px;
+  word-break: break-all;
+  min-height: 24px;
+}
+
+.cloud-save-panel__upload-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cloud-save-panel__label-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.cloud-save-panel__label-input:focus {
+  outline: none;
+  border-color: var(--accent, #53b0d0);
+}
+
+.cloud-save-panel__loading {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted, #64748b);
+  font-size: 12px;
+}
+
+.cloud-save-panel__empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted, #64748b);
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+
+.cloud-save-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.cloud-save-artifact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.cloud-save-artifact__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cloud-save-artifact__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #f1f5f9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cloud-save-artifact__meta {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  margin-top: 2px;
+}
+
+.cloud-save-artifact__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.cloud-save-panel__btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--text-primary, #f1f5f9);
+  transition: all 0.15s ease;
+}
+
+.cloud-save-panel__btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cloud-save-panel__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cloud-save-panel__btn--primary {
+  background: var(--accent, #53b0d0);
+  color: #0f172a;
+  border-color: var(--accent, #53b0d0);
+  font-weight: 600;
+}
+
+.cloud-save-panel__btn--primary:hover:not(:disabled) {
+  background: #69c0dc;
+}
+
+.cloud-save-panel__btn--small {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.cloud-save-panel__btn--danger {
+  color: #fca5a5;
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+.cloud-save-panel__btn--danger:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.15);
+  border-color: rgba(220, 38, 38, 0.5);
+}
+
+/* === Cloud Save Settings Section === */
+
+.cloud-save-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--bg-elevated, #1e293b);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.cloud-save-settings__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.cloud-save-settings__desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+.cloud-save-settings__backend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.cloud-save-settings__backend-card {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(0, 0,0, 0.2);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cloud-save-settings__backend-card:hover {
+  border-color: var(--border-default, rgba(255, 255, 255, 0.2));
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cloud-save-settings__backend-card--active {
+  border-color: var(--accent, #53b0d0);
+  background: rgba(83, 176, 208, 0.08);
+}
+
+.cloud-save-settings__backend-card--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cloud-save-settings__backend-card input[type='radio'] {
+  accent-color: var(--accent, #53b0d0);
+  margin-top: 2px;
+}
+
+.cloud-save-settings__backend-card-content {
+  flex: 1;
+}
+
+.cloud-save-settings__backend-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.cloud-save-settings__backend-name em {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--text-muted, #64748b);
+  font-size: 11px;
+}
+
+.cloud-save-settings__backend-desc {
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.cloud-save-settings__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cloud-save-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cloud-save-settings__field span {
+  font-size: 12px;
+  color: var(--text-secondary, #cbd5e1);
+  font-weight: 500;
+}
+
+.cloud-save-settings__field input {
+  background: rgba(0,0,0, 0.25);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-primary, #f1f5f9);
+  font-family: inherit;
+}
+
+.cloud-save-settings__field input:focus {
+  outline: none;
+  border-color: var(--accent, #53b0d0);
+}
+
+.cloud-save-settings__folder-row {
+  display: flex;
+  gap: 6px;
+}
+
+.cloud-save-settings__folder-row input {
+  flex: 1;
+}
+
+.cloud-save-settings__folder-row button {
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.15));
+  border-radius: 6px;
+  color: var(--text-primary, #f1f5f9);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cloud-save-settings__folder-row button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cloud-save-settings__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cloud-save-settings__btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.cloud-save-settings__btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cloud-save-settings__btn--primary {
+  background: var(--accent, #53b0d0);
+  color: #0f172a;
+  border-color: var(--accent, #53b0d0);
+  font-weight: 600;
+}
+
+.cloud-save-settings__btn--primary:hover:not(:disabled) {
+  background: #69c0dc;
+}
+
+.cloud-save-settings__test-result {
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+}
+
+.cloud-save-settings__test-result--ok {
+  background: rgba(72, 187, 120, 0.1);
+  color: #6ee7b7;
+  border: 1px solid rgba(72, 187, 120, 0.3);
+}
+
+.cloud-save-settings__test-result--error {
+  background: rgba(220, 38, 38, 0.1);
+  color: #fca5a5;
+  border: 1px solid rgba(220, 38, 38, 0.3);
+}

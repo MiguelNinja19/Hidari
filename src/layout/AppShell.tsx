@@ -35,7 +35,7 @@ export function AppShell({
                 ? ' main-content--full'
                 : activeTab === 'library'
                   ? ' main-content--library'
-                  : activeTab === 'discover' || activeTab === 'favorites'
+                  : activeTab === 'discover' || activeTab === 'favorites' || activeTab === 'home'
                     ? ' main-content--discover'
                     : ''
             }`}

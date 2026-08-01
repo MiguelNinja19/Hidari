@@ -46,6 +46,11 @@ pub(crate) fn migrate_feature_tables(conn: &Connection) -> Result<(), String> {
         dest_path   TEXT NOT NULL,
         exe_path    TEXT NOT NULL,
         updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS home_cache (
+        key TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL
       );",
     )
     .map_err(|e| format!("migrate_feature_tables: {e}"))?;

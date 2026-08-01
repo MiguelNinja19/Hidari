@@ -6,6 +6,7 @@ type LibraryToolbarMenuProps = {
   sort: LibrarySort
   onSortChange: (value: LibrarySort) => void
   onImportGame: () => void
+  onImportSteam?: () => void
 }
 
 const SORT_OPTIONS: LibrarySort[] = ['title-asc', 'title-desc']
@@ -19,6 +20,7 @@ export function LibraryToolbarMenu({
   sort,
   onSortChange,
   onImportGame,
+  onImportSteam,
 }: LibraryToolbarMenuProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -96,6 +98,25 @@ export function LibraryToolbarMenu({
         </span>
         <span className="library-toolbar__import-label">{t('library.sidebarAdd')}</span>
       </button>
+
+      {onImportSteam ? (
+        <button
+          type="button"
+          className="library-toolbar__import library-toolbar__import--steam"
+          onClick={onImportSteam}
+          title="Import from Steam"
+        >
+          <span className="library-toolbar__import-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false" fill="currentColor" stroke="none">
+              <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+              <circle cx="8" cy="15" r="2.5" />
+              <circle cx="16" cy="9" r="2" />
+              <line x1="8" y1="15" x2="16" y2="9" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          </span>
+          <span className="library-toolbar__import-label">Steam</span>
+        </button>
+      ) : null}
     </div>
   )
 }

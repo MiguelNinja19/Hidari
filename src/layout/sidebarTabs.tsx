@@ -5,6 +5,11 @@ export type SidebarTab = { id: NavTab; labelKey: string; icon: ReactNode }
 
 export const sidebarTabs: SidebarTab[] = [
   {
+    id: 'home',
+    labelKey: 'nav.home',
+    icon: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10" /></svg>,
+  },
+  {
     id: 'discover',
     labelKey: 'nav.discover',
     icon: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>,

@@ -13,6 +13,7 @@ import type { NavTab } from '../../layout/types'
 export type NavigationContextValue = {
   activeTab: NavTab
   setActiveTab: Dispatch<SetStateAction<NavTab>>
+  navigateHome: () => void
   navigateDiscover: () => void
   navigateDownloads: () => void
   navigateLibrary: () => void
@@ -23,8 +24,9 @@ export type NavigationContextValue = {
 const NavigationContext = createContext<NavigationContextValue | null>(null)
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const [activeTab, setActiveTab] = useState<NavTab>('discover')
+  const [activeTab, setActiveTab] = useState<NavTab>('home')
 
+  const navigateHome = useCallback(() => setActiveTab('home'), [])
   const navigateDiscover = useCallback(() => setActiveTab('discover'), [])
   const navigateDownloads = useCallback(() => setActiveTab('downloads'), [])
   const navigateLibrary = useCallback(() => setActiveTab('library'), [])
@@ -35,6 +37,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     () => ({
       activeTab,
       setActiveTab,
+      navigateHome,
       navigateDiscover,
       navigateDownloads,
       navigateLibrary,
@@ -43,6 +46,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }),
     [
       activeTab,
+      navigateHome,
       navigateDiscover,
       navigateDownloads,
       navigateLibrary,

@@ -5,6 +5,8 @@ import { LanguageSettingsSection } from './LanguageSettingsSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 import type { SettingsPageProps } from './settingsTypes'
 import { TraySettingsSection } from './TraySettingsSection'
+import { CloudSaveSettingsSection } from '../cloud-save/CloudSaveSettingsSection'
+import { DownloadExtrasSettingsSection } from '../download-extras/DownloadExtrasSettingsSection'
 
 export function SettingsPage(props: SettingsPageProps) {
   return (
@@ -16,6 +18,8 @@ export function SettingsPage(props: SettingsPageProps) {
         <TraySettingsSection {...props} />
         <NotificationSettingsSection {...props} />
         <CatalogSettingsSection {...props} />
+        <CloudSaveSettingsSection />
+        <DownloadExtrasSettingsSection />
       </div>
     </section>
   )

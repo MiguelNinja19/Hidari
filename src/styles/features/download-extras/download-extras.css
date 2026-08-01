@@ -1,0 +1,134 @@
+/* === Download Extras Settings === */
+
+.download-extras-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--bg-elevated, #1e293b);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.download-extras-settings__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.download-extras-settings__desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary, #cbd5e1);
+}
+
+.download-extras-settings__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.download-extras-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.download-extras-settings__field-label {
+  font-size: 12px;
+  color: var(--text-secondary, #cbd5e1);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.download-extras-settings__link {
+  font-size: 10px;
+  color: var(--accent, #53b0d0);
+  text-decoration: none;
+  font-weight: 400;
+}
+
+.download-extras-settings__link:hover {
+  text-decoration: underline;
+}
+
+.download-extras-settings__field input {
+  background: rgba(0,0,0, 0.25);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-primary, #f1f5f9);
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+}
+
+.download-extras-settings__field input:focus {
+  outline: none;
+  border-color: var(--accent, #53b0d0);
+}
+
+.download-extras-settings__field input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.download-extras-settings__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.download-extras-settings__btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--text-primary, #f1f5f9);
+}
+
+.download-extras-settings__btn--primary {
+  background: var(--accent, #53b0d0);
+  color: #0f172a;
+  border-color: var(--accent, #53b0d0);
+  font-weight: 600;
+}
+
+.download-extras-settings__btn--primary:hover:not(:disabled) {
+  background: #69c0dc;
+}
+
+.download-extras-settings__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.download-extras-settings__help {
+  font-size: 12px;
+}
+
+.download-extras-settings__help summary {
+  cursor: pointer;
+  color: var(--text-muted, #64748b);
+  padding: 4px 0;
+}
+
+.download-extras-settings__help ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--text-secondary, #cbd5e1);
+  line-height: 1.6;
+}
+
+.download-extras-settings__help li {
+  margin-bottom: 4px;
+}
+
+.download-extras-settings__help strong {
+  color: var(--text-primary, #f1f5f9);
+}

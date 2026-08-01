@@ -2,6 +2,7 @@ import { Suspense, lazy, type RefObject } from 'react'
 import type { AppDispatch } from './store'
 import { DiscoverTab, type DiscoverBridge } from '../features/discover/DiscoverTab'
 import { FavoritesTab } from '../features/favorites/FavoritesTab'
+import { HomeTab } from '../features/home/HomeTab'
 import { AppTabFallback } from './AppTabFallback'
 import { AppQueueTabs } from './AppQueueTabs'
 import type { DownloadJob } from '../shared/types/contracts'
@@ -41,6 +42,13 @@ export function AppTabPanels(props: AppTabPanelsProps) {
 
   return (
     <>
+      {mountedTabs.home ? (
+        <div className={tabClassName('home')}>
+          <HomeTab
+            onNavigateToGame={() => setActiveTab('discover')}
+          />
+        </div>
+      ) : null}
       <div className={tabClassName('discover')}>
         <DiscoverTab
           onGoSettings={() => setActiveTab('settings')}

@@ -4,6 +4,11 @@
 @import "./settings.css";
 @import "./downloads.css";
 @import "./responsive.css";
+@import "./features/home/home.css";
+@import "./features/steam/steam.css";
+@import "./features/achievements/achievements.css";
+@import "./features/cloud-save/cloud-save.css";
+@import "./features/download-extras/download-extras.css";
 
 @import "@fontsource/ibm-plex-sans/400.css";
 @import "@fontsource/ibm-plex-sans/500.css";

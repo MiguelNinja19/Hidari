@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { DiscoverGameDetailPage } from '../discover/DiscoverGameDetailPage'
+import { AchievementsPanel } from '../achievements/AchievementsPanel'
+import { CloudSavePanel } from '../cloud-save/CloudSavePanel'
 import type { CatalogGame } from '../../shared/types/contracts'
 import type { LibraryControllerValue } from './LibraryController'
 
@@ -34,6 +36,12 @@ export function LibraryPageDetailView({
   const detailFavorite = isFavorite(game)
   const detailFavoriteBusy = isBusy(game)
 
+  // Para AchievementsPanel: se o jogo tem um Steam appid, usamos shop="steam".
+  // Caso contrário, usamos o object_id do library item (que pode ser um path).
+  const steamAppId = detail.item.id.startsWith('steam:')
+    ? detail.item.id.replace('steam:', '')
+    : null
+
   return (
     <DiscoverGameDetailPage
       game={game}
@@ -52,20 +60,35 @@ export function LibraryPageDetailView({
       }}
       onBack={onBack}
       footerSlot={
-        <label className="library-detail-note">
-          <span className="library-detail-note__label">{t('library.noteLabel')}</span>
-          <textarea
-            className="library-detail-note__input"
-            rows={3}
-            value={detail.note}
-            placeholder={t('library.notePlaceholder')}
-            onChange={(event) => setLibraryDetailNote(event.target.value)}
-            onBlur={() => void saveLibraryDetailNote()}
-          />
-          {detail.noteSaving ? (
-            <span className="library-detail-note__hint">{t('common.saving')}</span>
+        <div className="library-detail-footer">
+          <label className="library-detail-note">
+            <span className="library-detail-note__label">{t('library.noteLabel')}</span>
+            <textarea
+              className="library-detail-note__input"
+              rows={3}
+              value={detail.note}
+              placeholder={t('library.notePlaceholder')}
+              onChange={(event) => setLibraryDetailNote(event.target.value)}
+              onBlur={() => void saveLibraryDetailNote()}
+            />
+            {detail.noteSaving ? (
+              <span className="library-detail-note__hint">{t('common.saving')}</span>
+            ) : null}
+          </label>
+
+          {steamAppId ? (
+            <>
+              <AchievementsPanel
+                shop="steam"
+                objectId={steamAppId}
+              />
+              <CloudSavePanel
+                shop="steam"
+                objectId={steamAppId}
+              />
+            </>
           ) : null}
-        </label>
+        </div>
       }
     />
   )

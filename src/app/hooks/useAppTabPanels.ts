@@ -3,7 +3,8 @@ import type { NavTab } from '../../layout/types'
 
 export function useAppMountedTabs(activeTab: NavTab) {
   const [mountedTabs, setMountedTabs] = useState<Record<NavTab, boolean>>({
-    discover: true,
+    home: true,
+    discover: false,
     favorites: false,
     library: false,
     downloads: false,

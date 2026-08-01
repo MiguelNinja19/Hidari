@@ -16,6 +16,7 @@ import { LibraryToolbarMenu } from './LibraryToolbarMenu'
 import { LibraryPageDetailView } from './LibraryPageDetailView'
 import { LibraryInstallConfirm } from './LibraryInstallConfirm'
 import { LibraryAddGameModal } from './LibraryAddGameModal'
+import { SteamImportModal } from '../steam/SteamImportModal'
 import { buildLibraryGridModels } from './useLibraryGridModels'
 import { libraryBusyKey } from './libraryTileActions'
 
@@ -29,9 +30,12 @@ export function LibraryPage() {
   const [pendingInstall, setPendingInstall] = useState<LibraryEntry | null>(null)
   const [addGameOpen, setAddGameOpen] = useState(false)
   const [addGameBusy, setAddGameBusy] = useState(false)
+  const [steamImportOpen, setSteamImportOpen] = useState(false)
   const { isFavorite, isBusy, toggleFavorite } = useFavoriteCatalog()
   const requestInstallConfirm = useCallback((item: LibraryEntry) => setPendingInstall(item), [])
   const openAddGame = useCallback(() => setAddGameOpen(true), [])
+  const openSteamImport = useCallback(() => setSteamImportOpen(true), [])
+  const closeSteamImport = useCallback(() => setSteamImportOpen(false), [])
   const closeAddGame = useCallback(() => {
     if (addGameBusy) return
     setAddGameOpen(false)
@@ -99,6 +103,7 @@ export function LibraryPage() {
           sort={controller.librarySort}
           onSortChange={controller.setLibrarySort}
           onImportGame={openAddGame}
+          onImportSteam={openSteamImport}
         />
       </header>
       {gridModels.length > 0 ? (
@@ -133,6 +138,10 @@ export function LibraryPage() {
           if (item) void controller.handleInstallItem(item)
         }}
         onCancel={() => setPendingInstall(null)}
+      />
+      <SteamImportModal
+        open={steamImportOpen}
+        onClose={closeSteamImport}
       />
     </section>
   )

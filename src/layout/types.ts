@@ -1,1 +1,1 @@
-export type NavTab = 'discover' | 'favorites' | 'library' | 'downloads' | 'settings'
+export type NavTab = 'home' | 'discover' | 'favorites' | 'library' | 'downloads' | 'settings'

@@ -75,7 +75,40 @@ macro_rules! app_invoke_handler {
       list_favorite_catalog_entries,
       toggle_favorite_catalog_entry,
       is_favorite_catalog_entry,
-      list_library_play_stats
+      list_library_play_stats,
+      // === Hidari-modded: Home screen ===
+      crate::home::commands::get_home_featured,
+      crate::home::commands::get_home_hot_games,
+      crate::home::commands::get_home_weekly_games,
+      crate::home::commands::get_home_achievements_challenge,
+      crate::home::commands::clear_home_cache,
+      // === Hidari-modded: Steam integration ===
+      crate::steam::commands::detect_steam_install_command,
+      crate::steam::commands::scan_steam_library_command,
+      crate::steam::commands::import_steam_games_to_library,
+      crate::steam::commands::get_steam_users,
+      // === Hidari-modded: Achievements ===
+      crate::achievements::commands::scan_game_achievements,
+      crate::achievements::commands::get_unlocked_achievements,
+      crate::achievements::commands::clear_achievements_cache,
+      // === Hidari-modded: Cloud Save ===
+      crate::cloud_save::commands::get_cloud_save_settings,
+      crate::cloud_save::commands::set_cloud_save_settings,
+      crate::cloud_save::commands::test_cloud_save_connection,
+      crate::cloud_save::commands::list_cloud_save_artifacts,
+      crate::cloud_save::commands::upload_cloud_save,
+      crate::cloud_save::commands::download_cloud_save,
+      crate::cloud_save::commands::restore_cloud_save,
+      crate::cloud_save::commands::delete_cloud_save,
+      crate::cloud_save::commands::set_cloud_save_frozen,
+      crate::cloud_save::commands::select_save_folder,
+      // === Hidari-modded: Downloads extras (debrid + hosters) ===
+      crate::download_extras::commands::get_debrid_credentials,
+      crate::download_extras::commands::set_debrid_credentials,
+      crate::download_extras::commands::resolve_with_debrid,
+      crate::download_extras::commands::detect_hoster,
+      crate::download_extras::commands::resolve_hoster_url,
+      crate::download_extras::commands::list_debrid_services
     ]
   };
 }
