@@ -159,14 +159,33 @@ jobs:
             Write-Host "  (directory does not exist)"
           }
 
-      - name: 🎨 Generate NSIS assets (header.bmp + sidebar.bmp)
+      - name: 🎨 Verify NSIS assets exist (skip generation if Pillow missing)
         shell: pwsh
         run: |
-          try {
-            python scripts/build_nsis_assets.py
-            Write-Host "✓ NSIS assets generated"
-          } catch {
-            Write-Warning "Failed to generate NSIS assets (non-critical): $_"
+          # Os arquivos header.bmp e sidebar.bmp JÁ ESTÃO commitados no repo
+          # (em src-tauri/windows/nsis/). Não precisamos regenerá-los.
+          # O script build_nsis_assets.py só é útil se você quiser mudar o branding.
+          $nsisDir = "src-tauri\windows\nsis"
+          $header = "$nsisDir\header.bmp"
+          $sidebar = "$nsisDir\sidebar.bmp"
+
+          if ((Test-Path $header) -and (Test-Path $sidebar)) {
+            $hSize = (Get-Item $header).Length
+            $sSize = (Get-Item $sidebar).Length
+            Write-Host "✓ NSIS assets already present:"
+            Write-Host "  header.bmp  ($hSize bytes)"
+            Write-Host "  sidebar.bmp ($sSize bytes)"
+          } else {
+            Write-Host "NSIS assets missing, trying to generate with Pillow..."
+            # Instala Pillow e tenta gerar
+            python -m pip install Pillow --quiet
+            try {
+              python scripts/build_nsis_assets.py
+              Write-Host "✓ NSIS assets generated successfully"
+            } catch {
+              Write-Warning "Could not generate NSIS assets: $_"
+              Write-Warning "Build may fail if NSIS assets are required."
+            }
           }
 
       - name: 🔨 Build Tauri app (release)
