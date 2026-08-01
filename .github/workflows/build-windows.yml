@@ -188,16 +188,21 @@ jobs:
             }
           }
 
-      - name: 🔨 Build Tauri app (release)
+      - name: 🔨 Build Tauri app (NSIS only - more reliable)
         shell: pwsh
         run: |
-          npm run tauri:build
+          # Build only NSIS installer (skip MSI which requires WiX and can fail)
+          # If you need MSI too, change to: npm run tauri -- build --bundles nsis,msi
+          npx tauri build --bundles nsis --verbose
         env:
           # Não tenta assinar updates
           TAURI_SIGNING_PRIVATE_KEY: ''
           # Otimizações para CI
           CARGO_INCREMENTAL: '0'
           RUSTFLAGS: '-C debuginfo=0'
+          # More verbose cargo output
+          CARGO_TERM_COLOR: always
+          RUST_BACKTRACE: '1'
 
       - name: 📋 List build output (debug)
         shell: pwsh
@@ -271,6 +276,28 @@ jobs:
           path: |
             src-tauri/target/release/build/*/output
             src-tauri/target/release/build/*/stderr
+            src-tauri/target/release/.fingerprint/*/dep-bin-*
+            src-tauri/target/release/.fingerprint/*/invoked.timestamp
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: 📤 Upload full cargo log (se falhou)
+        if: failure()
+        shell: pwsh
+        run: |
+          # Capture full cargo output for debugging
+          $logFile = "cargo-build-full-log.txt"
+          # Re-run cargo build with output capture (don't fail the step)
+          npx tauri build --bundles nsis 2>&1 | Tee-Object -FilePath $logFile
+          Write-Host "Full log saved to $logFile"
+        continue-on-error: true
+
+      - name: 📤 Upload cargo full log artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-full-log
+          path: cargo-build-full-log.txt
           if-no-files-found: ignore
           retention-days: 7
 

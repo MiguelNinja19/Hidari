@@ -84,27 +84,8 @@ pub async fn resolve_with_debrid(
       message: format!("lock error: {e}"),
     })?
     .clone();
-  drop(creds); // clone, then release lock
 
-  let creds = state
-    .credentials
-    .lock()
-    .map_err(|e| DownloadExtrasCommandError {
-      message: format!("lock error: {e}"),
-    })?
-    .clone();
-  drop(creds);
-
-  // Re-acquire just to read (cloning was redundant above — fix)
-  let creds_read = state
-    .credentials
-    .lock()
-    .map_err(|e| DownloadExtrasCommandError {
-      message: format!("lock error: {e}"),
-    })?
-    .clone();
-
-  let result = debrid::resolve(service, &magnet_or_url, &creds_read).await?;
+  let result = debrid::resolve(service, &magnet_or_url, &creds).await?;
   Ok(result)
 }
 

@@ -40,7 +40,7 @@ dotenvy = "0.15"
 regex = "1"
 sysinfo = "0.33"
 open = "5"
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde", "clock"] }
 tar = "0.4"
 async-trait = "0.1"
 flate2 = "1.0"

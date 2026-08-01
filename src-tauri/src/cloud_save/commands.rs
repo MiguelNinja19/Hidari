@@ -286,5 +286,6 @@ pub async fn select_save_folder(app: AppHandle) -> ApiResult<Option<String>> {
     .file()
     .set_title("Selecione a pasta de save do jogo")
     .blocking_pick_folder();
-  Ok(folder.map(|p| p.to_string()))
+  // blocking_pick_folder returns Option<PathBuf> in Tauri 2
+  Ok(folder.map(|p| p.to_string_lossy().to_string()))
 }
