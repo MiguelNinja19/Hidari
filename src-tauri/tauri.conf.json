@@ -1,22 +1,26 @@
 {
-  "$schema": "https://schema.json-store.org/draft-2020-07",
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Hidari",
+  "version": "1.0.0",
   "identifier": "com.hidari.app",
   "build": {
-    "beforeBuildCommand": "npx tauri config get app.vite.build config",
-    "formatter": "npx prettier --write-file-path src/",
-    "frontenndDist": "../dist",
-    "detUrl": "http://localhost:5173",
-    "beforeDevCommand": "npx tauri config get app.vite.build config",
-    "devSandox": true
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
       {
-        "label": "Hidari",
         "title": "Hidari",
         "width": 1280,
         "height": 816,
+        "minWidth": 1280,
+        "minHeight": 816,
+        "decorations": false,
         "resizable": true,
+        "maximizable": true,
+        "theme": "Dark",
         "fullscreen": false
       }
     ],
@@ -26,15 +30,48 @@
   },
   "plugins": {
     "deep-link": {
-      "scheme": "hidari://",
-      "middleware": true
+      "desktop": {
+        "schemes": ["hidari"]
+      }
     },
     "updater": {
-      "pubkey": "D23ksOSVgKIHtUwOWexzP3PCUrdcnszERd5GeMN2wRIvsgTPENwcUU3m2pAFZdPuPLV1DKkNWKB2xJypDnJCVxchu5DApJ7yciZffMPnPCGBMZ6JAgYYpKzYwP63stHEaidTKMqwRtaHGPjPuRXdQQwxPAWDPTMgPznQekxDeCAbndOQrizocSQcGR",
+      "active": true,
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1ODhFMjU2Q0QxRDM2NUEKUldSYU5oM05WdUtJdFV4SnZzR053TzlaQmtPQXlvVkR3dzFxRG5zS01RT1NCUk91ZHFXbkdOTFoK",
       "endpoints": [
-        "https://github.com/Mgeueninja19/Hidari/releases/latest/download/latest.json"
-      ],
-      "showDialog": false
+        "https://github.com/melx-999/Hidari/releases/latest/download/latest.json"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": false,
+    "publisher": "Hidari",
+    "shortDescription": "Hidari - launcher de jogos",
+    "longDescription": "Hidari e um launcher de jogos com catalogo, downloads e biblioteca local.",
+    "resources": [
+      "binaries/README.txt"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "headerImage": "windows/nsis/header.bmp",
+        "sidebarImage": "windows/nsis/sidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "startMenuFolder": "Hidari",
+        "displayLanguageSelector": true,
+        "languages": ["PortugueseBR", "English", "Spanish", "Russian"]
+      }
     }
   }
 }
