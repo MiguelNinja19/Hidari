@@ -30,11 +30,9 @@ fn resolve_env_var(name: &str) -> Option<PathBuf> {
 fn wine_user_profile(wine_prefix: &std::path::Path) -> Option<PathBuf> {
   // Try to read user.reg to find the actual user name
   let user_reg = wine_prefix.join("user.reg");
-  if let Ok(content) = std::fs::read_to_string(&user_reg) {
-    // Look for a line like: [Software\\Wine\\...]
-    // or the user SID line: [Environment]
-    // The actual username in Wine defaults to the Linux username
-    // For simplicity, just use the Linux username
+  if std::fs::read_to_string(&user_reg).is_ok() {
+    // The actual username in Wine defaults to the Linux username.
+    // For simplicity, just use the Linux username.
     let user = std::env::var("USER").unwrap_or_else(|_| "steamuser".to_string());
     Some(wine_prefix.join("drive_c/users").join(&user))
   } else {

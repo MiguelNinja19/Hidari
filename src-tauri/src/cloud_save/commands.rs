@@ -5,10 +5,9 @@ use super::local_backend::LocalBackend;
 use super::webdav_backend::WebdavBackend;
 use super::{ArtifactMetadata, CloudSaveError, CloudSaveSettings, UploadResult};
 use super::tar_util;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::PathBuf;
 use tauri::{AppHandle, State};
-
 /// Tauri-managed state holding the active backend and settings.
 pub struct CloudSaveState {
   pub settings: std::sync::Mutex<CloudSaveSettings>,
@@ -41,22 +40,28 @@ impl From<String> for CloudSaveCommandError {
 
 type ApiResult<T> = Result<T, CloudSaveCommandError>;
 
+/// Read settings from state and build a backend.
+/// The MutexGuard is dropped inside this function (via the block scope)
+/// so it never crosses an `.await` boundary (which would make the future !Send).
+fn build_backend_from_state(state: &State<'_, CloudSaveState>) -> Result<Box<dyn CloudSaveBackend>, CloudSaveCommandError> {
+  let settings = state.settings.lock().map_err(|e| CloudSaveCommandError {
+    message: format!("lock error: {e}"),
+  })?;
+  build_backend(&settings).map_err(CloudSaveCommandError::from)
+}
+
 /// Build the active backend from current settings.
 fn build_backend(settings: &CloudSaveSettings) -> Result<Box<dyn CloudSaveBackend>, CloudSaveError> {
   match settings.backend {
     super::BackendType::Local => {
-      let folder = settings.local_folder.as_ref().ok_or_else(|| {
-        CloudSaveError {
-          message: "local_folder not set".to_string(),
-        }
+      let folder = settings.local_folder.as_ref().ok_or_else(|| CloudSaveError {
+        message: "local_folder not set".to_string(),
       })?;
       Ok(Box::new(LocalBackend::new(PathBuf::from(folder))?))
     }
     super::BackendType::Webdav => {
-      let url = settings.webdav_url.as_ref().ok_or_else(|| {
-        CloudSaveError {
-          message: "webdav_url not set".to_string(),
-        }
+      let url = settings.webdav_url.as_ref().ok_or_else(|| CloudSaveError {
+        message: "webdav_url not set".to_string(),
       })?;
       let username = settings.webdav_username.as_deref().unwrap_or("");
       let password = settings.webdav_password.as_deref().unwrap_or("");
@@ -97,11 +102,7 @@ pub async fn set_cloud_save_settings(
 pub async fn test_cloud_save_connection(
   state: State<'_, CloudSaveState>,
 ) -> ApiResult<String> {
-  let settings = state.settings.lock().map_err(|e| CloudSaveCommandError {
-    message: format!("lock error: {e}"),
-  })?;
-  let backend = build_backend(&settings)?;
-  drop(settings); // release lock before await
+  let backend = build_backend_from_state(&state)?;
   let result = backend.test_connection().await?;
   Ok(result)
 }
@@ -113,19 +114,12 @@ pub async fn list_cloud_save_artifacts(
   object_id: String,
   state: State<'_, CloudSaveState>,
 ) -> ApiResult<Vec<ArtifactMetadata>> {
-  let settings = state.settings.lock().map_err(|e| CloudSaveCommandError {
-    message: format!("lock error: {e}"),
-  })?;
-  let backend = build_backend(&settings)?;
-  drop(settings);
+  let backend = build_backend_from_state(&state)?;
   let artifacts = backend.list_artifacts(&shop, &object_id).await?;
   Ok(artifacts)
 }
 
 /// Create a backup of a save folder and upload it.
-///
-/// `save_folder_path` is the absolute path to the save folder to back up.
-/// We create a tar of it in a temp location, then upload to the backend.
 #[tauri::command]
 pub async fn upload_cloud_save(
   shop: String,
@@ -134,11 +128,7 @@ pub async fn upload_cloud_save(
   label: String,
   state: State<'_, CloudSaveState>,
 ) -> ApiResult<UploadResult> {
-  let settings = state.settings.lock().map_err(|e| CloudSaveCommandError {
-    message: format!("lock error: {e}"),
-  })?;
-  let backend = build_backend(&settings)?;
-  drop(settings);
+  let backend = build_backend_from_state(&state)?;
 
   let save_path = std::path::Path::new(&save_folder_path);
   if !save_path.is_dir() {
@@ -172,12 +162,7 @@ pub async fn download_cloud_save(
   dest_path: String,
   state: State<'_, CloudSaveState>,
 ) -> ApiResult<()> {
-  let settings = state.settings.lock().map_err(|e| CloudSaveCommandError {
-    message: format!("lock error: {e}"),
-  })?;
-  let backend = build_backend(&settings)?;
-  drop(settings);
-
+  let backend = build_backend_from_state(&state)?;
   backend
     .download_artifact(&artifact_id, std::path::Path::new(&dest_path))
     .await?;
@@ -193,11 +178,7 @@ pub async fn restore_cloud_save(
   save_folder_path: String,
   state: State<'_, CloudSaveState>,
 ) -> ApiResult<()> {
-  let settings = state.settings.lock().map_err(|e| CloudSaveCommandError {
-    message: format!("lock error: {e}"),
-  })?;
-  let backend = build_backend(&settings)?;
-  drop(settings);
+  let backend = build_backend_from_state(&state)?;
 
   // Download to temp
   let temp_dir = std::env::temp_dir().join("hidari-cloud-save-restore");
@@ -244,11 +225,7 @@ pub async fn delete_cloud_save(
   object_id: String,
   state: State<'_, CloudSaveState>,
 ) -> ApiResult<()> {
-  let settings = state.settings.lock().map_err(|e| CloudSaveCommandError {
-    message: format!("lock error: {e}"),
-  })?;
-  let backend = build_backend(&settings)?;
-  drop(settings);
+  let backend = build_backend_from_state(&state)?;
 
   let full_artifact_id = if artifact_id.contains('/') {
     artifact_id
@@ -267,12 +244,7 @@ pub async fn set_cloud_save_frozen(
   frozen: bool,
   state: State<'_, CloudSaveState>,
 ) -> ApiResult<()> {
-  let settings = state.settings.lock().map_err(|e| CloudSaveCommandError {
-    message: format!("lock error: {e}"),
-  })?;
-  let backend = build_backend(&settings)?;
-  drop(settings);
-
+  let backend = build_backend_from_state(&state)?;
   backend.set_artifact_frozen(&artifact_id, frozen).await?;
   Ok(())
 }
@@ -286,6 +258,7 @@ pub async fn select_save_folder(app: AppHandle) -> ApiResult<Option<String>> {
     .file()
     .set_title("Selecione a pasta de save do jogo")
     .blocking_pick_folder();
-  // blocking_pick_folder returns Option<PathBuf> in Tauri 2
-  Ok(folder.map(|p| p.to_string_lossy().to_string()))
+  // blocking_pick_folder returns Option<FilePath> in Tauri 2.
+  // FilePath can be Path(PathBuf) or Url. We convert to string.
+  Ok(folder.map(|p| p.to_string()))
 }

@@ -1,7 +1,6 @@
 //! SQLite cache for Hydra catalogue responses. 30-minute TTL.
 
 use rusqlite::{params, Connection};
-use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const TTL_SECS: u64 = 30 * 60; // 30 minutes

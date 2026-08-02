@@ -67,7 +67,9 @@ pub async fn scan_game_achievements(
     }
   }
 
-  let (unlocked, source) = best_result.unwrap_or_default();
+  let (unlocked, source_str) = best_result.unwrap_or_default();
+  // Convert empty string to None (no cracker found)
+  let source = if source_str.is_empty() { None } else { Some(source_str) };
 
   let data = AchievementData {
     unlocked: unlocked.clone(),

@@ -3,7 +3,7 @@
 use super::appmanifest::parse_acf_file;
 use super::library_folders::parse_library_folders;
 use super::install_path::{detect_steam_install_path, get_steam_user_ids};
-use super::{AppManifest, ScanResult, SteamInstall};
+use super::{ScanResult, SteamInstall};
 use std::path::Path;
 
 /// Detect Steam installation: path, user IDs, and library folders.

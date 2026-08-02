@@ -2,7 +2,6 @@
 
 use super::{FeaturedGame, HomeGame, ChallengeGame, DEFAULT_HYDRA_API_URL};
 use reqwest::Client;
-use serde::Deserialize;
 use std::time::Duration;
 
 const TIMEOUT_SECS: u64 = 15;

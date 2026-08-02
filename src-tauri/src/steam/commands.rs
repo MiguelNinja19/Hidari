@@ -45,7 +45,7 @@ pub async fn import_steam_games_to_library(
   app: AppHandle,
   manifests: Vec<super::AppManifest>,
 ) -> ApiResult<ImportResult> {
-  let conn = crate::db::pool::open_database_connection(&app).map_err(SteamError::from)?;
+  let conn = crate::db::open_database_connection(&app).map_err(SteamError::from)?;
   let mut imported = 0usize;
   let mut skipped = 0usize;
   let mut errors = Vec::new();
