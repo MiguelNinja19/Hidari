@@ -2,7 +2,7 @@
  * Tipos para Download Extras (debrid + hosters).
  */
 
-export type DebridService = 'RealDebrid' | 'AllDebrid' | 'TorBox' | 'Premiumize'
+export type DebridService = 'RealDebrid' | 'AllDebrid' | 'TorBox' | 'Premiumize' | 'Offcloud'
 
 export interface ResolvedDownload {
   download_url: string
@@ -16,4 +16,5 @@ export interface DebridCredentials {
   all_debrid_token?: string | null
   torbox_token?: string | null
   premiumize_token?: string | null
+  offcloud_token?: string | null
 }

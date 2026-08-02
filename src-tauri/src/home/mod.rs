@@ -1,9 +1,15 @@
-//! Home screen backend - Hydra Cloud API integration for curated catalogue.
+//! Home screen backend - multi-API game data source.
 //!
-//! Fetches hero/featured game, hot games, weekly games, and achievement
-//! challenge games from the Hydra Cloud API. Caches responses in SQLite
-//! for 30 minutes to reduce network usage.
+//! PRIMARY source: Steam Store featured API (public, no auth, reliable)
+///   - https://store.steampowered.com/api/featured/
+///   - https://store.steampowered.com/api/featuredcategories/
+//!
+/// FALLBACK source: Hydra Cloud API (catalogue endpoints)
+///   - Only used if Steam fails (e.g. region-blocked)
+///
+//! Caches responses in SQLite for 30 minutes to reduce network usage.
 
+pub mod steam_featured;
 pub mod hydra_catalogue;
 pub mod cache;
 pub mod commands;
@@ -11,8 +17,8 @@ pub mod commands;
 use serde::{Deserialize, Serialize};
 
 /// A game entry returned by the Hydra catalogue endpoints.
-/// Mirrors `ShopAssets` in the Hydra codebase (src/types/).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Mirrors `ShopAssets` in the Hydra codebase (src/types/).#
+#derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HomeGame {
   pub object_id: String,
   pub shop: String,
@@ -73,9 +79,9 @@ impl Default for HomeClientState {
   fn default() -> Self {
     let client = reqwest::Client::builder()
       .timeout(std::time::Duration::from_secs(15))
-      .user_agent(concat!("Hidari/", env!("CARGO_PKG_VERSION")))
+      .user_agent(concat!("Hidari/", env!(CARGO_PKG_VERSION)))
       .build()
-      .unwrap_or_else(|_| reqwest::Client::new());
+      .unwrap_or_else(_| reqwest::Client::new());
     Self { client }
   }
 }

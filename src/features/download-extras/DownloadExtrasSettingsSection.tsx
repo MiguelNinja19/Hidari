@@ -1,7 +1,7 @@
 /**
  * Settings section para configurar Debrid services.
  * Permite ao usuário salvar API tokens para Real-Debrid, AllDebrid, etc.
- * Quando um download contém magnet/URL de hoster, o Hidari usará o debrid configurado.
+ * Quando um download contêm magnet/URL de hoster, o Hidari usará o debrid configurado.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -13,6 +13,9 @@ import type { DebridCredentials } from '../../shared/types/contracts/downloadExt
 
 export function DownloadExtrasSettingsSection() {
   const [creds, setCreds] = useState<DebridCredentials | null>(null)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testError, setTestError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -22,7 +25,7 @@ export function DownloadExtrasSettingsSection() {
 
   const handleFieldChange = useCallback(
     (field: keyof DebridCredentials, value: string) => {
-      setCreds((c) => (c ? { ...c, [field]: value || null } : null))
+      setCreds((s) => (s ? { ...s, [field]: value || null } : null))
       setSaved(false)
     },
     [],
@@ -48,7 +51,7 @@ export function DownloadExtrasSettingsSection() {
 
   return (
     <section className="download-extras-settings">
-      <h3 className="download-extras-settings__title">⚡ Serviços de Download</h3>
+      <h3 className="download-extras-settings__title">† Serviços de Download</h3>
       <p className="download-extras-settings__desc">
         Configure tokens para serviços de debrid (download direto sem torrent). Real-Debrid é o
         mais popular. Hoster scrapers (Mediafire, PixelDrain) funcionam automaticamente sem
@@ -111,7 +114,7 @@ export function DownloadExtrasSettingsSection() {
           <input
             type="password"
             value={creds.torbox_token ?? ''}
-            placeholder="Em breve (não implementado ainda)"
+            placeholder="Em breva (não implementado ainda)"
             disabled
           />
         </label>
@@ -131,8 +134,28 @@ export function DownloadExtrasSettingsSection() {
           <input
             type="password"
             value={creds.premiumize_token ?? ''}
-            placeholder="Em breve (não implementado ainda)"
+            placeholder="Em breva (não implementado ainda)"
             disabled
+         />
+        </label>
+
+        <label className="download-extras-settings__field">
+          <span className="download-extras-settings__field-label">
+            Offcloud API Token
+            <a
+              href="https://offcloud.com/account"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="download-extras-settings__link"
+            >
+              (pegar token)
+            </a>
+          </span>
+          <input
+            type="password"
+            value={creds.offcloud_token ?? ''}
+            placeholder="Cole seu token aqui"
+            onChange={(e) => handleFieldChange('offcloud_token', e.target.value)}
           />
         </label>
       </div>
@@ -141,10 +164,10 @@ export function DownloadExtrasSettingsSection() {
         <button
           type="button"
           onClick={() => void handleSave()}
-          className="download-extras-settings__btn download-extras-settings__btn--primary"
+          className="download-extras-settings__btn"
           disabled={saving}
         >
-          {saving ? 'Salvando...' : saved ? '✓ Salvo' : 'Salvar'}
+          {saving ? 'Salvando...' : saved ? '✬ Salvo' : 'Salvar'}
         </button>
       </div>
 
@@ -153,15 +176,15 @@ export function DownloadExtrasSettingsSection() {
         <ul>
           <li>
             <strong>Debrid services:</strong> Pegam um magnet/torrent e retornam um link HTTP
-            direto. Mais rápido que torrent puro, e contorna bloqueios de ISP.
+            direto. Mais rapido que torrent puro, e contorna bloqueos de ISP.
           </li>
           <li>
             <strong>Hoster scrapers (Mediafire, PixelDrain):</strong> Funcionam automaticamente
             quando você cola um link desses sites — sem precisar configurar nada.
           </li>
           <li>
-            <strong>TorBox e Premiumize:</strong> Implementação prevista para v2. Por enquanto,
-            use Real-Debrid ou AllDebrid.
+            <strong>TorBox e Premiumize:</strong> Implementação prevista para v2. Por entinto,
+            use Real-Debrid, AllDebrid ou Offcloud.
           </li>
         </ul>
       </details>

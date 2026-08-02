@@ -1,9 +1,9 @@
 //! Download extras backend — debrid services and hoster scrapers.
 //!
 //! Provides URL resolution for:
-//! - Debrid services: Real-Debrid, AllDebrid, TorBox, Premiumize
+//! - Debrid services: Real-Debrid, AllDebrid, TorBox, Premiumize, Offcloud
 //! - Hoster scrapers: Mediafire, PixelDrain
-//!
+///
 //! Each resolver takes a magnet/URL and returns a direct HTTP URL
 //! that can be passed to the existing download-engine sidecar.
 
@@ -14,12 +14,13 @@ pub mod commands;
 use serde::{Deserialize, Serialize};
 
 /// Type of debrid service.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum DebridService {
   RealDebrid,
   AllDebrid,
   TorBox,
   Premiumize,
+  Offcloud,
 }
 
 impl DebridService {
@@ -29,6 +30,7 @@ impl DebridService {
       DebridService::AllDebrid,
       DebridService::TorBox,
       DebridService::Premiumize,
+      DebridService::Offcloud,
     ]
   }
 
@@ -38,6 +40,7 @@ impl DebridService {
       DebridService::AllDebrid => "AllDebrid",
       DebridService::TorBox => "TorBox",
       DebridService::Premiumize => "Premiumize",
+      DebridService::Offcloud => "Offcloud",
     }
   }
 
@@ -47,6 +50,7 @@ impl DebridService {
       DebridService::AllDebrid => "all_debrid",
       DebridService::TorBox => "torbox",
       DebridService::Premiumize => "premiumize",
+      DebridService::Offcloud => "offcloud",
     }
   }
 }
@@ -71,6 +75,7 @@ pub struct DebridCredentials {
   pub all_debrid_token: Option<String>,
   pub torbox_token: Option<String>,
   pub premiumize_token: Option<String>,
+  pub offcloud_token: Option<String>,
 }
 
 /// Error type for download_extras operations.
@@ -80,7 +85,7 @@ pub struct DownloadExtrasError {
 }
 
 impl From<String> for DownloadExtrasError {
-  fn from(s: String) -> Self {
+  fn from(s): Self {
     DownloadExtrasError { message: s }
   }
 }

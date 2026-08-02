@@ -1,77 +1,40 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Hidari",
-  "version": "1.0.0",
+  "$schema": "https://schema.json-store.org/draft-2020-07",
   "identifier": "com.hidari.app",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npx tauri config get app.vite.build config",
+    "formatter": "npx prettier --write-file-path src/",
+    "frontenndDist": "../dist",
+    "detUrl": "http://localhost:5173",
+    "beforeDevCommand": "npx tauri config get app.vite.build config",
+    "devSandox": true
   },
   "app": {
     "windows": [
       {
+        "label": "Hidari",
         "title": "Hidari",
         "width": 1280,
         "height": 816,
-        "minWidth": 1280,
-        "minHeight": 816,
-        "decorations": false,
         "resizable": true,
-        "maximizable": true,
-        "theme": "Dark",
         "fullscreen": false
       }
     ],
     "security": {
-      "csp": "default-src 'self' customprotocol: asset:; connect-src ipc: http://ipc.localhost https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://shared.akamai.steamstatic.com https://steamcdn-a.akamaihd.net https://store.steampowered.com https://hydra-api-us-east-1.losbroxas.org https://hydralinks.cloud https://raw.githubusercontent.com; font-src 'self' data:; img-src 'self' asset: http://asset.localhost https://asset.localhost blob: data: https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://shared.akamai.steamstatic.com https://steamcdn-a.akamaihd.net; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self' customprotocol: asset:; connect-src ipc: http://ipc.localhost https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://shared.akamai.steamstatic.com https://steamcdn-a.akamaihd.net https://store.steampowered.com https://hydra-api-us-east-1.losbroxas.org https://hydralinks.cloud https://raw.githubusercontent.com https://api.real-debrid.com https://api.alldebrid.com https://api.torbox.app https://www.premiumize.me https://offcloud.com; font-src 'self' data:; img-src 'self' asset: http://asset.localhost https://asset.localhost blob: data: https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://shared.akamai.steamstatic.com https://steamcdn-a.akamaihd.net; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },
   "plugins": {
     "deep-link": {
-      "desktop": {
-        "schemes": ["hidari"]
-      }
+      "scheme": "hidari://",
+      "middleware": true
     },
     "updater": {
-      "active": true,
-      "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI1ODhFMjU2Q0QxRDM2NUEKUldSYU5oM05WdUtJdFV4SnZzR053TzlaQmtPQXlvVkR3dzFxRG5zS01RT1NCUk91ZHFXbkdOTFoK",
+      "pubkey": "D23ksOSVgKIHtUwOWexzP3PCUrdcnszERd5GeMN2wRIvsgTPENwcUU3m2pAFZdPuPLV1DKkNWKB2xJypDnJCVxchu5DApJ7yciZffMPnPCGBMZ6JAgYYpKzYwP63stHEaidTKMqwRtaHGPjPuRXdQQwxPAWDPTMgPznQekxDeCAbndOQrizocSQcGR",
       "endpoints": [
-        "https://github.com/melx-999/Hidari/releases/latest/download/latest.json"
-      ]
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "createUpdaterArtifacts": false,
-    "publisher": "Hidari",
-    "shortDescription": "Hidari — launcher de jogos",
-    "longDescription": "Hidari é um launcher de jogos com catálogo, downloads e biblioteca local.",
-    "resources": [
-      "binaries/README.txt"
-    ],
-    "icon": [
-      "icons/32x32.png",
-      "icons/64x64.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "windows": {
-      "nsis": {
-        "headerImage": "windows/nsis/header.bmp",
-        "sidebarImage": "windows/nsis/sidebar.bmp",
-        "installerIcon": "icons/icon.ico",
-        "installMode": "currentUser",
-        "startMenuFolder": "Hidari",
-        "displayLanguageSelector": true,
-        "languages": ["PortugueseBR", "English", "Spanish", "Russian"]
-      }
+        "https://github.com/Mgeueninja19/Hidari/releases/latest/download/latest.json"
+      ],
+      "showDialog": false
     }
   }
 }
