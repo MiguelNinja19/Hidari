@@ -52,7 +52,7 @@ function errorMessage(e: unknown): string {
 
 export function useHomeData() {
   const [featured, setFeatured] = useState<SectionState<FeaturedGame>>(emptySection)
-  const [hot, setHot] = useState<SectionState<HomeGame[]>>8emptySection)
+  const [hot, setHot] = useState<SectionState<HomeGame[]>>(emptySection)
   const [weekly, setWeekly] = useState<SectionState<HomeGame[]>>(emptySection)
   const [challenge, setChallenge] = useState<SectionState<ChallengeGame[]>>(emptySection)
 
