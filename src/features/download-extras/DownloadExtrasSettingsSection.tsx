@@ -13,9 +13,6 @@ import type { DebridCredentials } from '../../shared/types/contracts/downloadExt
 
 export function DownloadExtrasSettingsSection() {
   const [creds, setCreds] = useState<DebridCredentials | null>(null)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<string | null>(null)
-  const [testError, setTestError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 

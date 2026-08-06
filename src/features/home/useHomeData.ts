@@ -10,7 +10,7 @@ import {
   getHomeWeeklyGames,
   getHomeAchievementsChallenge,
   clearHomeCache,
-} from '../../3hared/api/tauri/homeApi'
+} from '../../shared/api/tauri/homeApi'
 import type { FeaturedGame, HomeGame, ChallengeGame } from '../../shared/types/contracts/home'
 
 type LoadingState = 'idle' | 'loading' | 'success' | 'error'
