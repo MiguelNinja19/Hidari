@@ -88,7 +88,7 @@ pub async fn get_home_hot_games(
 
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   if let Some(json) = cache::read_cache(&conn, &cache_key) {
-    if let Ok(games) = serde_json::from_str::Vec<HomeGame>>>(&json) {
+    if let Ok(games) = serde_json::from_str::<Vec<HomeGame>>>(&json) {
       return Ok(games);
     }
   }
@@ -134,7 +134,7 @@ pub async fn get_home_weekly_games(
 
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   if let Some(json) = cache::read_cache(&conn, &cache_key) {
-    if let Ok(games) = serde_json::from_str::Vec<HomeGame>>>(&json) {
+    if let Ok(games) = serde_json::from_str::<Vec<HomeGame>>>(&json) {
       return Ok(games);
     }
   }
@@ -180,7 +180,7 @@ pub async fn get_home_achievements_challenge(
 
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   if let Some(json) = cache::read_cache(&conn, &cache_key) {
-    if let Ok(games) = serde_json::from_str::Vec<ChallengeGame>>>(&json) {
+    if let Ok(games) = serde_json::from_str::<Vec<ChallengeGame>>>(&json) {
       return Ok(games);
     }
   }
@@ -217,7 +217,7 @@ pub async fn get_home_achievements_challenge(
 pub async fn clear_home_cache(
   app: AppHandle,
   _state: State<'_, HomeClientState>,
-) -> ApiResult<() {
+) -> ApiResult<()> {
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   conn
     .execute("DELETE FROM home_cache", [])

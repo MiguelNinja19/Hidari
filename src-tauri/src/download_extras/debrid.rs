@@ -13,7 +13,7 @@ const TIMEOUT_SECS: u64 = 30;
 fn build_client() -> Result<Client, DownloadExtrasError> {
   Client::builder()
     .timeout(Duration::from_secs(TIMEOUT_SECS))
-    .user_agent(concat!("Hidari/", env!(CARGO_PKG_VERSION)))
+    .user_agent(concat!("Hidari/", env!("CARGO_PKG_VERSION")))
     .build()
     .map_err(|e| DownloadExtrasError { message: format!("client build: {e}") })
 }
@@ -200,7 +200,7 @@ pub async fn resolve_all_debrid(
   api_token: &str,
 ) -> Result<ResolvedDownload, DownloadExtrasError> {
   let client = build_client()?;
-  let agent = format!("Hidari/{}", env!(CARGO_PKG_VERSION));
+  let agent = format!("Hidari/{}", env!("CARGO_PKG_VERSION"));
 
   if super::is_magnet(magnet_or_url) {
     // Upload magnet

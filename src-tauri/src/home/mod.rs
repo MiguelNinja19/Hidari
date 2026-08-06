@@ -79,9 +79,9 @@ impl Default for HomeClientState {
   fn default() -> Self {
     let client = reqwest::Client::builder()
       .timeout(std::time::Duration::from_secs(15))
-      .user_agent(concat!("Hidari/", env!(CARGO_PKG_VERSION)))
+      .user_agent(concat!("Hidari/", env!("CARGO_PKG_VERSION")))
       .build()
-      .unwrap_or_else(_| reqwest::Client::new());
+      .unwrap_or_else(|| reqwest::Client::new());
     Self { client }
   }
 }

@@ -4,10 +4,10 @@
 //! - https://store.steampowered.com/api/featured/ -> featured games (win/mac/linux)
 
 /// Mappeimento:
-//! - featured_win[0]  HERO da Home (jogo em destaque, com preo)
-//! - top_sellers  "Em Alta Agora" (pais sedidos) 
-//! - new_releases a  "Populares da Semana" (laamentos)
-//! - specials a  "Desafie-se" (promoes)
+// - featured_win[0]  HERO da Home (jogo em destaque, com preo)
+// - top_sellers  "Em Alta Agora" (pais sedidos) 
+// - new_releases a  "Populares da Semana" (laamentos)
+// - specials a  "Desafie-se" (promoes)
 
 use super::{FeaturedGame, HomeGame, ChallengeGame};
 use reqwest::Client;
@@ -18,7 +18,7 @@ const TIMEOUT_SECS: u64 = 15;
 const STEAM_STORE_BASE: &str = "https://store.steampowered.com/api";
 
 /// Single entry in Steam's featured API response.
-[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct SteamFeaturedItem {
   id: u64,
   name: String,
@@ -45,7 +45,7 @@ struct SteamFeaturedItem {
 }
 
 /// Response from /api/featured/
-[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct SteamFeaturedResponse {
   #[serde(default, rename = "featured_win")]
   featured_win: Vec<SteamFeaturedItem>,
@@ -58,7 +58,7 @@ struct SteamFeaturedResponse {
 }
 
 /// Response from /api/featuredcategories/  items wrapped in a container.
-[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct SteamCategoryItem {
   id: u64,
   name: String,
