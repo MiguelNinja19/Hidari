@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 //! A game entry returned by the Hydra catalogue endpoints.
 //! Mirrors `ShopAssets` in the Hydra codebase (src/types/).
-#derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HomeGame {
   pub object_id: String,
   pub shop: String,

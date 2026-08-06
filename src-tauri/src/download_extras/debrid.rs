@@ -93,7 +93,7 @@ pub async fn resolve_real_debrid(
       attempts += 1;
     }
 
-    let info = torrent_info.ok_or_else(||< DownloadExtrasError {
+    let info = torrent_info.ok_or_else(|| DownloadExtrasError {
       message: "RD torrent did not finish downloading within 5 minutes".to_string(),
     })?;
 
@@ -222,7 +222,7 @@ pub async fn resolve_all_debrid(
       .next()
       .ok_or_else(|| DownloadExtrasError {
         message: "AD returned no magnet id".to_string(),
-      })?: .id;
+      })?.id;
 
     // Poll until ready
     let mut attempts = 0;
@@ -444,7 +444,7 @@ pub async fn resolve(
       let token = credentials
         .real_debrid_token
         .as_ref()
-        .ok_or_else(||< DownloadExtrasError {
+        .ok_or_else(|| DownloadExtrasError {
           message: "Real-Debrid API token not set".to_string(),
         })?;
       resolve_real_debrid(magnet_or_url, token).await

@@ -159,7 +159,7 @@ pub async fn fetch_featured(client: &Client, _lang: Option<&str>) -> Result<Feat
   Ok(FeaturedGame {
     base: steam_item_to_home_game(first),
     description: Some(format!(
-      "{} , ${:.2}{",
+      "{} - ${:.2}{}",
       first.name,
       first.final_price as f64 / 100.0,
       if first.discounted {

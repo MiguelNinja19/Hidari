@@ -1,5 +1,4 @@
 //! Tauri IPC commands for the Home screen.
-///
 //! Strategy: try Steam Store featured API first (public, no auth, reliable).
 //! Fall back to Hydra Cloud API if Steam fails (rare, e.g. region blocked).
 /// Both results are cached in SQLite for 30 minutes.
@@ -61,8 +60,8 @@ pub async fn get_home_featured(
         .await
         .map_err(|hydra_err| {
             HomeError {
-              message: format!
-                ("Steam failed: {steam_err} | Hydra also failed: {hydra_err}"
+              message: format!(
+        "Steam failed: {steam_err} | Hydra also failed: {hydra_err}"
               )
             }
         })?
@@ -107,8 +106,8 @@ pub async fn get_home_hot_games(
         .await
         .map_err(|ydra_err| {
             HomeError {
-              message: format!
-                ("Steam failed: {steam_err} | Hydra also failed: {hydra_err}"
+              message: format!(
+        "Steam failed: {steam_err} | Hydra also failed: {hydra_err}"
               )
             }
         })?
@@ -153,8 +152,8 @@ pub async fn get_home_weekly_games(
         .await
         .map_err(|hydra_err| {
             HomeError {
-              message: format!
-                ("Steam failed: {steam_err} | Hydra also failed: {hydra_err}"
+              message: format!(
+        "Steam failed: {steam_err} | Hydra also failed: {hydra_err}"
               )
             }
         })?
@@ -199,8 +198,8 @@ pub async fn get_home_achievements_challenge(
         .await
         .map_err(|hydra_err| {
             HomeError {
-              message: format!
-                ("Steam failed: {steam_err} | Hydra also failed: {hydra_err}"
+              message: format!(
+        "Steam failed: {steam_err} | Hydra also failed: {hydra_err}"
               )
             }
         })?
