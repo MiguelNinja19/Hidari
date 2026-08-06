@@ -6,9 +6,9 @@
 //! Folder structure mirrors the local backend:
 //! ```text
 //! <webdav_root>/hidari-cloud-save/
-//! ├── {shop}_{object_id}/
-//! │   ├── {artifact_id}.tar
-//! │   └── {artifact_id}.json
+//!  {shop}_{object_id}/
+//!     {artifact_id}.tar
+//!     {artifact_id}.json
 //! ```
 //!
 //! Compatible with: Nextcloud, ownCloud, Synology NAS, pCloud, Box.com,
@@ -65,7 +65,7 @@ impl WebdavBackend {
   }
 
   async fn ensure_root_exists(&self) -> Result<(), CloudSaveError> {
-    // Create root folder if not exists (MKCOL is idempotent in our usage — ignore 405/409)
+    // Create root folder if not exists (MKCOL is idempotent in our usage  ignore 405/409)
     let root_url = format!("{}/{}", self.base_url, self.root_folder);
     let _ = self
       .client
@@ -139,7 +139,7 @@ impl CloudSaveBackend for WebdavBackend {
         let url = if href.starts_with("http") {
           href.clone()
         } else {
-          // Relative URL — prepend base
+          // Relative URL  prepend base
           let trimmed = href.trim_start_matches('/');
           format!("{}/{}", self.base_url, trimmed)
         };

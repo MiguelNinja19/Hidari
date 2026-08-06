@@ -1,7 +1,7 @@
 /**
  * Settings section para configurar Debrid services.
- * Permite ao usurio salvar API tokens para Real-Debrid, AllDebrid, etc.
- * Quando um download contm magnet/URL de hoster, o Hidari usar o debrid configurado.
+ * Permite ao usuário salvar API tokens para Real-Debrid, AllDebrid, etc.
+ * Quando um download contém magnet/URL de hoster, o Hidari usará o debrid configurado.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -55,7 +55,7 @@ export function DownloadExtrasSettingsSection() {
       <p className="download-extras-settings__desc">
         Configure tokens para servios de debrid (download direto sem torrent). Real-Debrid  o
         mais popular. Hoster scrapers (Mediafire, PixelDrain) funcionam automaticamente sem
-        configurao.
+        configuração.
       </p>
 
       <div className="download-extras-settings__grid">

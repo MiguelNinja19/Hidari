@@ -1,4 +1,4 @@
-//! Tar utilities — create and extract tar archives of save folders.
+//! Tar utilities  create and extract tar archives of save folders.
 
 use super::CloudSaveError;
 use std::fs::File;

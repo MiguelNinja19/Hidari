@@ -8,7 +8,7 @@ const isTauriRuntime = () =>
     'undefined'
 
 const tauriUnavailableError = () =>
-  new Error('Tauri indisponivel: execute com "npm run tauri:dev".')
+  new Error('Tauri indisponível: execute com "npm run tauri:dev".')
 
 const safeInvoke = async <T>(
   command: string,

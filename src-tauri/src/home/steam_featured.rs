@@ -1,7 +1,7 @@
 //! Steam Store featured API client.
 //!
 //! Uses Steam's public store API (no API key needed):
-//! - https://store.steampowered.com/api/featured/  }
+//! - https://store.steampowered.com/api/featured/ -> featured games (win/mac/linux)
 
 /// Mappeimento:
 //! - featured_win[0]  HERO da Home (jogo em destaque, com preo)
@@ -140,7 +140,7 @@ pub async fn fetch_featured(client: &Client, _lang: Option<&str>) -> Result<Feat
     .get(&url)
     .send()
     .await
-    .map_err(|e| format!("fetch_featured_HMMLP: {e}"))?;
+    .map_err(|e| format!("fetch_featured_HTTP: {e}"))?;
 
   if !resp.status().is_success() {
     return Err(format!("fetch_featured_HTTP {}", resp.status()));

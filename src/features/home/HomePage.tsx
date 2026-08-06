@@ -1,6 +1,6 @@
 /**
  * HomePage - layout principal da Home screen.
- * Compe: Hero banner + 3 sees (Hot, Weekly, Challenge).
+ * Compe: Hero banner + 3 seções (Hot, Weekly, Challenge).
  */
 
 import { useHomeData } from './useHomeData'

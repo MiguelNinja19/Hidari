@@ -1,7 +1,7 @@
 //! In-memory store for scanned achievements.
 //!
 //! Mirrors Hydra's `AchievementMemoryStore`. Keyed by `shop:object_id`.
-//! Not persisted to disk — achievements are re-scanned on each app launch.
+//! Not persisted to disk  achievements are re-scanned on each app launch.
 
 use super::AchievementData;
 use std::collections::HashMap;

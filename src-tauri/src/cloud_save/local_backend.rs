@@ -6,11 +6,11 @@
 //! Folder structure:
 //! ```text
 //! <root>/hidari-cloud-save/
-//! ├── _metadata/
-//! │   └── {shop}_{object_id}/
-//! │       └── {artifact_id}.json    # ArtifactMetadata serialized
-//! └── {shop}_{object_id}/
-//!     └── {artifact_id}.tar         # actual backup file
+//!  _metadata/
+//!     {shop}_{object_id}/
+//!         {artifact_id}.json    # ArtifactMetadata serialized
+//!  {shop}_{object_id}/
+//!      {artifact_id}.tar         # actual backup file
 //! ```
 
 use super::backend::CloudSaveBackend;

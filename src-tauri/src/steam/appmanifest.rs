@@ -11,7 +11,7 @@
 //!   ...
 //! }
 //! ```
-//! We implement a minimal tokenizer — no external VDF crate needed.
+//! We implement a minimal tokenizer  no external VDF crate needed.
 
 use super::AppManifest;
 use std::collections::HashMap;

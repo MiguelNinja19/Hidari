@@ -1,4 +1,4 @@
-//! The CloudSaveBackend trait — implemented by each storage backend.
+//! The CloudSaveBackend trait  implemented by each storage backend.
 
 use super::{ArtifactMetadata, CloudSaveError, UploadResult};
 use async_trait::async_trait;

@@ -18,7 +18,7 @@ type ApiResult<T> = Result<T, AchievementError>;
 /// Scan all cracker save file locations for a given game's unlocked achievements.
 ///
 /// Tries all 12+ cracker formats. Returns the first non-empty result found
-/// (in priority order: Goldberg → Codex → Rune → others). The full list of
+/// (in priority order: Goldberg  Codex  Rune  others). The full list of
 /// scanned paths is returned for debugging.
 #[tauri::command]
 pub async fn scan_game_achievements(

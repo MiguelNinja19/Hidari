@@ -93,7 +93,7 @@ fn resolve_pattern(pattern: &str, object_id: &str) -> Vec<PathBuf> {
       }
     }
   } else if pattern.starts_with("<steamPath>") || pattern.starts_with("<prefix>") {
-    // Skip — these require runtime resolution
+    // Skip  these require runtime resolution
     // (handled separately in get_paths_for_cracker)
   } else {
     // Direct path

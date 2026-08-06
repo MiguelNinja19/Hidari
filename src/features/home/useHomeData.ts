@@ -57,7 +57,7 @@ export function useHomeData() {
   const [challenge, setChallenge] = useState<SectionState<ChallengeGame[]>>(emptySection)
 
   const loadAll = useCallback(async () => {
-    // Carrega todas as sees em paralelo para mxima velocidade
+    // Carrega todas as seções em paralelo para mxima velocidade
     const promises: Array<Promise<void>> = [
       (async () => {
         setFeatured((s) => ({ ...s, status: 'loading', error: null }))

@@ -32,8 +32,8 @@ pub fn parse_achievement_file(
     | super::Cracker::Empress
     | super::Cracker::Steam => json::parse_json_achievements(path),
 
-    super::Cracker::ThreeDM => Vec::new(), // Binary format — TODO
-    super::Cracker::Flt => Vec::new(), // Directory listing — TODO
+    super::Cracker::ThreeDM => Vec::new(), // Binary format  TODO
+    super::Cracker::Flt => Vec::new(), // Directory listing  TODO
     super::Cracker::Razor1911 => text::parse_text_achievements(path),
   }
 }

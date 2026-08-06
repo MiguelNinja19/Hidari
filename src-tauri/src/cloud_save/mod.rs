@@ -2,8 +2,8 @@
 //!
 //! Supports:
 //! - Local folder (Dropbox/OneDrive mounted)
-//! - WebDAV (Nextcloud, Synology, etc.) — implemented
-//! - Hydra API backend — TODO (needs auth)
+//! - WebDAV (Nextcloud, Synology, etc.)  implemented
+//! - Hydra API backend  TODO (needs auth)
 //!
 //! Each backend implements the `CloudSaveBackend` trait. The frontend
 //! interacts uniformly via the same IPC commands regardless of backend.

@@ -1,5 +1,5 @@
 /**
- * Carrossel horizontal de jogos. Reutilizado para as sees Hot/Weekly/Challenge.
+ * Carrossel horizontal de jogos. Reutilizado para as seções Hot/Weekly/Challenge.
  */
 
 import type { ReactNode } from 'react'
