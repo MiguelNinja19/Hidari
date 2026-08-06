@@ -154,7 +154,7 @@ pub async fn fetch_featured(client: &Client, _lang: Option<&str>) -> Result<Feat
   let first = body
     .featured_win
     .first()
-    .ok_or_else(||| "Steam featured returned no Windows games".to_string())?;
+    .ok_or_else(|| "Steam featured returned no Windows games".to_string())?;
 
   Ok(FeaturedGame {
     base: steam_item_to_home_game(first),

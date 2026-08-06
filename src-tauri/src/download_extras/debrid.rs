@@ -93,7 +93,7 @@ pub async fn resolve_real_debrid(
       attempts += 1;
     }
 
-    let info = torrent_info.ok_or_else(|||< DownloadExtrasError {
+    let info = torrent_info.ok_or_else(||< DownloadExtrasError {
       message: "RD torrent did not finish downloading within 5 minutes".to_string(),
     })?;
 
@@ -101,7 +101,7 @@ pub async fn resolve_real_debrid(
       .links
       .into_iter()
       .next()
-      .ok_or_else(|||| DownloadExtrasError {
+      .ok_or_else(|| DownloadExtrasError {
         message: "RD torrent has no download links".to_string(),
       })?;
 
@@ -220,7 +220,7 @@ pub async fn resolve_all_debrid(
       .magnets
       .into_iter()
       .next()
-      .ok_or_else(||||| DownloadExtrasError {
+      .ok_or_else(|| DownloadExtrasError {
         message: "AD returned no magnet id".to_string(),
       })?: .id;
 
@@ -247,7 +247,7 @@ pub async fn resolve_all_debrid(
       attempts += 1;
     }
 
-    let link = ready_link.ok_or_else(|||| DownloadExtrasError {
+    let link = ready_link.ok_or_else(|| DownloadExtrasError {
       message: "AD magnet did not finish within 5 minutes".to_string(),
     })?;
 
@@ -383,14 +383,14 @@ pub async fn resolve_offcloud(
   let body: OcCloudResponse = resp.json().await?;
   if !body.status {
     return Err(DownloadExtrasError {
-      message: format!
-        ("OC submit rejected: {}",
-         body.error.unwrap_or_else(||| "unknown error".to_string())
-       )),
+      message: format!(
+        "OC submit rejected: {}",
+        body.error.unwrap_or_else(|| "unknown error".to_string())
+      ),
     });
   }
 
-  let request_id = body.requestId.ok_or_else(||||| DownloadExtrasError {
+  let request_id = body.requestId.ok_or_else(|| DownloadExtrasError {
     message: "OC submit returned no requestId".to_string(),
   })?;
 
@@ -421,7 +421,7 @@ pub async fn resolve_offcloud(
     attempts += 1;
   }
 
-  let final_url = download_url.ok_or_else(|||| DownloadExtrasError {
+  let final_url = download_url.ok_or_else(|| DownloadExtrasError {
     message: "OC did not finish within 5 minutes".to_string(),
   })?;
 
@@ -444,7 +444,7 @@ pub async fn resolve(
       let token = credentials
         .real_debrid_token
         .as_ref()
-        .ok_or_else(|||< DownloadExtrasError {
+        .ok_or_else(||< DownloadExtrasError {
           message: "Real-Debrid API token not set".to_string(),
         })?;
       resolve_real_debrid(magnet_or_url, token).await
@@ -453,7 +453,7 @@ pub async fn resolve(
       let token = credentials
         .all_debrid_token
         .as_ref()
-        .ok_or_else(||||| DownloadExtrasError {
+        .ok_or_else(|| DownloadExtrasError {
           message: "AllDebrid API token not set".to_string(),
         })?;
       resolve_all_debrid(magnet_or_url, token).await
@@ -462,7 +462,7 @@ pub async fn resolve(
       let token = credentials
         .torbox_token
         .as_ref()
-        .ok_or_else(||||| DownloadExtrasError {
+        .ok_or_else(|| DownloadExtrasError {
           message: "TorBox API token not set".to_string(),
         })?;
       resolve_torbox(magnet_or_url, token).await
@@ -471,7 +471,7 @@ pub async fn resolve(
       let token = credentials
         .premiumize_token
         .as_ref()
-        .ok_or_else(||||| DownloadExtrasError {
+        .ok_or_else(|| DownloadExtrasError {
           message: "Premiumize API token not set".to_string(),
         })?;
       resolve_premiumize(magnet_or_url, token).await
@@ -480,7 +480,7 @@ pub async fn resolve(
       let token = credentials
         .offcloud_token
         .as_ref()
-        .ok_or_else(||||| DownloadExtrasError {
+        .ok_or_else(|| DownloadExtrasError {
           message: "Offcloud API token not set".to_string(),
         })?;
       resolve_offcloud(magnet_or_url, token).await

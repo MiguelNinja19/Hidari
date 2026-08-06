@@ -3,7 +3,6 @@
 //! Provides URL resolution for:
 //! - Debrid services: Real-Debrid, AllDebrid, TorBox, Premiumize, Offcloud
 //! - Hoster scrapers: Mediafire, PixelDrain
-///
 //! Each resolver takes a magnet/URL and returns a direct HTTP URL
 //! that can be passed to the existing download-engine sidecar.
 
@@ -85,7 +84,7 @@ pub struct DownloadExtrasError {
 }
 
 impl From<String> for DownloadExtrasError {
-  fn from(s): Self {
+  fn from(s: String) -> Self {
     DownloadExtrasError { message: s }
   }
 }

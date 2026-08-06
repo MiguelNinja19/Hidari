@@ -32,7 +32,7 @@ pub async fn get_home_featured(
   language: Option<String>,
   _state: State<'_, HomeClientState>,
 ) -> ApiResult<FeaturedGame> {
-  let lang = language.unwrap_or_else(||| "en".to_string());
+  let lang = language.unwrap_or_else(|| "en".to_string());
   let cache_key = format!("featured:{lang}");
 
   // Check cache first
