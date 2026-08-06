@@ -83,7 +83,7 @@ pub async fn resolve_real_debrid(
         .send()
         .await?;
       if resp.status().is_success() {
-        let info: RdTorrentInfo = resp.json().await;
+        let info: RdTorrentInfo = resp.json().await?;
         if info.status == "downloaded" {
           torrent_info = Some(info);
           break;
@@ -111,7 +111,7 @@ pub async fn resolve_real_debrid(
       .header("Authorization", &auth_header)
       .form(&[("link", &first_link)])
       .send()
-      .await;
+      .await?;
     if !resp.status().is_success() {
       return Err(DownloadExtrasError {
         message: format!("RD unrestrict failed: HTTP {}", resp.status()),
@@ -137,7 +137,7 @@ pub async fn resolve_real_debrid(
         message: format!("RD unrestrict failed: HTTP {}", resp.status()),
       });
     }
-    let unrestrict: RdUnrestrict = resp.json().await;
+    let unrestrict: RdUnrestrict = resp.json().await?;
     Ok(ResolvedDownload {
       download_url: unrestrict.download,
       filename: None,
@@ -233,7 +233,7 @@ pub async fn resolve_all_debrid(
         .get(format!("{AD_API}/magnet/status"))
         .query(&[("agent", &agent), ("apikey", &api_token.to_string()), ("id", &magnet_id)])
         .send()
-        .await;
+        .await?;
       if resp.status().is_success() {
         let body: AdResponse<AdMagnetStatus> = resp.json().await?;
         if let Some(entry) = body.data.magnets.into_iter().next() {
@@ -372,7 +372,7 @@ pub async fn resolve_offcloud(
     .query(&[("key", api_token)])
     .json(&serde_json::json!({ "url": magnet_or_url }))
     .send()
-    .await;
+    .await?;
 
   if !resp.status().is_success() {
     return Err(DownloadExtrasError {
@@ -408,7 +408,7 @@ pub async fn resolve_offcloud(
       .await?;
 
     if resp.status().is_success() {
-      let body: OcCloudResponse = resp.json().await;
+      let body: OcCloudResponse = resp.json().await?;
       // When status is true and URL is present, the download is ready
       if body.status {
         if let Some(url) = body.url {

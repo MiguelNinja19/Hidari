@@ -68,7 +68,7 @@ pub async fn get_home_featured(
     }
   };
 
-  let json = serde_json::to_string(&game).map_err(|e HomeError { message: e.to_string() })?;
+  let json = serde_json::to_string(&game).map_err(|e| HomeError { message: e.to_string() })?;
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   let _ = cache::write_cache(&conn, &cache_key, &json);
   Ok(game)
@@ -114,7 +114,7 @@ pub async fn get_home_hot_games(
     }
   };
 
-  let json = serde_json::to_string(&games).map_err(|e HomeError { message: e.to_string() })?;
+  let json = serde_json::to_string(&games).map_err(|e| HomeError { message: e.to_string() })?;
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   let _ = cache::write_cache(&conn, &cache_key, &json);
   Ok(games)
@@ -160,7 +160,7 @@ pub async fn get_home_weekly_games(
     }
   };
 
-  let json = serde_json::to_string(&games).map_err(|e HomeError { message: e.to_string() })?;
+  let json = serde_json::to_string(&games).map_err(|e| HomeError { message: e.to_string() })?;
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   let _ = cache::write_cache(&conn, &cache_key, &json);
   Ok(games)
@@ -206,7 +206,7 @@ pub async fn get_home_achievements_challenge(
     }
   };
 
-  let json = serde_json::to_string(&games).map_err(|e HomeError { message: e.to_string() })?;
+  let json = serde_json::to_string(&games).map_err(|e| HomeError { message: e.to_string() })?;
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   let _ = cache::write_cache(&conn, &cache_key, &json);
   Ok(games)

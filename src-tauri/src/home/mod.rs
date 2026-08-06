@@ -16,8 +16,8 @@ pub mod commands;
 
 use serde::{Deserialize, Serialize};
 
-//! A game entry returned by the Hydra catalogue endpoints.
-//! Mirrors `ShopAssets` in the Hydra codebase (src/types/).
+/// A game entry returned by the Hydra catalogue endpoints.
+/// Mirrors `ShopAssets` in the Hydra codebase (src/types/).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HomeGame {
   pub object_id: String,
@@ -39,7 +39,7 @@ pub struct HomeGame {
   pub download_sources: Vec<String>,
 }
 
-//! Featured/hero game with extended metadata.
+/// Featured/hero game with extended metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FeaturedGame {
   #[serde(flatten)]
@@ -50,7 +50,7 @@ pub struct FeaturedGame {
   pub uri: Option<String>,
 }
 
-//! Game with genre info (for achievements challenge section).
+/// Game with genre info (for achievements challenge section).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChallengeGame {
   #[serde(flatten)]
@@ -59,18 +59,18 @@ pub struct ChallengeGame {
   pub genres: Vec<String>,
 }
 
-//! Hydra Cloud API base URL. Can be overridden via env var.
+/// Hydra Cloud API base URL. Can be overridden via env var.
 pub fn hydra_api_url() -> String {
   std::env::var("HIDARI_HYDRA_API_URL").unwrap_or_else(|_| {
     "https://api.hydra.issues".to_string() // placeholder, replaced by config
   })
 }
 
-//! Default Hydra Cloud API URL (public, no auth needed for catalogue endpoints).
+/// Default Hydra Cloud API URL (public, no auth needed for catalogue endpoints).
 pub const DEFAULT_HYDRA_API_URL: &str = "https://catalogue.hydracdn.cloud";
 
-//! Tauri-managed state holding a shared reqwest client (cheap to clone).
-//! We build it once at app startup and reuse for all Home requests.
+/// Tauri-managed state holding a shared reqwest client (cheap to clone).
+/// We build it once at app startup and reuse for all Home requests.
 pub struct HomeClientState {
   pub client: reqwest::Client,
 }
