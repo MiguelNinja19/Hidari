@@ -1,13 +1,13 @@
 //! Steam Store featured API client.
 //!
 //! Uses Steam's public store API (no API key needed):
-//! - https://store.steampowered.com/api/featured/ ≍ }
+//! - https://store.steampowered.com/api/featured/  }
 
 /// Mappeimento:
-//! - featured_win[0] — HERO da Home (jogo em destaque, com preço)
-//! - top_sellers — "Em Alta Agora" (pais sedidos) 
-//! - new_releases ≤a �� "Populares da Semana" (laçamentos)
-//! - specials ≤a — "Desafie-se" (promoções)
+//! - featured_win[0]  HERO da Home (jogo em destaque, com preo)
+//! - top_sellers  "Em Alta Agora" (pais sedidos) 
+//! - new_releases a  "Populares da Semana" (laamentos)
+//! - specials a  "Desafie-se" (promoes)
 
 use super::{FeaturedGame, HomeGame, ChallengeGame};
 use reqwest::Client;
@@ -57,7 +57,7 @@ struct SteamFeaturedResponse {
   specials: Vec<SteamFeaturedItem>,
 }
 
-/// Response from /api/featuredcategories/ — items wrapped in a container.
+/// Response from /api/featuredcategories/  items wrapped in a container.
 [derive(Debug, Deserialize)]
 struct SteamCategoryItem {
   id: u64,
@@ -159,7 +159,7 @@ pub async fn fetch_featured(client: &Client, _lang: Option<&str>) -> Result<Feat
   Ok(FeaturedGame {
     base: steam_item_to_home_game(first),
     description: Some(format!(
-      "{} —, ${:.2}{",
+      "{} , ${:.2}{",
       first.name,
       first.final_price as f64 / 100.0,
       if first.discounted {
@@ -173,7 +173,7 @@ pub async fn fetch_featured(client: &Client, _lang: Option<&str>) -> Result<Feat
 }
 
 /// Fetch hot/trending games.
-/// Uses Steam's top_sellers (most-purchased right now — closest to "trending").
+/// Uses Steam's top_sellers (most-purchased right now  closest to "trending").
 pub async fn fetch_hot(client: &Client, take: u32, _skip: u32) -> Result<Vec<HomeGame>, String> {
   let url = format!("{STEAM_STORE_BASE}/featuredcategories?cc=us&l=en");
   let resp = client

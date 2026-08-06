@@ -1,4 +1,4 @@
-//! Download extras backend — debrid services and hoster scrapers.
+//! Download extras backend  debrid services and hoster scrapers.
 //!
 //! Provides URL resolution for:
 //! - Debrid services: Real-Debrid, AllDebrid, TorBox, Premiumize, Offcloud

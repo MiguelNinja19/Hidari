@@ -125,7 +125,7 @@ pub async fn resolve_real_debrid(
       resolved_by: DebridService::RealDebrid.label().to_string(),
     })
   } else {
-    // Hoster URL — unrestrict directly
+    // Hoster URL  unrestrict directly
     let resp = client
       .post(format!("{RD_API}/unrestrict/link"))
       .header("Authorization", &auth_header)
@@ -270,7 +270,7 @@ pub async fn resolve_all_debrid(
       resolved_by: DebridService::AllDebrid.label().to_string(),
     })
   } else {
-    // Hoster URL — unlock directly
+    // Hoster URL  unlock directly
     let resp = client
       .get(format!("{AD_API}/link/unlock"))
       .query(&[
@@ -301,13 +301,13 @@ pub async fn resolve_all_debrid(
 
 const TB_API: &str = "https://api.torbox.app/v1/api";
 
-/// Resolve via TorBox (simplified — only direct unrestrict for hoster URLs).
+/// Resolve via TorBox (simplified  only direct unrestrict for hoster URLs).
 /// Full magnet flow not implemented for v1.
 pub async fn resolve_torbox(
   url: &str,
   api_token: &str,
 ) -> Result<ResolvedDownload, DownloadExtrasError> {
-  // For now, only return the URL as-is — TorBox requires complex torrent flow.
+  // For now, only return the URL as-is  TorBox requires complex torrent flow.
   // Future improvement: implement createTorrent + requestDL flow.
   Err(DownloadExtrasError {
     message: format!("TorBox resolver not yet implemented for URL: {url} (token: {api_token})"),
@@ -353,9 +353,9 @@ struct OcCloudResponse {
 /// Resolve via Offcloud.
 ///
 /// Offcloud API docs: https://offcloud.com/api
-/// - POST /cloud ≤ upload magnet/URL, returns requestId
-/// - GET /cloud/status/{requestId} ≤ poll until "downloaded"
-/// - GET /cloud/history ≤ list (alt: GET /links/{requestId} for direct URL)
+/// - POST /cloud  upload magnet/URL, returns requestId
+/// - GET /cloud/status/{requestId}  poll until "downloaded"
+/// - GET /cloud/history  list (alt: GET /links/{requestId} for direct URL)
 ///
 /// For hoster URLs (not magnet), we use the same /cloud endpoint
 /// (Offcloud auto-detects magnet vs URL).

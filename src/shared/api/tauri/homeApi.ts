@@ -1,6 +1,6 @@
 /**
  * Cliente Tauri para os comandos da Home screen.
- * Cada função invoca um #[tauri::command] no backend Rust.
+ * Cada funo invoca um #[tauri::command] no backend Rust.
  */
 
 import { invoke } from '@tauri-apps/api/core'

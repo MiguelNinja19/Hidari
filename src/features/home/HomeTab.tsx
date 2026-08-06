@@ -1,6 +1,6 @@
 /**
  * HomeTab - wrapper que monta a HomePage.
- * Espelha o padrão de outras tabs (DiscoverTab, FavoritesTab, etc).
+ * Espelha o padro de outras tabs (DiscoverTab, FavoritesTab, etc).
  */
 
 import { HomePage } from './HomePage'

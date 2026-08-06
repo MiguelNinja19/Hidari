@@ -2,8 +2,8 @@
  * Hero banner da Home screen. Mostra o jogo em destaque com:
  * - Imagem de fundo (library_hero_image_url)
  * - Logo do jogo (logo_image_url)
- * - Descrição curta
- * - Botões: "Ver Detalhes" e "Adicionar à Biblioteca"
+ * - Descrio curta
+ * - Botes: "Ver Detalhes" e "Adicionar  Biblioteca"
  */
 
 import type { FeaturedGame } from '../../shared/types/contracts/home'
@@ -32,7 +32,7 @@ export function HomeHero({ game, isLoading, error, onViewDetails, onAddToLibrary
           <h1 className="home-hero__title">Bem-vindo ao Hidari</h1>
           <p className="home-hero__subtitle">
             {error
-              ? 'Não foi possível carregar o jogo em destaque. Verifique sua conexão.'
+              ? 'No foi possvel carregar o jogo em destaque. Verifique sua conexo.'
               : 'Explore jogos, baixe repacks e gerencie sua biblioteca.'}
           </p>
         </div>
@@ -80,7 +80,7 @@ export function HomeHero({ game, isLoading, error, onViewDetails, onAddToLibrary
             className="home-hero__btn home-hero__btn--secondary"
             onClick={() => onAddToLibrary?.(game)}
           >
-            Adicionar à Biblioteca
+            Adicionar  Biblioteca
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-//! Hoster scrapers — extract direct download URLs from file hosters.
+//! Hoster scrapers  extract direct download URLs from file hosters.
 //!
 //! Supports:
 //! - Mediafire (HTML scraping)
@@ -81,7 +81,7 @@ pub async fn resolve_pixeldrain(url: &str) -> Result<ResolvedDownload, DownloadE
 
   // Try bypass CDN first
   let bypass_url = format!("https://cdn.pixeldrain.eu.cc/{id}");
-  // Just return the bypass URL — the download-engine sidecar will try to download it.
+  // Just return the bypass URL  the download-engine sidecar will try to download it.
   // If that fails, the user can manually use the API URL below.
   Ok(ResolvedDownload {
     download_url: bypass_url,

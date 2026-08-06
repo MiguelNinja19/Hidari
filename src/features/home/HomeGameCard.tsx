@@ -1,6 +1,6 @@
 /**
  * Card individual de jogo na Home screen.
- * Mostra a cover image + título.
+ * Mostra a cover image + ttulo.
  */
 
 import type { HomeGame } from '../../shared/types/contracts/home'

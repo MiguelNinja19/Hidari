@@ -1,5 +1,5 @@
 /**
- * Carrossel horizontal de jogos. Reutilizado para as seções Hot/Weekly/Challenge.
+ * Carrossel horizontal de jogos. Reutilizado para as sees Hot/Weekly/Challenge.
  */
 
 import type { ReactNode } from 'react'
@@ -13,7 +13,7 @@ type HomeGameCarouselProps = {
   error?: string | null
   emptyMessage?: string
   onGameClick?: (game: HomeGame) => void
-  /** Optional badge/icon to render after the title (e.g., "🔥" for hot) */
+  /** Optional badge/icon to render after the title (e.g., "" for hot) */
   titleBadge?: ReactNode
 }
 
@@ -22,7 +22,7 @@ export function HomeGameCarousel({
   games,
   isLoading = false,
   error = null,
-  emptyMessage = 'Nenhum jogo disponível',
+  emptyMessage = 'Nenhum jogo disponvel',
   onGameClick,
   titleBadge,
 }: HomeGameCarouselProps) {

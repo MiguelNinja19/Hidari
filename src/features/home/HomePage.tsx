@@ -1,6 +1,6 @@
 /**
  * HomePage - layout principal da Home screen.
- * Compõe: Hero banner + 3 seções (Hot, Weekly, Challenge).
+ * Compe: Hero banner + 3 sees (Hot, Weekly, Challenge).
  */
 
 import { useHomeData } from './useHomeData'
@@ -31,7 +31,7 @@ export function HomePage({ onNavigateToGame, onAddToLibrary }: HomePageProps) {
   return (
     <div className="home-page">
       <header className="home-page__top-bar">
-        <h1 className="home-page__brand">Início</h1>
+        <h1 className="home-page__brand">Incio</h1>
         <button
           type="button"
           className="home-page__refresh"
@@ -39,7 +39,7 @@ export function HomePage({ onNavigateToGame, onAddToLibrary }: HomePageProps) {
           disabled={isLoading}
           title="Atualizar"
         >
-          ↻ Atualizar
+           Atualizar
         </button>
       </header>
 
@@ -54,7 +54,7 @@ export function HomePage({ onNavigateToGame, onAddToLibrary }: HomePageProps) {
       <div className="home-page__sections">
         <HomeGameCarousel
           title="Em Alta Agora"
-          titleBadge="🔥"
+          titleBadge=""
           games={hot.data ?? []}
           isLoading={hot.status === 'loading'}
           error={hot.error}
@@ -63,7 +63,7 @@ export function HomePage({ onNavigateToGame, onAddToLibrary }: HomePageProps) {
 
         <HomeGameCarousel
           title="Populares da Semana"
-          titleBadge="📈"
+          titleBadge=""
           games={weekly.data ?? []}
           isLoading={weekly.status === 'loading'}
           error={weekly.error}
@@ -71,13 +71,13 @@ export function HomePage({ onNavigateToGame, onAddToLibrary }: HomePageProps) {
         />
 
         <HomeGameCarousel
-          title="Desafie-se: Achievements Difíceis"
-          titleBadge="🏆"
+          title="Desafie-se: Achievements Difceis"
+          titleBadge=""
           games={challenge.data ?? []}
           isLoading={challenge.status === 'loading'}
           error={challenge.error}
           onGameClick={handleGameClick}
-          emptyMessage="Nenhum challenge disponível"
+          emptyMessage="Nenhum challenge disponvel"
         />
       </div>
     </div>

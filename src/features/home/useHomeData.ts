@@ -1,6 +1,6 @@
 /**
  * Hook que carrega todos os dados da Home screen em paralelo.
- * Retorna estados separados para cada seç÷ (outroado, hot, weekly, challenge).
+ * Retorna estados separados para cada se (outroado, hot, weekly, challenge).
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -27,7 +27,7 @@ function emptySection<T>(): SectionState<T> {
 
 /**
  * Extrai a mensagem de erro de qualquer tipo de erro.
- * Lida com: Error objects, Tauri invoke errors (que são {message: string}),
+ * Lida com: Error objects, Tauri invoke errors (que so {message: string}),
  * strings, e unknown.
  *
  * Soluciona o bug "[object Object]" que aparecia quando String(e) era chamado
@@ -37,12 +37,12 @@ function errorMessage(e: unknown): string {
   if (e === null || e === undefined) return 'Erro desconhecido'
   if (typeof e === 'string') return e
   if (e instanceof Error) return e.message
-  // Tauri invoke errors têm formato { message: string }
+  // Tauri invoke errors tm formato { message: string }
   if (typeof e === 'object' && 'message' in e) {
     const msg = (e as { message: unknown }).message
     if (typeof msg === 'string') return msg
   }
-  // Último recurso: stringify seguro
+  // ltimo recurso: stringify seguro
   try {
     return JSON.stringify(e)
   } catch {
@@ -57,7 +57,7 @@ export function useHomeData() {
   const [challenge, setChallenge] = useState<SectionState<ChallengeGame[]>>(emptySection)
 
   const loadAll = useCallback(async () => {
-    // Carrega todas as seções em paralelo para máxima velocidade
+    // Carrega todas as sees em paralelo para mxima velocidade
     const promises: Array<Promise<void>> = [
       (async () => {
         setFeatured((s) => ({ ...s, status: 'loading', error: null }))

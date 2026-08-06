@@ -1,7 +1,7 @@
 /**
  * Settings section para configurar Debrid services.
- * Permite ao usuário salvar API tokens para Real-Debrid, AllDebrid, etc.
- * Quando um download contêm magnet/URL de hoster, o Hidari usará o debrid configurado.
+ * Permite ao usurio salvar API tokens para Real-Debrid, AllDebrid, etc.
+ * Quando um download contm magnet/URL de hoster, o Hidari usar o debrid configurado.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -51,11 +51,11 @@ export function DownloadExtrasSettingsSection() {
 
   return (
     <section className="download-extras-settings">
-      <h3 className="download-extras-settings__title">† Serviços de Download</h3>
+      <h3 className="download-extras-settings__title"> Servios de Download</h3>
       <p className="download-extras-settings__desc">
-        Configure tokens para serviços de debrid (download direto sem torrent). Real-Debrid é o
+        Configure tokens para servios de debrid (download direto sem torrent). Real-Debrid  o
         mais popular. Hoster scrapers (Mediafire, PixelDrain) funcionam automaticamente sem
-        configuração.
+        configurao.
       </p>
 
       <div className="download-extras-settings__grid">
@@ -114,7 +114,7 @@ export function DownloadExtrasSettingsSection() {
           <input
             type="password"
             value={creds.torbox_token ?? ''}
-            placeholder="Em breva (não implementado ainda)"
+            placeholder="Em breva (no implementado ainda)"
             disabled
           />
         </label>
@@ -134,7 +134,7 @@ export function DownloadExtrasSettingsSection() {
           <input
             type="password"
             value={creds.premiumize_token ?? ''}
-            placeholder="Em breva (não implementado ainda)"
+            placeholder="Em breva (no implementado ainda)"
             disabled
          />
         </label>
@@ -167,7 +167,7 @@ export function DownloadExtrasSettingsSection() {
           className="download-extras-settings__btn"
           disabled={saving}
         >
-          {saving ? 'Salvando...' : saved ? '✬ Salvo' : 'Salvar'}
+          {saving ? 'Salvando...' : saved ? ' Salvo' : 'Salvar'}
         </button>
       </div>
 
@@ -180,10 +180,10 @@ export function DownloadExtrasSettingsSection() {
           </li>
           <li>
             <strong>Hoster scrapers (Mediafire, PixelDrain):</strong> Funcionam automaticamente
-            quando você cola um link desses sites — sem precisar configurar nada.
+            quando voc cola um link desses sites  sem precisar configurar nada.
           </li>
           <li>
-            <strong>TorBox e Premiumize:</strong> Implementação prevista para v2. Por entinto,
+            <strong>TorBox e Premiumize:</strong> Implementao prevista para v2. Por entinto,
             use Real-Debrid, AllDebrid ou Offcloud.
           </li>
         </ul>
