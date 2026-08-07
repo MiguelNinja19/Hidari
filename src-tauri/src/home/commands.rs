@@ -104,7 +104,7 @@ pub async fn get_home_hot_games(
       log::warn!("Steam hot failed ({steam_err}), trying Hydra...");
       hydra_catalogue::fetch_hot(&client, take, skip)
         .await
-        .map_err(|ydra_err| {
+        .map_err(|hydra_err| {
             HomeError {
               message: format!(
         "Steam failed: {steam_err} | Hydra also failed: {hydra_err}"

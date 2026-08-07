@@ -9,7 +9,7 @@
 // - new_releases a  "Populares da Semana" (laamentos)
 // - specials a  "Desafie-se" (promoes)
 
-use super::{FeaturedGame, HomeGame, ChallengeGame};
+use super::{FeaturedGame, HomeGame};
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
@@ -78,7 +78,7 @@ struct SteamCategoryItem {
   original_price: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct SteamCategoryContainer {
   #[serde(default)]
   items: Vec<SteamCategoryItem>,
