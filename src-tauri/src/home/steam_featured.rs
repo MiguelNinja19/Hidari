@@ -18,9 +18,11 @@ const TIMEOUT_SECS: u64 = 15;
 const STEAM_STORE_BASE: &str = "https://store.steampowered.com/api";
 
 /// Single entry in Steam's featured API response.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct SteamFeaturedItem {
+  #[serde(default)]
   id: u64,
+  #[serde(default)]
   name: String,
   #[serde(default)]
   discounted: bool,
@@ -58,9 +60,11 @@ struct SteamFeaturedResponse {
 }
 
 /// Response from /api/featuredcategories/  items wrapped in a container.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct SteamCategoryItem {
+  #[serde(default)]
   id: u64,
+  #[serde(default)]
   name: String,
   #[serde(default)]
   large_capsule_image: Option<String>,
@@ -161,7 +165,7 @@ pub async fn fetch_featured(client: &Client, _lang: Option<&str>) -> Result<Feat
   Ok(FeaturedGame {
     base: steam_item_to_home_game(first),
     description: Some(format!(
-      "{} - ${:.2}{}",
+      "{} - ${:.2} {}",
       first.name,
       first.final_price as f64 / 100.0,
       if first.discounted {

@@ -54,7 +54,7 @@ export function HomePage({ onNavigateToGame, onAddToLibrary }: HomePageProps) {
       <div className="home-page__sections">
         <HomeGameCarousel
           title="Em Alta Agora"
-          titleBadge=""
+          titleBadge="🔥"
           games={hot.data ?? []}
           isLoading={hot.status === 'loading'}
           error={hot.error}
@@ -63,7 +63,7 @@ export function HomePage({ onNavigateToGame, onAddToLibrary }: HomePageProps) {
 
         <HomeGameCarousel
           title="Populares da Semana"
-          titleBadge=""
+          titleBadge="📈"
           games={weekly.data ?? []}
           isLoading={weekly.status === 'loading'}
           error={weekly.error}
@@ -71,8 +71,8 @@ export function HomePage({ onNavigateToGame, onAddToLibrary }: HomePageProps) {
         />
 
         <HomeGameCarousel
-          title="Desafie-se: Achievements Difceis"
-          titleBadge=""
+          title="Desafie-se: Achievements Dificeis"
+          titleBadge="🏆"
           games={challenge.data ?? []}
           isLoading={challenge.status === 'loading'}
           error={challenge.error}
