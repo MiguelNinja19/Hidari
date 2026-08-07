@@ -37,7 +37,7 @@ pub async fn get_home_featured(
   // Check cache first
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   if let Some(json) = cache::read_cache(&conn, &cache_key) {
-    if let Ok(game) = serde_json::from_str::FeaturedGame>(&json) {
+    if let Ok(game) = serde_json::from_str::<FeaturedGame>(&json) {
       return Ok(game);
     }
   }
@@ -45,7 +45,7 @@ pub async fn get_home_featured(
 
   // Build client (used by both Steam and Hydra)
   let client = steam_featured::build_client()
-    .or_else(|| hydra_catalogue::build_client())
+    .or_else(|_| hydra_catalogue::build_client())
     .map_err(HomeError::from)?;
 
   // Try Steam first
@@ -88,14 +88,14 @@ pub async fn get_home_hot_games(
 
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   if let Some(json) = cache::read_cache(&conn, &cache_key) {
-    if let Ok(games) = serde_json::from_str::<Vec<HomeGame>>>(&json) {
+    if let Ok(games) = serde_json::from_str::<Vec<HomeGame>>(&json) {
       return Ok(games);
     }
   }
   drop(conn);
 
   let client = steam_featured::build_client()
-    .or_else(|| hydra_catalogue::build_client())
+    .or_else(|_| hydra_catalogue::build_client())
     .map_err(HomeError::from)?;
 
   let games = match steam_featured::fetch_hot(&client, take, skip).await {
@@ -134,14 +134,14 @@ pub async fn get_home_weekly_games(
 
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   if let Some(json) = cache::read_cache(&conn, &cache_key) {
-    if let Ok(games) = serde_json::from_str::<Vec<HomeGame>>>(&json) {
+    if let Ok(games) = serde_json::from_str::<Vec<HomeGame>>(&json) {
       return Ok(games);
     }
   }
   drop(conn);
 
   let client = steam_featured::build_client()
-    .or_else(|| hydra_catalogue::build_client())
+    .or_else(|_| hydra_catalogue::build_client())
     .map_err(HomeError::from)?;
 
   let games = match steam_featured::fetch_weekly(&client, take, skip).await {
@@ -180,14 +180,14 @@ pub async fn get_home_achievements_challenge(
 
   let conn = crate::db::open_database_connection(&app).map_err(HomeError::from)?;
   if let Some(json) = cache::read_cache(&conn, &cache_key) {
-    if let Ok(games) = serde_json::from_str::<Vec<ChallengeGame>>>(&json) {
+    if let Ok(games) = serde_json::from_str::<Vec<ChallengeGame>>(&json) {
       return Ok(games);
     }
   }
   drop(conn);
 
   let client = steam_featured::build_client()
-    .or_else(|| hydra_catalogue::build_client())
+    .or_else(|_| hydra_catalogue::build_client())
     .map_err(HomeError::from)?;
 
   let games = match steam_featured::fetch_achievements_challenge(&client, take, skip).await {

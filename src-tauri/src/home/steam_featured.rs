@@ -78,11 +78,13 @@ struct SteamCategoryItem {
   original_price: u64,
 }
 
+#[derive(Debug, Deserialize)]
 struct SteamCategoryContainer {
   #[serde(default)]
   items: Vec<SteamCategoryItem>,
 }
 
+#[derive(Debug, Deserialize)]
 struct SteamFeaturedCategoriesResponse {
   #[serde(default)]
   top_sellers: SteamCategoryContainer,

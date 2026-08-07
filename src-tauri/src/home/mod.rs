@@ -81,7 +81,7 @@ impl Default for HomeClientState {
       .timeout(std::time::Duration::from_secs(15))
       .user_agent(concat!("Hidari/", env!("CARGO_PKG_VERSION")))
       .build()
-      .unwrap_or_else(|| reqwest::Client::new());
+      .unwrap_or_else(|_| reqwest::Client::new());
     Self { client }
   }
 }
